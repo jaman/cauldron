@@ -1,0 +1,39 @@
+defmodule Cauldron2D.Game do
+  @moduledoc """
+  What a game gives `Cauldron2D.World` to run: a pure value and the callbacks that change it.
+
+      defmodule MyGame do
+        @behaviour Cauldron2D.Game
+
+        def init(opts), do: ...
+        def join(state, player_id, props), do: {:ok, state}
+        def leave(state, player_id), do: state
+        def handle_input(state, player_id, %{held: held, aim: aim}), do: state
+        def step(state, dt), do: state
+        def view(state, player_id), do: ...
+        def drain_events(state), do: {events, state}
+      end
+
+  Every callback is pure. `step/2` is called once per fixed tick with `dt` in seconds;
+  `handle_input/3` before the tick for each player whose input changed; `view/2` after it
+  for each player, and what it returns is sent to that player; `drain_events/1` after it,
+  once, and the events go to every player. Nothing here reads a clock, and a game built
+  with the same options and given the same calls in the same order runs identically.
+
+  `join/3`'s `props` are the game's to define. The clients in the `cauldron_2d_*`
+  packages pass `:username` (the player's name as a string) and whatever the game's own
+  `join_props` callback adds; a game that wants teams, spectators or anything else names
+  those props itself and reads them here.
+  """
+
+  @type state :: term()
+  @type player_id :: term()
+
+  @callback init(keyword()) :: state()
+  @callback join(state(), player_id(), map()) :: {:ok, state()} | {:error, term()}
+  @callback leave(state(), player_id()) :: state()
+  @callback handle_input(state(), player_id(), Cauldron2D.Input.state()) :: state()
+  @callback step(state(), float()) :: state()
+  @callback view(state(), player_id()) :: term()
+  @callback drain_events(state()) :: {[term()], state()}
+end

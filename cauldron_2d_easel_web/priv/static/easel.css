@@ -1,0 +1,13 @@
+body{margin:0;background:#101018;color:#e8e8f0;font:15px/1.4 system-ui,sans-serif}
+.easel{padding:1rem;max-width:80rem;margin:0 auto}
+.easel h1{font-size:1.2rem}.easel h2{font-size:.8rem;text-transform:uppercase;color:#a0a0b8;margin:.8rem 0 .3rem}
+.easel a{color:#8fb2ff}.dim{color:#a0a0b8;margin-left:.6rem}.status{color:#ffd060;margin-left:1rem}
+.arts{list-style:none;padding:0}.arts li{padding:.3rem 0;border-bottom:1px solid #26263a}
+.row{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin:.3rem 0}
+.inline{display:inline-flex;gap:.3rem;margin-left:.6rem}
+.editing header{display:flex;gap:1rem;align-items:baseline;margin-bottom:.6rem}
+#canvas canvas{image-rendering:pixelated;touch-action:none;cursor:crosshair;max-width:100%}
+aside{width:20rem}aside button{background:#26263a;color:#e8e8f0;border:0;border-radius:.3rem;padding:.3rem .6rem;margin:.1rem}
+aside button.on{background:#3b5bdb}aside kbd{color:#a0a0b8;margin-left:.3rem}
+.swatch{display:inline-block;width:1rem;height:1rem;vertical-align:middle;border:1px solid #000}
+input{background:#181826;color:#e8e8f0;border:1px solid #26263a;border-radius:.3rem;padding:.2rem .4rem}

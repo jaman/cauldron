@@ -1,0 +1,9 @@
+**/_build/
+**/deps/
+**/doc/
+**/tmp/
+**/cover/
+*.tar
+*.ez
+erl_crash.dump
+.DS_Store

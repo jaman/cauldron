@@ -1,0 +1,5 @@
+bucket	u 	#c8a060	
+drop	o 	#6cb8ff	6
+drop_gold	o 	#ffd040	6	from drop; colour W #ffd040; colour L #fff0b0
+floor	==	#4c527a	
+sky	  	#14162a	

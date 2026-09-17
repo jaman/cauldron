@@ -1,0 +1,272 @@
+# Cauldron2D art in a notebook
+
+```elixir
+Mix.install([
+  {:cauldron_2d_easel_kino, path: Path.join(__DIR__, "..")}
+])
+```
+
+## What this notebook shows
+
+Cauldron2D draws a game from an **atlas**: a catalogue of tiles, each a small picture
+with a name. The pictures live in an art directory as `.pic` files — text, with a palette
+and a grid of letters — or as `.png` files. This notebook opens the editor in a cell,
+makes a static tile and an animated one with `Cauldron2D.Easel`, looks at them with
+`Cauldron2D.Easel.Kino`, derives more art from them with `Linocut`, and installs the
+directory as an atlas the way a game does.
+
+Everything here is a plain function on a value; the editors
+(`mix cauldron.easel` in a terminal, `Cauldron2D.Easel.Web` in a browser, the cell below)
+call the same functions.
+
+## The editor in a cell
+
+`Cauldron2D.Easel.Kino.Editor.new/2` is the atlas editor as a cell. Paint with the
+pointer; the buttons are the tools, the palette, the frames and the history. A new
+picture starts with no colours: choose one in the colour input and press **add colour**,
+and the brush paints with it. With more than one frame, **onion** shows the previous frame
+faintly under the current one and **play** runs them at the rate set.
+
+```elixir
+alias Cauldron2D.Easel.Kino.Editor
+
+editor = Editor.new(Cauldron2D.Easel.new(16, 16))
+```
+
+The picture as it stands is a value any later cell can use — evaluate this after
+painting:
+
+```elixir
+editor
+|> Editor.easel()
+|> Cauldron2D.Easel.Kino.image(scale: 8)
+```
+
+Opened on a `.pic` or `.png` path, **save** writes the file back; with `atlas:` and
+`tile:` it then installs the directory as that atlas, so a game running in this notebook
+picks the change up at once. The art directory this notebook makes is opened this way
+further down.
+
+## A picture as text
+
+A `.pic` is a palette — one character and a colour a line — a blank line, and the
+picture. `.` is transparent.
+
+```elixir
+pic = """
+W #f0f0f8
+G #4a4a60
+B #3b5bdb
+
+....WWWWWWWW....
+...WGGGGGGGGW...
+..WGBBGGGGBBGW..
+..WGBBGGGGBBGW..
+..WGGGGGGGGGGW..
+..WGGGGGGGGGGW..
+..WGGBGGGGBGGW..
+..WGGGBBBBGGGW..
+...WGGGGGGGGW...
+....WWWWWWWW....
+................
+................
+................
+................
+................
+................
+"""
+
+{:ok, face} = Cauldron2D.Easel.from_pic(pic)
+Cauldron2D.Easel.Kino.image(face, scale: 12)
+```
+
+## Drawing with functions
+
+The same picture can be made from a blank easel. Every operation returns a new easel,
+and `undo/1` walks back through them.
+
+```elixir
+alias Cauldron2D.Easel
+
+drawn =
+  Easel.new(16, 16, palette: [{"W", "#f0f0f8"}, {"G", "#4a4a60"}, {"B", "#3b5bdb"}])
+  |> Easel.rect({4, 0}, {11, 9}, "W")
+  |> Easel.fill({7, 5}, "G")
+  |> Easel.rect({3, 2}, {4, 3}, "B", fill: true)
+  |> Easel.rect({11, 2}, {12, 3}, "B", fill: true)
+  |> Easel.line({4, 7}, {11, 7}, "B")
+
+Cauldron2D.Easel.Kino.image(drawn, scale: 12)
+```
+
+```elixir
+drawn |> Easel.undo() |> Easel.undo() |> Cauldron2D.Easel.Kino.image(scale: 12)
+```
+
+## An animated picture
+
+Frames are the same picture repeated with a change; `.pic` keeps them separated by a
+`---` line, and the easel plays them at its rate.
+
+```elixir
+flame =
+  Easel.new(16, 16, palette: [{"R", "#ff4a1a"}, {"Y", "#ffd23c"}, {"D", "#7a1a00"}], fps: 6)
+  |> Easel.rect({6, 8}, {9, 15}, "R", fill: true)
+  |> Easel.rect({7, 11}, {8, 15}, "Y", fill: true)
+  |> Easel.duplicate_frame()
+  |> Easel.shift(0, -2)
+  |> Easel.paint({5, 9}, "D")
+  |> Easel.paint({10, 9}, "D")
+  |> Easel.duplicate_frame()
+  |> Easel.shift(0, -1)
+  |> Easel.flip(:horizontal)
+
+Cauldron2D.Easel.Kino.animate(flame, scale: 12)
+```
+
+The frames side by side, as a `.png` of the art would hold them:
+
+```elixir
+Cauldron2D.Easel.Kino.image(flame, scale: 6)
+```
+
+## An art directory
+
+A game keeps its pictures in a directory; here a temporary one. `Cauldron2D.Easel.Project`
+saves each easel as `<name>.pic` and keeps the glyph and colour the text renderer draws
+for each art in `atlas.txt` beside them.
+
+```elixir
+alias Cauldron2D.Easel.Project
+
+dir = Path.join(System.tmp_dir!(), "easel_notebook")
+File.mkdir_p!(dir)
+project = Project.open(dir, tile: 16)
+
+{:ok, project} = Project.save(project, :face, face)
+{:ok, project} = Project.save(project, :flame, flame)
+{:ok, project} = Project.put_entry(project, :face, glyph: "@ ", color: {240, 240, 248})
+{:ok, project} = Project.put_entry(project, :flame, glyph: "^ ", color: {255, 74, 26})
+
+Project.arts(project)
+```
+
+```elixir
+File.read!(Path.join(dir, "atlas.txt"))
+```
+
+The whole directory as one sheet — what a browser or a window is sent:
+
+```elixir
+Cauldron2D.Easel.Kino.sheet(dir, tile: 16, scale: 4)
+```
+
+The flame opened in the editor from its file. **save** writes `flame.pic` back and
+installs the directory as the `:notebook` atlas; the sheet cell above and the surface cell
+at the end show the change once re-evaluated.
+
+```elixir
+Editor.new(Path.join(dir, "flame.pic"), atlas: :notebook, tile: 16)
+```
+
+## One drawing, many views
+
+A picture's keys mean something — `W` the face, `B` the eyes — so a second view is a line
+of operations on the keys rather than a second drawing: `Cauldron2D.Easel.derive/3` takes
+the operations `Linocut.Derive` reads (`colour`, `swap`, `flip`, `turn`, `shift`, `frame`,
+`reverse`, `over`) and gives a new easel.
+
+```elixir
+{:ok, green_eyed} = Easel.derive(face, "colour B #20c040; flip h")
+Cauldron2D.Easel.Kino.image(green_eyed, scale: 12)
+```
+
+`over` lays another picture on, its transparent keys letting the face through; the
+pictures it names come from a function.
+
+```elixir
+hat = """
+K #202020
+
+..KKKKKKKKKKKK..
+...KKKKKKKKKK...
+....KKKKKKKK....
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+................
+"""
+
+{:ok, hatted} = Easel.derive(face, "over hat 0 -1", fn "hat" -> {:ok, hat}; _ -> :error end)
+Cauldron2D.Easel.Kino.image(hatted, scale: 12)
+```
+
+In an art directory the same line lives in `atlas.txt`, so the atlas builds the derived art
+from the drawn one every time it loads — change the drawing and every view follows:
+
+```elixir
+{:ok, project} = Project.derive(project, :face_green, "from face; colour B #20c040")
+{:ok, project} = Project.derive(project, :face_left, "from face_green; flip h")
+Project.arts(project) |> Enum.map(&{&1.name, Map.get(&1, :derived, Map.get(&1, :file))})
+```
+
+```elixir
+Cauldron2D.Easel.Kino.sheet(dir, tile: 16, scale: 4)
+```
+
+## Deriving art with Linocut
+
+`Linocut` is what the engine draws pictures with: headings of a shape, a recoloured
+sprite, a scaled or turned one. Its results are rasters, so `image/2` shows them too.
+
+```elixir
+ship = Linocut.headings([{15, 0}, {-8, 8}, {-8, -8}], 16, size: {16, 16}, fill: :purple)
+
+ship
+|> Linocut.Preview.sheet(columns: 8, gap: 1)
+|> Cauldron2D.Easel.Kino.image(scale: 4)
+```
+
+```elixir
+face
+|> Easel.raster(0)
+|> Linocut.recolour(%{{59, 91, 219, 255} => {230, 60, 60, 255}})
+|> Cauldron2D.Easel.Kino.image(scale: 12)
+```
+
+## Installing the atlas
+
+This is what a game does at start, and what the editors do on every save with an atlas
+named: the directory becomes a `Cauldron2D.Atlas`, glyphs and rates from the manifest.
+
+```elixir
+{:ok, :notebook} = Project.install(project, :notebook)
+atlas = Cauldron2D.Atlas.fetch(:notebook)
+
+for art <- Cauldron2D.Atlas.arts(atlas) do
+  entry = Cauldron2D.Atlas.entry(atlas, art)
+  {art, entry.glyph, length(entry.frames), entry.fps}
+end
+```
+
+A surface composed from that atlas, as the terminal would draw it in pixels — a row of
+faces with the flame's second frame over one of them:
+
+```elixir
+rows = [[{:face, [], nil}, {:face, [:flame], nil}, {:face, [], nil}]]
+
+Cauldron2D.Surface.compose(:notebook, rows, [], at: 340)
+|> Cauldron2D.Easel.Kino.image(scale: 6)
+```
+
+`at:` is the time in milliseconds the animated art's frame is chosen for; try `0`, `170`
+and `340` to see the flame's three frames.
