@@ -76,8 +76,8 @@ defmodule Cauldron2D.Collision do
 
     case struck(grid, point, radius) do
       {:hit, cell, sample} ->
-        {:blocked, previous, surface_normal(grid, cell, shifted(previous, point, sample), sample),
-         cell}
+        {normal, struck} = surface_normal(grid, cell, shifted(previous, point, sample), sample)
+        {:blocked, previous, normal, struck}
 
       :none ->
         march(grid, from, to, radius, step + 1, steps, point)
@@ -111,46 +111,56 @@ defmodule Cauldron2D.Collision do
 
     case {grid.(cell), from_cell == cell} do
       {{:diagonal, corner}, true} ->
-        diagonal_normal(corner)
+        {diagonal_normal(corner), cell}
 
       {{:diagonal, corner}, false} ->
-        face = entered_face(cell, from_cell, from_point, to_point)
+        {face, struck} = entered_face(grid, cell, from_cell, from_point, to_point)
 
-        if face in solid_faces(corner) do
-          face_normal(face)
-        else
-          diagonal_normal(corner)
-        end
+        if struck == cell and face not in solid_faces(corner),
+          do: {diagonal_normal(corner), cell},
+          else: {face_normal(face), struck}
 
       {_solid, _} ->
-        face_normal(entered_face(cell, from_cell, from_point, to_point))
+        {face, struck} = entered_face(grid, cell, from_cell, from_point, to_point)
+        {face_normal(face), struck}
     end
   end
 
-  defp entered_face({cx, cy}, {fx, fy}, {px, py}, {x, y}) do
+  defp entered_face(grid, {cx, cy} = cell, {fx, fy}, {px, py}, {x, y}) do
     dx = cx - fx
     dy = cy - fy
 
     cond do
-      dx != 0 and dy == 0 -> horizontal_entry(dx)
-      dy != 0 and dx == 0 -> vertical_entry(dy)
-      true -> first_crossed({cx, cy}, {dx, dy}, {px, py}, {x, y})
+      dx != 0 and dy == 0 -> {horizontal_entry(dx), cell}
+      dy != 0 and dx == 0 -> {vertical_entry(dy), cell}
+      true -> across_corner(grid, cell, {fx, fy}, {dx, dy}, {px, py}, {x, y})
     end
   end
 
-  defp horizontal_entry(dx) when dx > 0, do: :west
-  defp horizontal_entry(_dx), do: :east
-  defp vertical_entry(dy) when dy > 0, do: :north
-  defp vertical_entry(_dy), do: :south
-
-  defp first_crossed({cx, cy}, {dx, dy}, {px, py}, {x, y}) do
+  defp across_corner(grid, {cx, cy} = cell, {fx, fy}, {dx, dy}, {px, py}, {x, y}) do
     face_x = if dx > 0, do: cx, else: cx + 1
     face_y = if dy > 0, do: cy, else: cy + 1
     tx = crossing(px, x, face_x)
     ty = crossing(py, y, face_y)
 
-    if tx <= ty, do: horizontal_entry(dx), else: vertical_entry(dy)
+    {first, between} =
+      if tx <= ty,
+        do: {horizontal_entry(dx), {cx, fy}},
+        else: {vertical_entry(dy), {fx, cy}}
+
+    if filled?(grid.(between), local(between, midpoint({px, py}, {x, y}))) do
+      {first, between}
+    else
+      {if(tx <= ty, do: vertical_entry(dy), else: horizontal_entry(dx)), cell}
+    end
   end
+
+  defp midpoint({px, py}, {x, y}), do: {(px + x) / 2, (py + y) / 2}
+
+  defp horizontal_entry(dx) when dx > 0, do: :west
+  defp horizontal_entry(_dx), do: :east
+  defp vertical_entry(dy) when dy > 0, do: :north
+  defp vertical_entry(_dy), do: :south
 
   defp crossing(from, to, _face) when to == from, do: 1.0
   defp crossing(from, to, face), do: (face - from) / (to - from)

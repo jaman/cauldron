@@ -62,6 +62,31 @@ defmodule Cauldron2D.CollisionTest do
       assert close?(nx, 0.0) and close?(ny, -1.0)
     end
 
+    test "a wall entered across its corner, steeply, is struck on the face crossed last" do
+      wall = fn {cx, _cy} -> if cx >= 23, do: :solid, else: :open end
+
+      assert {:blocked, _at, {nx, ny}, {23, 5}} =
+               Collision.sweep(wall, {22.9, 6.05}, {23.1, 5.85}, 0.0)
+
+      assert close?(nx, -1.0) and close?(ny, 0.0)
+
+      floor = fn {_cx, cy} -> if cy >= 6, do: :solid, else: :open end
+
+      assert {:blocked, _at, {nx, ny}, {5, 6}} =
+               Collision.sweep(floor, {4.95, 5.9}, {5.15, 6.1}, 0.0)
+
+      assert close?(nx, 0.0) and close?(ny, -1.0)
+    end
+
+    test "cutting a corner between two solid tiles strikes the one the path crosses first" do
+      grid = wall_at(%{{5, 4} => :solid, {5, 5} => :solid, {4, 5} => :solid})
+
+      assert {:blocked, _at, {nx, ny}, {4, 5}} =
+               Collision.sweep(grid, {4.5, 4.95}, {5.05, 5.05}, 0.0)
+
+      assert close?(nx, 0.0) and close?(ny, -1.0)
+    end
+
     test "a body's radius touches before its centre does" do
       grid = wall_at(%{{5, 1} => :solid})
       assert {:blocked, {x, _}, _, _} = Collision.sweep(grid, {1.0, 1.5}, {6.0, 1.5}, 0.5)
