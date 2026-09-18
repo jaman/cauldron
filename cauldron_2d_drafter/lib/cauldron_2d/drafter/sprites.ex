@@ -10,8 +10,9 @@ defmodule Cauldron2D.Drafter.Sprites do
   changes the atlas.
   """
 
-  alias Cauldron2D.{Atlas, Surface}
+  alias Cauldron2D.Atlas
   alias FrenchCurve.Backend.Kitty
+  alias FrenchCurve.Raster
 
   @span 4096
 
@@ -21,21 +22,45 @@ defmodule Cauldron2D.Drafter.Sprites do
 
   ## Options
 
-    * `:scale` — a whole number of times each sprite's pixels are repeated, so a placement
-      is drawn at that size without the terminal scaling it. Default `1`
+    * `:size` — `{width, height}` in pixels to store each sprite at, resampled
+      nearest-neighbour once here, so a placement of that size is drawn pixel for pixel
+      and the terminal scales nothing. Default: the sprite's own size
     * `:compress` — zlib each transmit. Default `true`
   """
   @spec transmit(Atlas.name() | Atlas.t(), keyword()) :: iodata()
   def transmit(atlas, opts \\ []) do
     atlas = Atlas.fetch(atlas)
     compress? = Keyword.get(opts, :compress, true)
-    scale = Keyword.get(opts, :scale, 1)
+    size = Keyword.get(opts, :size)
 
     for {art, frame_index, sprite} <- frames(atlas) do
-      Kitty.transmit(Surface.magnify(sprite.raster, scale), image_id(atlas, art) + frame_index,
+      Kitty.transmit(resampled(sprite.raster, size), image_id(atlas, art) + frame_index,
         compress: compress?
       )
     end
+  end
+
+  @doc """
+  `raster` at `{width, height}` pixels, each output pixel the nearest source pixel; the
+  raster itself at its own size or with `nil`.
+  """
+  @spec resampled(Raster.t(), {pos_integer(), pos_integer()} | nil) :: Raster.t()
+  def resampled(%Raster{} = raster, nil), do: raster
+  def resampled(%Raster{width: w, height: h} = raster, {w, h}), do: raster
+
+  def resampled(%Raster{width: sw, height: sh} = raster, {width, height}) do
+    source = Raster.to_rgba_binary(raster)
+
+    rows =
+      for oy <- 0..(height - 1)//1 do
+        sy = div(oy * sh, height)
+
+        for ox <- 0..(width - 1)//1, into: <<>> do
+          binary_part(source, (sy * sw + div(ox * sw, width)) * 4, 4)
+        end
+      end
+
+    Raster.from_rgba(width, height, IO.iodata_to_binary(rows))
   end
 
   @doc "The kitty image id under which the first frame of `art` of `atlas` is stored; the same on every call."

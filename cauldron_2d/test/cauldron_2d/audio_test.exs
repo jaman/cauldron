@@ -386,11 +386,11 @@ defmodule Cauldron2D.AudioTest do
     end
 
     test "the cued section is rendered first, a few stems at a time", %{stage: stage} do
-      {:ok, order} = Agent.start_link(fn -> [] end)
+      parent = self()
 
       slow = fn name ->
         fn ->
-          Agent.update(order, &[name | &1])
+          send(parent, {:rendering, name})
           Process.sleep(30)
           tone(100)
         end
@@ -413,7 +413,7 @@ defmodule Cauldron2D.AudioTest do
       Music.cue(audio, %{piece: "p", section: :d})
       {_layers, _opts} = layers_cast()
 
-      started = order |> Agent.get(& &1) |> Enum.reverse()
+      started = rendering_started()
 
       assert Enum.sort(Enum.take(started, 4)) |> Enum.filter(&match?({:d, _}, &1)) == [
                {:d, :drums},
@@ -422,6 +422,14 @@ defmodule Cauldron2D.AudioTest do
              inspect(started)
 
       assert length(started) <= 6, "stems were not rendered a few at a time: #{inspect(started)}"
+    end
+
+    defp rendering_started(names \\ []) do
+      receive do
+        {:rendering, name} -> rendering_started([name | names])
+      after
+        0 -> Enum.reverse(names)
+      end
     end
 
     test "changing the section waits for a bar and cross-fades", %{stage: stage} do

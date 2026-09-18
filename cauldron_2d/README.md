@@ -128,8 +128,8 @@ A 40×24 viewport is ~15,000 `binary_part` calls, about **1 ms**, and the result
 into `FrenchCurve.Raster.from_rgba/4`.
 
 **Movers** — sprites at fractional positions, for anything that is not on the grid — are a
-separate path that touches only the rows they land on. Measured on a full playfield: 565 µs for
-the grid, 609 µs with four movers on top.
+separate path that touches only the rows they land on, so a frame with none pays nothing for
+them.
 
 ### Two cells per tile
 

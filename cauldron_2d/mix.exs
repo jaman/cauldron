@@ -1,7 +1,7 @@
 defmodule Cauldron2D.MixProject do
   use Mix.Project
 
-  @version "0.1.2"
+  @version "0.1.3"
   @source_url "https://github.com/jaman/cauldron"
   @description "A 2D tile engine for terminals: a grid of tile ids, cheaply, as pixels or glyphs."
 
@@ -34,11 +34,11 @@ defmodule Cauldron2D.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       family(:french_curve, "~> 0.1.4", "../../french_curve", override: true),
-      family(:linocut, "~> 0.1.2", "../linocut", []),
+      family(:linocut, "~> 0.1.3", "../linocut", []),
       # Synthesis and mixing. Playing the result through a speaker is
       # `tuning_fork_speaker`, which a game adds if it wants to be heard — the engine works
       # without it and stays silent.
-      family(:tuning_fork, "~> 0.1.10", "../../tuning_fork/tuning_fork", [])
+      family(:tuning_fork, "~> 0.1.11", "../../tuning_fork/tuning_fork", [])
     ]
   end
 

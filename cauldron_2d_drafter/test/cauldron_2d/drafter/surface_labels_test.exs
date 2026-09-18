@@ -83,9 +83,7 @@ defmodule Cauldron2D.Drafter.SurfaceLabelsTest do
              [{"x", {0, 0}, {1, 2, 3}}]
   end
 
-  test "with placements a label is a stored image at the drawn scale, placed at its cell", %{
-    state: state
-  } do
+  test "with placements a label is a stored image placed at its cell", %{state: state} do
     Context.put_terminal_protocol(:kitty)
     Context.put_cell_size({10, 20})
 
@@ -96,7 +94,7 @@ defmodule Cauldron2D.Drafter.SurfaceLabelsTest do
 
     {paint, _clear, region} = Surface.image(%{state | mode: :kitty}, rect(20, 10), :map)
     paint = IO.iodata_to_binary(paint)
-    id = Sprites.label_id(:label_widget_test, "alice", {255, 255, 0}, 3)
+    id = Sprites.label_id(:label_widget_test, "alice", {255, 255, 0}, 1)
     assert paint =~ "a=t,i=#{id}"
     assert region.place =~ "a=p,i=#{id}"
 

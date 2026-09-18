@@ -31,7 +31,7 @@ defmodule Cauldron2D.WorldTest do
     :ok = Player.join(world, :alice, %{})
     game = World.game(world)
     assert game == Cauldron2D.TestGames.Race
-    assert %{me: 0.0, others: 0} = game.view(World.snapshot(world), :alice)
+    assert %{me: +0.0, others: 0} = game.view(World.snapshot(world), :alice)
   end
 
   test "a joined player receives its own view every tick" do

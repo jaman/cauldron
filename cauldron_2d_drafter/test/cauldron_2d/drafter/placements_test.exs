@@ -33,7 +33,7 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
 
   setup do
     Context.put_terminal_protocol(:kitty)
-    Context.put_cell_size({8, 16})
+    Context.put_cell_size({10, 20})
 
     on_exit(fn ->
       Process.delete(:drafter_terminal_protocol)
@@ -65,9 +65,12 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
       assert Sprites.image_id(:placement_test, :ship) != Sprites.image_id(:placement_test, :shot)
     end
 
-    test "is stored at a whole multiple of its pixels for the terminal's cells" do
-      bytes = IO.iodata_to_binary(Sprites.transmit(:placement_test, scale: 2))
-      assert bytes =~ "s=16,v=16"
+    test "is stored at the size asked for, resampled pixel by pixel" do
+      bytes = IO.iodata_to_binary(Sprites.transmit(:placement_test, size: {20, 20}))
+      assert bytes =~ "s=20,v=20"
+      raster = Sprites.resampled(Raster.new(2, 2, background: {1, 2, 3, 255}), {5, 3})
+      assert {raster.width, raster.height} == {5, 3}
+      assert Raster.get_pixel(raster, 4, 2) == {1, 2, 3, 255}
       assert bytes =~ "a=t,i=#{Sprites.image_id(:placement_test, :ship)}"
     end
 
@@ -107,30 +110,30 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
       assert paint =~ "a=d,d=z,z=1"
       assert paint =~ "a=p,i=#{ship}"
       assert paint =~ "z=1"
-      refute paint =~ "c=2,r=1"
-      assert paint =~ "X=4,Y=8"
+      assert paint =~ "c=2,r=1"
+      assert paint =~ "X=5,Y=10"
       assert region.place =~ "a=p,i=#{ship}"
     end
 
-    test "the sprites are stored at the drawn size before they are placed, once", %{state: state} do
+    test "the sprites are stored at the size of the cells they occupy, once", %{state: state} do
       ship = Sprites.image_id(:placement_test, :ship)
       {paint, _clear, _region} = Surface.image(state, rect(), :arena)
-      assert IO.iodata_to_binary(paint) =~ "a=t,i=#{ship},f=32,s=16,v=16"
+      assert IO.iodata_to_binary(paint) =~ "a=t,i=#{ship},f=32,s=20,v=20"
       {again, _clear, _region} = Surface.image(state, rect(), :arena)
       refute IO.iodata_to_binary(again) =~ "a=t,i=#{ship}"
     end
 
-    test "the grid is stored at the drawn size and placed pixel for pixel", %{state: state} do
-      {paint, _clear, region} = Surface.image(state, rect(), {:arena, :exact_grid})
-      paint = IO.iodata_to_binary(paint)
-      assert paint =~ "s=176,v=176"
-      assert paint =~ "x=0,y=0,w=160,h=160"
-      refute region.place =~ "c="
-    end
-
-    test "a larger font draws every tile at the next whole multiple, at the same cell", %{
+    test "the grid is stored at its own size and fitted to the pane by the terminal", %{
       state: state
     } do
+      {paint, _clear, region} = Surface.image(state, rect(), {:arena, :fitted_grid})
+      paint = IO.iodata_to_binary(paint)
+      assert paint =~ "s=88,v=88"
+      assert paint =~ "c=20,r=10"
+      assert region.place =~ "c=20,r=10"
+    end
+
+    test "a larger font stores the sprites larger, at the same cell", %{state: state} do
       Context.put_cell_size({16, 32})
       {paint, _clear, _region} = Surface.image(state, rect(), :arena)
       paint = IO.iodata_to_binary(paint)
@@ -139,21 +142,9 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
       assert paint =~ "\e[#{2 + 5 + 1};#{3 + 10 + 1}H"
     end
 
-    test "zoomed in the sprites are still placed, larger", %{state: state} do
+    test "zoomed in the movers are composited, not placed", %{state: state} do
       {paint, _clear, _region} = Surface.image(%{state | zoom: 2}, rect(), :arena)
-      paint = IO.iodata_to_binary(paint)
-      assert paint =~ "a=d,d=z,z=1"
-      assert paint =~ "a=t,i=#{Sprites.image_id(:placement_test, :ship)},f=32,s=32,v=32"
-    end
-
-    test "zoomed out below half a tile the frame is composited at the pane's size", %{
-      state: state
-    } do
-      {paint, _clear, region} = Surface.image(%{state | zoom: 0.125}, rect(), :arena)
-      paint = IO.iodata_to_binary(paint)
-      refute paint =~ "a=d,d=z"
-      assert paint =~ "s=160,v=160"
-      assert region.place == nil
+      refute IO.iodata_to_binary(paint) =~ "a=d,d=z"
     end
 
     test "the cursor is put at the mover's cell inside the pane", %{state: state} do
@@ -161,8 +152,8 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
       paint = IO.iodata_to_binary(paint)
       origin = Cauldron2D.Camera.origin({5, 5}, {10, 10})
       {ox, oy} = origin
-      column = floor((5.25 - ox) * 16 / 8)
-      row = floor((5.5 - oy) * 16 / 16)
+      column = floor((5.25 - ox) * 2)
+      row = floor(5.5 - oy)
       assert paint =~ "\e[#{2 + row + 1};#{3 + column + 1}H"
     end
 
@@ -228,9 +219,9 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
       {paint, _, region} = Surface.image(%{state | focus: {5.3, 5.2}}, rect(), :arena)
       paint = IO.iodata_to_binary(paint)
 
-      assert paint =~ "x=5,y=3,w=160,h=160"
-      refute paint =~ "c=20,r=10"
-      assert region.place =~ "x=5,y=3,w=160,h=160"
+      assert paint =~ "x=2,y=2,w=80,h=80"
+      assert paint =~ "c=20,r=10"
+      assert region.place =~ "x=2,y=2,w=80,h=80"
     end
 
     test "a mover at the focus sits at the same pane cell whatever the fraction", %{state: state} do
