@@ -4,7 +4,6 @@ defmodule Cauldron2D.Camera do
 
       Cauldron2D.Camera.view(
         focus: {x, y},
-        bounds: {width, height},
         size: {columns, rows},
         cell: fn {x, y} -> cell end
       )
@@ -12,9 +11,9 @@ defmodule Cauldron2D.Camera do
   `:cell` is called exactly once per visible tile, with that tile's world coordinate, and
   returns a `t:Cauldron2D.Surface.cell/0`. It is the only thing the engine asks of a game.
 
-  With `:bounds`, the viewport is clamped so it never shows anything outside the world, and a
-  world smaller than the viewport is centred in it. With `:unbounded`, the viewport is centred
-  on `:focus` and world coordinates may be negative.
+  The viewport is always centred on `:focus`: at a world's edge, or zoomed out past it, the
+  coordinates asked for run outside the world and `:cell` answers for them (`:void`, or a
+  wrapped tile) — the focus never moves off the centre to keep the world on screen.
 
   A tile occupies two terminal cells across and one down. `columns_for/1` and `rows_for/1`
   convert a pane's size in cells into a viewport size in tiles; `zoomed/2` scales that
@@ -49,8 +48,6 @@ defmodule Cauldron2D.Camera do
     * `:focus` — the `{x, y}` world point to centre on, required
     * `:size` — `{columns, rows}` in tiles, required, both positive, whole or not
     * `:cell` — `fn {x, y} -> cell end`, required
-    * `:bounds` — `{width, height}` of the world in tiles, or `:unbounded`.
-      Default `:unbounded`
     * `:scroll` — `true` to keep the focus at the exact centre: `:origin` is then the
       exact origin rounded down, `:cells` holds one more column and one more row than
       `:size`, and `:scroll` is the fraction of a tile, `{0.0..1.0, 0.0..1.0}`, the cells
@@ -63,15 +60,14 @@ defmodule Cauldron2D.Camera do
     {columns, rows} = {ceil(width), ceil(height)}
     cell = Keyword.fetch!(opts, :cell)
     focus = Keyword.fetch!(opts, :focus)
-    bounds = Keyword.get(opts, :bounds, :unbounded)
 
     {origin, scroll, extra} =
       if Keyword.get(opts, :scroll, false) do
-        {ex, ey} = exact_origin(focus, {width, height}, bounds)
+        {ex, ey} = exact_origin(focus, {width, height})
         floored = {floor(ex), floor(ey)}
         {floored, {ex - floor(ex), ey - floor(ey)}, 1}
       else
-        {origin(focus, {columns, rows}, bounds), {0.0, 0.0}, 0}
+        {origin(focus, {columns, rows}), {0.0, 0.0}, 0}
       end
 
     cells =
@@ -88,22 +84,9 @@ defmodule Cauldron2D.Camera do
   Where a viewport `size` tiles across sits in world coordinates when `focus` is at its
   exact centre, as floats.
 
-  Clamped to the world like `origin/3`; a world smaller than the viewport is centred.
   """
-  @spec exact_origin(
-          {number(), number()},
-          {number(), number()},
-          {pos_integer(), pos_integer()} | :unbounded
-        ) ::
-          {float(), float()}
-  def exact_origin({fx, fy}, {columns, rows}, :unbounded), do: {fx - columns / 2, fy - rows / 2}
-
-  def exact_origin({fx, fy}, {columns, rows}, {width, height}) do
-    {clamp_exact(fx - columns / 2, width - columns), clamp_exact(fy - rows / 2, height - rows)}
-  end
-
-  defp clamp_exact(_value, limit) when limit <= 0, do: limit / 2
-  defp clamp_exact(value, limit), do: value |> max(0.0) |> min(limit / 1)
+  @spec exact_origin({number(), number()}, {number(), number()}) :: {float(), float()}
+  def exact_origin({fx, fy}, {columns, rows}), do: {fx - columns / 2, fy - rows / 2}
 
   defp offset({ox, oy}, column, row), do: {ox + column, oy + row}
 
@@ -114,30 +97,10 @@ defmodule Cauldron2D.Camera do
   position back to the world resolves against the same tiles that were drawn.
 
   A fractional focus is rounded to the nearest tile first.
-
-  With `{width, height}` bounds the result is clamped to `0..width - columns` horizontally and
-  `0..height - rows` vertically. When the world is narrower or shorter than the viewport, that
-  axis is centred instead, which puts the origin at a negative coordinate.
   """
-  @spec origin(
-          point(),
-          {pos_integer(), pos_integer()},
-          {pos_integer(), pos_integer()} | :unbounded
-        ) ::
-          point()
-  def origin(focus, size, bounds \\ :unbounded)
-
-  def origin({fx, fy}, {columns, rows}, :unbounded) do
-    {round(fx) - div(columns, 2), round(fy) - div(rows, 2)}
-  end
-
-  def origin({fx, fy}, {columns, rows}, {width, height}) do
-    {clamp(round(fx) - div(columns, 2), width - columns),
-     clamp(round(fy) - div(rows, 2), height - rows)}
-  end
-
-  defp clamp(_value, limit) when limit <= 0, do: div(limit, 2)
-  defp clamp(value, limit), do: value |> max(0) |> min(limit)
+  @spec origin(point(), {pos_integer(), pos_integer()}) :: point()
+  def origin({fx, fy}, {columns, rows}),
+    do: {round(fx) - div(columns, 2), round(fy) - div(rows, 2)}
 
   @doc """
   The view as glyphs and colours, for renderers that draw characters.
@@ -188,19 +151,18 @@ defmodule Cauldron2D.Camera do
 
   @doc """
   The focus that keeps the world under `cell` where it is on screen when a pane of native
-  `size` goes from `from` to `to` zoom, centred on `focus` before; `bounds` as `view/1`
-  takes them, so that a clamped view stays clamped.
+  `size` goes from `from` to `to` zoom, centred on `focus` before. Zooming back the same
+  way about the same cell returns to the focus it started from.
   """
   @spec zoom_about(
           {number(), number()},
           {number(), number()},
           {number(), number()},
           number(),
-          number(),
-          {pos_integer(), pos_integer()} | :unbounded
+          number()
         ) :: {float(), float()}
-  def zoom_about(focus, cell, size, from, to, bounds) do
-    {wx, wy} = tile_at(exact_origin(focus, zoomed(size, from), bounds), cell, from)
+  def zoom_about(focus, cell, size, from, to) do
+    {wx, wy} = tile_at(exact_origin(focus, zoomed(size, from)), cell, from)
     {ox, oy} = tile_at({0.0, 0.0}, cell, to)
     {columns, rows} = zoomed(size, to)
     {wx - ox + columns / 2, wy - oy + rows / 2}

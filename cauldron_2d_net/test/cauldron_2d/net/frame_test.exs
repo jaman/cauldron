@@ -42,6 +42,10 @@ defmodule Cauldron2D.Net.FrameTest do
       )
 
     assert over.over == %{title: "Victory", lines: ["a 3"]}
+    refute Map.has_key?(over, :subject)
+
+    assert Frame.frame(%{focus: {0.0, 0.0}, movers: [], subject: "bob"}, [], nil, @sheet).subject ==
+             "bob"
   end
 
   test "hud rows may carry a tag, sent beside the rows only when any row has one" do

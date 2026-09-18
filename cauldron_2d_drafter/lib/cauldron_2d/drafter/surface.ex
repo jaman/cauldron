@@ -7,7 +7,6 @@ defmodule Cauldron2D.Drafter.Surface do
          id: :map,
          atlas: :my_game,
          focus: {x, y},
-         bounds: {width, height},
          cell: &MyGame.cell/1,
          movers: [{:ball, {7.42, 3.15}}],
          flex: 1
@@ -29,8 +28,7 @@ defmodule Cauldron2D.Drafter.Surface do
   ## Options
 
     * `:atlas` — the name an atlas was installed under with `Cauldron2D.Atlas.install/1`
-    * `:focus`, `:bounds`, `:cell` — passed to `Cauldron2D.Camera.view/1`. `:bounds` defaults
-      to `:unbounded`
+    * `:focus`, `:cell` — passed to `Cauldron2D.Camera.view/1`
     * `:movers` — `[{art, {x, y}}]` in world tile coordinates, which may be fractional.
       Default `[]`. In pixel mode a mover is drawn at its exact pixel position; in text mode
       it replaces the glyph of the nearest whole cell
@@ -42,11 +40,12 @@ defmodule Cauldron2D.Drafter.Surface do
     * `:zoom` — how many times its native size a tile is drawn: `2` twice as large,
       `0.5` half, so a pane shows half or twice the tiles. Default `1`. Levels a
       surface draws exactly are `zoom_levels/2`'s; another is drawn at the nearest of
-      them. Zoomed in, a pixel terminal that can fit an image to cells is sent the
-      smaller picture to scale, sixels are scaled first; zoomed out, the frame is
-      composed at the lower resolution. In text mode a tile zoomed in covers that many
-      more cells; zoomed out, every that-manyeth tile is drawn. Movers are placed by
-      the terminal (placements) only at native size
+      them. In the pixel modes a tile is drawn at the whole multiple of its pixels
+      nearest to `zoom` rows of cells, or shrunk by a divisor of its size below half
+      a tile, so the terminal scales nothing (`Cauldron2D.Drafter.Surface.Scale`);
+      where the session does not know the cell size the frame is fitted to the
+      pane's cells by the terminal instead. In text mode a tile zoomed in covers that
+      many more cells; zoomed out, every that-manyeth tile is drawn
     * `:mode` — a `Cauldron2D.Renderer` mode to force instead of detecting one, or
       `:braille`: the frame composed at four dots per tile side, pixels at or above a
       luminance of 64 lit, drawn as braille text in the colour of each cell's lit pixels.
@@ -80,10 +79,11 @@ defmodule Cauldron2D.Drafter.Surface do
 
   On a kitty terminal whose cell size the session knows
   (`Drafter.Session.Context.cell_size/0`, asked for with `use Drafter.App, cell_size: true`),
-  the grid is one stored image sent again only when its tiles change, and each mover is a
-  placement of a sprite stored by `Cauldron2D.Drafter.Sprites.transmit/2` — a few dozen
-  bytes per mover per frame, no pixels. The application transmits the atlas's sprites
-  once. Elsewhere the movers are composited into one image per frame.
+  the grid is one stored image sent again only when its tiles or the atlas change, and
+  each mover is a placement of a sprite stored by `Cauldron2D.Drafter.Sprites.transmit/2`
+  — a few dozen bytes per mover per frame, no pixels. The surface stores the sprites
+  itself, at the size they are drawn, once per size and atlas. Zoomed out below half a
+  tile, and elsewhere, the movers are composited into one image per frame.
 
   The protocol is the one the session's terminal answered the startup probe with, or
   `Cauldron2D.Renderer`'s detection when there was no probe.
@@ -95,6 +95,7 @@ defmodule Cauldron2D.Drafter.Surface do
 
   alias Cauldron2D.{Atlas, Camera, Renderer, Surface}
   alias Cauldron2D.Drafter.Sprites
+  alias Cauldron2D.Drafter.Surface.Scale
   alias Drafter.Draw.{Segment, Strip}
   alias Drafter.Session.Context
   alias Drafter.Terminal.ANSI
@@ -108,7 +109,6 @@ defmodule Cauldron2D.Drafter.Surface do
     :widget_id,
     :on_geometry,
     :rect,
-    bounds: :unbounded,
     movers: [],
     labels: [],
     mode: nil,
@@ -164,7 +164,6 @@ defmodule Cauldron2D.Drafter.Surface do
       :atlas,
       :focus,
       :cell,
-      :bounds,
       :movers,
       :labels,
       :mode,
@@ -192,7 +191,6 @@ defmodule Cauldron2D.Drafter.Surface do
       atlas: Map.get(props, :atlas),
       focus: Map.get(props, :focus),
       cell: Map.get(props, :cell),
-      bounds: Map.get(props, :bounds) || :unbounded,
       movers: Map.get(props, :movers) || [],
       labels: Map.get(props, :labels) || [],
       mode: Map.get(props, :mode),
@@ -210,9 +208,6 @@ defmodule Cauldron2D.Drafter.Surface do
   present in `props` is used even when its value is `nil` or `false`, so a mode that was forced
   can be unforced and `compress` can be turned off. A key absent from `props` leaves that part
   of the state as it was.
-
-  `:bounds` is the one exception: `nil` there means `:unbounded`, since the camera has no other
-  reading for an absent bound.
   """
   @impl true
   @spec update(map() | keyword(), t()) :: t()
@@ -223,7 +218,6 @@ defmodule Cauldron2D.Drafter.Surface do
       state
       | focus: fold(props, :focus, state.focus),
         cell: fold(props, :cell, state.cell),
-        bounds: fold(props, :bounds, state.bounds) || :unbounded,
         movers: fold(props, :movers, state.movers) || [],
         labels: fold(props, :labels, state.labels) || [],
         atlas: fold(props, :atlas, state.atlas),
@@ -335,7 +329,6 @@ defmodule Cauldron2D.Drafter.Surface do
   defp glyph_camera(state, size, zoom) when zoom >= 1 do
     Camera.view(
       focus: state.focus,
-      bounds: state.bounds,
       size: Camera.zoomed(size, zoom),
       cell: state.cell
     )
@@ -343,7 +336,7 @@ defmodule Cauldron2D.Drafter.Surface do
 
   defp glyph_camera(state, {columns, rows}, zoom) do
     step = round(1 / zoom)
-    {ox, oy} = origin = Camera.origin(state.focus, {columns * step, rows * step}, state.bounds)
+    {ox, oy} = origin = Camera.origin(state.focus, {columns * step, rows * step})
 
     cells =
       for row <- 0..(rows - 1),
@@ -482,7 +475,6 @@ defmodule Cauldron2D.Drafter.Surface do
   defp view(%__MODULE__{} = state, rect, scroll?, zoom) do
     Camera.view(
       focus: state.focus,
-      bounds: state.bounds,
       size: Camera.zoomed({Camera.columns_for(rect.width), Camera.rows_for(rect.height)}, zoom),
       cell: state.cell,
       scroll: scroll?
@@ -549,24 +541,27 @@ defmodule Cauldron2D.Drafter.Surface do
   end
 
   defp encode(state, rect, id, protocol) do
-    columns = Camera.columns_for(rect.width)
-    cells = max(1, rect.height)
     zoom = nearest(state.zoom, zoom_levels(state.atlas, protocol))
 
-    if zoom == 1 and placements?(state, protocol) do
-      placed(state, rect, id, view(state, rect, true, 1), columns, cells)
-    else
-      raster = composed(state, rect, zoom, protocol, columns, cells)
-
-      {paint, clear, place} =
-        serialize(raster, protocol, {columns * 2, cells}, id, state.compress)
-
-      {paint, clear, %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: place}}
+    case Context.cell_size() do
+      nil -> fitted(state, rect, id, protocol, zoom)
+      cell -> exact(state, rect, id, protocol, Scale.new(cell, tile(state), zoom))
     end
   end
 
+  defp fitted(state, rect, id, protocol, zoom) do
+    columns = Camera.columns_for(rect.width)
+    cells = max(1, rect.height)
+    raster = composed(state, rect, zoom, protocol, columns, cells)
+
+    {paint, clear, place} =
+      serialize(raster, protocol, {columns * 2, cells}, id, state.compress)
+
+    {paint, clear, %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: place}}
+  end
+
   defp composed(state, rect, zoom, protocol, columns, cells) when zoom >= 1 do
-    tile = Atlas.fetch(state.atlas).tile
+    tile = tile(state)
     camera = view(state, rect, true, zoom)
 
     raster =
@@ -584,7 +579,7 @@ defmodule Cauldron2D.Drafter.Surface do
   end
 
   defp composed(state, rect, zoom, _protocol, columns, cells) do
-    tile = Atlas.fetch(state.atlas).tile
+    tile = tile(state)
     scale = round(1 / zoom)
     camera = view(state, rect, true, zoom)
     {sx, sy} = scroll_pixels(camera, tile)
@@ -597,6 +592,62 @@ defmodule Cauldron2D.Drafter.Surface do
     )
     |> Raster.crop({div(sx, scale), div(sy, scale)}, {columns * tile, cells * tile})
   end
+
+  defp exact(state, rect, id, protocol, %Scale{factor: {:magnify, _}} = scale) do
+    if placements?(state, protocol),
+      do: placed(state, rect, id, scale),
+      else: composited(state, rect, id, protocol, scale)
+  end
+
+  defp exact(state, rect, id, protocol, scale), do: composited(state, rect, id, protocol, scale)
+
+  defp composited(state, rect, id, protocol, scale) do
+    raster = exact_raster(state, rect, scale)
+    fit = if protocol == :iterm2, do: {rect.width, rect.height}
+    {paint, clear, place} = serialize(raster, protocol, fit, id, state.compress)
+    {paint, clear, %{dx: 0, dy: 0, cols: rect.width, rows: rect.height, place: place}}
+  end
+
+  defp exact_raster(state, rect, %Scale{factor: {:magnify, times}} = scale) do
+    camera = exact_view(state, rect, scale)
+    {sx, sy} = Scale.scroll(scale, camera.scroll)
+    {width, height} = Scale.pane(scale, rect)
+
+    state.atlas
+    |> Surface.compose(camera.cells, pixel_movers(state, camera),
+      at: now(),
+      labels: pixel_labels(state, camera)
+    )
+    |> Raster.crop(
+      {div(sx, times), div(sy, times)},
+      {ceil(width / times) + 1, ceil(height / times) + 1}
+    )
+    |> Surface.magnify(times)
+    |> Raster.crop({rem(sx, times), rem(sy, times)}, {width, height})
+  end
+
+  defp exact_raster(state, rect, %Scale{factor: {:reduce, divisor}} = scale) do
+    camera = exact_view(state, rect, scale)
+
+    state.atlas
+    |> Surface.compose(camera.cells, pixel_movers(state, camera),
+      scale: divisor,
+      at: now(),
+      labels: pixel_labels(state, camera)
+    )
+    |> Raster.crop(Scale.scroll(scale, camera.scroll), Scale.pane(scale, rect))
+  end
+
+  defp exact_view(state, rect, scale) do
+    Camera.view(
+      focus: state.focus,
+      size: Scale.tiles(scale, rect),
+      cell: state.cell,
+      scroll: true
+    )
+  end
+
+  defp tile(state), do: Atlas.fetch(state.atlas).tile
 
   defp placements?(%__MODULE__{placements: false}, _protocol), do: false
   defp placements?(%__MODULE__{placements: true}, :kitty), do: Context.cell_size() != nil
@@ -622,34 +673,54 @@ defmodule Cauldron2D.Drafter.Surface do
 
   defp now, do: System.monotonic_time(:millisecond)
 
-  defp placed(state, rect, id, camera, columns, cells) do
+  defp placed(state, rect, id, %Scale{factor: {:magnify, times}} = scale) do
     atlas = Atlas.fetch(state.atlas)
     at = now()
-    grid = Surface.compose(atlas, camera.cells, [], at: at)
+    camera = exact_view(state, rect, scale)
+    grid = atlas |> Surface.compose(camera.cells, [], at: at) |> Surface.magnify(times)
     image = FrenchCurve.image_id(id)
-    {sx, sy} = scroll_pixels(camera, atlas.tile)
+    {sx, sy} = Scale.scroll(scale, camera.scroll)
+    {width, height} = Scale.pane(scale, rect)
 
-    place =
-      Kitty.place(image,
-        placement: 1,
-        fit: {columns * 2, cells},
-        source: {sx, sy, columns * atlas.tile, cells * atlas.tile}
-      )
-
+    place = Kitty.place(image, placement: 1, source: {sx, sy, width, height})
     clear = Kitty.delete(id: image, placement: 1)
     paint = [clear, Kitty.transmit(grid, image, compress: state.compress), place]
 
     background =
-      background_bytes(atlas, id, {camera.cells, animation_frames(atlas, at)}, paint, place)
+      background_bytes(
+        atlas,
+        id,
+        {camera.cells, animation_frames(atlas, at), times},
+        paint,
+        place
+      )
 
     layer = [
       Kitty.delete(z: @sprite_layer)
-      | sprite_placements(state, atlas, camera, rect, columns, cells, at) ++
-          label_placements(state, atlas, camera, rect, columns, cells)
+      | sprite_placements(state, atlas, camera, rect, scale, at) ++
+          label_placements(state, atlas, camera, rect, scale)
     ]
 
-    {[background, layer], [clear, Kitty.delete(z: @sprite_layer)],
-     %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: IO.iodata_to_binary([place, layer])}}
+    {[sprites_stored(state, atlas, times), background, layer],
+     [clear, Kitty.delete(z: @sprite_layer)],
+     %{
+       dx: 0,
+       dy: 0,
+       cols: rect.width,
+       rows: rect.height,
+       place: IO.iodata_to_binary([place, layer])
+     }}
+  end
+
+  defp sprites_stored(state, atlas, times) do
+    key = {__MODULE__, :sprites_sent}
+
+    if Process.get(key) == {atlas, times} do
+      []
+    else
+      Process.put(key, {atlas, times})
+      Sprites.transmit(atlas, scale: times, compress: state.compress)
+    end
   end
 
   defp background_bytes(atlas, id, cells, paint, place) do
@@ -658,11 +729,11 @@ defmodule Cauldron2D.Drafter.Surface do
     digest = :erlang.phash2(cells)
 
     case :ets.lookup(table, key) do
-      [{^key, ^digest}] when place != nil ->
+      [{^key, ^digest, ^atlas}] when place != nil ->
         place
 
       _changed ->
-        :ets.insert(table, {key, digest})
+        :ets.insert(table, {key, digest, atlas})
         paint
     end
   end
@@ -673,30 +744,24 @@ defmodule Cauldron2D.Drafter.Surface do
         do: {art, Atlas.frame_index(atlas, art, at)}
   end
 
-  defp sprite_placements(%__MODULE__{movers: []}, _atlas, _camera, _rect, _columns, _cells, _at),
-    do: []
+  defp sprite_placements(%__MODULE__{movers: []}, _atlas, _camera, _rect, _scale, _at), do: []
 
-  defp sprite_placements(%__MODULE__{} = state, atlas, camera, rect, columns, cells, at) do
-    {cell_width, cell_height} = Context.cell_size()
+  defp sprite_placements(%__MODULE__{} = state, atlas, camera, rect, scale, at) do
     {ox, oy} = exact_origin(camera)
 
     state.movers
     |> Enum.with_index(1)
     |> Enum.flat_map(fn {{art, {x, y}}, index} ->
-      across = (x - ox) * 2
-      down = y - oy
-      column = floor(across)
-      row = floor(down)
+      {column, row, x_offset, y_offset} = Scale.place(scale, {x - ox, y - oy})
 
-      if column >= 0 and column < columns * 2 and row >= 0 and row < cells do
+      if inside?(rect, column, row) do
         [
           ANSI.cursor_to(rect.x + column + 1, rect.y + row + 1),
           Kitty.place(Sprites.image_id(atlas, art, at),
-            fit: {2, 1},
             z: @sprite_layer,
             placement: index,
-            x_offset: round((across - column) * cell_width),
-            y_offset: round((down - row) * cell_height)
+            x_offset: x_offset,
+            y_offset: y_offset
           )
         ]
       else
@@ -705,33 +770,33 @@ defmodule Cauldron2D.Drafter.Surface do
     end)
   end
 
+  defp inside?(rect, column, row),
+    do: column >= 0 and column < rect.width and row >= 0 and row < rect.height
+
   @label_placement_base 10_000
 
-  defp label_placements(%__MODULE__{labels: []}, _atlas, _camera, _rect, _columns, _cells), do: []
+  defp label_placements(%__MODULE__{labels: []}, _atlas, _camera, _rect, _scale), do: []
 
-  defp label_placements(%__MODULE__{} = state, atlas, camera, rect, columns, cells) do
-    {cell_width, cell_height} = Context.cell_size()
+  defp label_placements(%__MODULE__{} = state, atlas, camera, rect, scale) do
+    {:magnify, times} = scale.factor
     {ox, oy} = exact_origin(camera)
 
     state.labels
     |> Enum.with_index(@label_placement_base)
     |> Enum.flat_map(fn {label, index} ->
       {text, {x, y}, colour} = label_parts(label)
-      scale = label_scale(label)
-      across = (x - ox) * 2
-      down = y - oy
-      column = floor(across)
-      row = floor(down)
+      font_scale = label_scale(label) * times
+      {column, row, x_offset, y_offset} = Scale.place(scale, {x - ox, y - oy})
 
-      if column >= 0 and column < columns * 2 and row >= 0 and row < cells do
+      if inside?(rect, column, row) do
         [
-          label_stored(atlas, text, colour, scale, state.compress),
+          label_stored(atlas, text, colour, font_scale, state.compress),
           ANSI.cursor_to(rect.x + column + 1, rect.y + row + 1),
-          Kitty.place(Sprites.label_id(atlas, text, colour, scale),
+          Kitty.place(Sprites.label_id(atlas, text, colour, font_scale),
             z: @sprite_layer,
             placement: index,
-            x_offset: round((across - column) * cell_width),
-            y_offset: round((down - row) * cell_height)
+            x_offset: x_offset,
+            y_offset: y_offset
           )
         ]
       else

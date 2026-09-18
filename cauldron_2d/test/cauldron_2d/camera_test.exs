@@ -23,15 +23,10 @@ defmodule Cauldron2D.CameraTest do
     assert camera.cells |> hd() |> hd() == {:tile, [], {98, 99}}
   end
 
-  test "clamps to the world rather than panning past its edge" do
-    assert view(focus: {0, 0}, bounds: {20, 20}).origin == {0, 0}
-    assert view(focus: {19, 19}, bounds: {20, 20}).origin == {16, 17}
-  end
-
-  test "centres a world smaller than the viewport instead of clamping it to a corner" do
-    camera = view(focus: {1, 1}, size: {10, 6}, bounds: {4, 2})
-
-    assert camera.origin == {-3, -2}
+  test "stays centred on the focus at a world's edge and beyond it, the world's cells asked for as any other" do
+    assert view(focus: {0, 0}).origin == {-2, -1}
+    assert view(focus: {19, 19}).origin == {17, 18}
+    assert view(focus: {1, 1}, size: {10, 6}).origin == {-4, -2}
   end
 
   test "asks the world for every visible coordinate, once" do
@@ -54,10 +49,10 @@ defmodule Cauldron2D.CameraTest do
   end
 
   describe "mapping a screen position back to the world" do
-    test "origin/3 agrees with what view/1 drew" do
-      camera = view(focus: {19, 19}, bounds: {20, 20})
+    test "origin/2 agrees with what view/1 drew" do
+      camera = view(focus: {19, 19})
 
-      assert Camera.origin({19, 19}, {4, 3}, {20, 20}) == camera.origin
+      assert Camera.origin({19, 19}, {4, 3}) == camera.origin
     end
 
     test "a cell resolves to the tile it is in, at that cell's centre" do
@@ -91,9 +86,9 @@ defmodule Cauldron2D.CameraTest do
 
   describe "scrolling by fractions of a tile" do
     test "the exact origin puts the focus at the centre of the viewport" do
-      assert Camera.exact_origin({100.0, 100.0}, {4, 3}, :unbounded) == {98.0, 98.5}
-      assert Camera.exact_origin({0.25, 0.0}, {4, 3}, {20, 20}) == {0.0, 0.0}
-      assert Camera.exact_origin({19.9, 19.0}, {4, 3}, {20, 20}) == {16.0, 17.0}
+      assert Camera.exact_origin({100.0, 100.0}, {4, 3}) == {98.0, 98.5}
+      assert Camera.exact_origin({0.25, 0.0}, {4, 3}) == {-1.75, -1.5}
+      assert Camera.exact_origin({19.9, 19.0}, {4, 3}) == {17.9, 17.5}
     end
 
     test "a scrolled view reads one more column and row and reports the fraction to shift by" do
@@ -143,22 +138,24 @@ defmodule Cauldron2D.CameraTest do
       cell = {10, 5}
 
       before =
-        Camera.tile_at(Camera.exact_origin(focus, Camera.zoomed(size, 1), :unbounded), cell, 1)
+        Camera.tile_at(Camera.exact_origin(focus, Camera.zoomed(size, 1)), cell, 1)
 
-      focus = Camera.zoom_about(focus, cell, size, 1, 2, :unbounded)
+      focus = Camera.zoom_about(focus, cell, size, 1, 2)
 
       after_zoom =
-        Camera.tile_at(Camera.exact_origin(focus, Camera.zoomed(size, 2), :unbounded), cell, 2)
+        Camera.tile_at(Camera.exact_origin(focus, Camera.zoomed(size, 2)), cell, 2)
 
       assert_in_delta elem(before, 0), elem(after_zoom, 0), 1.0e-9
       assert_in_delta elem(before, 1), elem(after_zoom, 1), 1.0e-9
     end
 
-    test "zooming about a point in a bounded world lands on a focus the clamp allows" do
-      focus = Camera.zoom_about({2.0, 2.0}, {0, 0}, {40, 30}, 1, 0.5, {60, 60})
+    test "zooming out past the world and back in returns to the same focus" do
+      focus = {2.0, 2.0}
+      out = Camera.zoom_about(focus, {0, 0}, {40, 30}, 1, 0.125)
+      back = Camera.zoom_about(out, {0, 0}, {40, 30}, 0.125, 1)
 
-      assert Camera.exact_origin(focus, Camera.zoomed({40, 30}, 0.5), {60, 60}) == {-10.0, -0.0} or
-               Camera.exact_origin(focus, Camera.zoomed({40, 30}, 0.5), {60, 60}) == {-10.0, 0.0}
+      assert_in_delta elem(back, 0), 2.0, 1.0e-9
+      assert_in_delta elem(back, 1), 2.0, 1.0e-9
     end
   end
 end

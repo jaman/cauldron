@@ -42,12 +42,27 @@ defmodule Cauldron2D.Net.WireTest do
   end
 
   test "frames, maps and the sheet index are read into the shapes the painter takes" do
-    assert %{focus: {1.0, 2.5}, movers: [{3, 4.0, 5.0}], hud: [[{"coins", "#ffff00"}]], over: nil} =
+    assert %{
+             focus: {1.0, 2.5},
+             movers: [{3, 4.0, 5.0}],
+             hud: [[{"coins", "#ffff00"}]],
+             over: nil,
+             subject: nil
+           } =
              Wire.frame(%{
                "focus" => [1.0, 2.5],
                "movers" => [[3, 4.0, 5.0]],
                "hud" => [[["coins", "#ffff00"]]],
                "over" => nil
+             })
+
+    assert %{subject: "bob"} =
+             Wire.frame(%{
+               "focus" => [0, 0],
+               "movers" => [],
+               "hud" => [],
+               "over" => nil,
+               "subject" => "bob"
              })
 
     assert %{width: 2, height: 1, tile: 16, wrap: true, rows: [[0, 1]]} =

@@ -11,7 +11,7 @@ defmodule Cauldron2D.Wx.PainterTest do
     rows: [[1, 0, 0, 1], [0, 2, 0, 0], [1, 0, 0, 1]]
   }
 
-  test "the origin centres the focus, clamps to the map when it does not wrap, and tiles and movers land in pixels" do
+  test "the origin centres the focus, at the map's edge and beyond it, and tiles and movers land in pixels" do
     frame = %{focus: {2.0, 1.5}, movers: [{3, 1.0, 1.0}], hud: [], over: nil}
     blits = Painter.blits(frame, @map, {64, 48}, 16)
     assert Painter.origin(frame, @map, {64, 48}, 16) == {0.0, 0.0}
@@ -19,8 +19,19 @@ defmodule Cauldron2D.Wx.PainterTest do
     assert List.last(blits) == {3, 16, 16}
 
     far = %{frame | focus: {10.0, 10.0}}
-    assert Painter.origin(far, @map, {32, 32}, 16) == {2.0, 1.0}
-    assert {1, 16, 16} in Painter.blits(far, @map, {32, 32}, 16)
+    assert Painter.origin(far, @map, {32, 32}, 16) == {9.0, 9.0}
+    assert Painter.blits(far, @map, {32, 32}, 16) == []
+    edge = %{frame | focus: {0.0, 0.0}}
+    assert Painter.origin(edge, @map, {64, 48}, 16) == {-2.0, -1.5}
+    assert {1, 32, 24} in Painter.blits(edge, @map, {64, 48}, 16)
+  end
+
+  test "zooming out past a map that does not wrap and back in returns to the focus it left" do
+    frame = %{focus: {1.0, 1.0}, movers: [], hud: [], over: nil}
+    out = Painter.zoom_about(frame, @map, {64, 48}, 16, 2, {10, 5})
+    back = Painter.zoom_about(%{frame | focus: out}, @map, {64, 48}, 2, 16, {10, 5})
+    assert_in_delta elem(back, 0), 1.0, 1.0e-9
+    assert_in_delta elem(back, 1), 1.0, 1.0e-9
   end
 
   test "a wrapping map repeats and a mover near an edge is drawn on both sides" do

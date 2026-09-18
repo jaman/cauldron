@@ -25,7 +25,10 @@ defmodule Cauldron2D.Client.Game do
   `scene/1`, `hud/1`, `listener/1`, `outcome/1` and `cue/2` read it; none of them is
   asked before an arena's first frame has arrived. The hud is data in
   the shapes `Cauldron2D.Client.Hud` describes. `scene/1`'s `:labels` are text drawn over
-  the world as `Cauldron2D.Surface.compose/4` takes them, in tiles; default none.
+  the world as `Cauldron2D.Surface.compose/4` takes them, in tiles; default none. Its
+  `:subject` names what the focus follows — the player's own ship, the ship they watch,
+  a free camera — as a string, atom or number; a client that has panned the view drops
+  the pan when the subject changes, so a new ship comes up centred.
 
   `arenas/1` is given the client's props and read whenever a lobby draws, so it may
   answer differently each time. An arena is `%{id, name, world, players, humans, map,
@@ -103,7 +106,8 @@ defmodule Cauldron2D.Client.Game do
           required(:bounds) => {pos_integer(), pos_integer()} | :unbounded,
           required(:cell) => ({integer(), integer()} -> term()),
           required(:movers) => [{term(), {number(), number()}}],
-          optional(:labels) => list()
+          optional(:labels) => list(),
+          optional(:subject) => String.t() | atom() | number()
         }
   @type page :: %{key: atom(), hint: String.t(), title: String.t(), render: (-> [Hud.row()])}
 

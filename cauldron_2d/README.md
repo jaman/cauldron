@@ -27,7 +27,7 @@ The pieces, and where they live:
 |---|---|
 | `cauldron_2d` | this package: the engine — tiles, sprites, camera, physics, input, worlds, players, replay, audio, the client contract |
 | [`cauldron_2d_drafter`](https://hexdocs.pm/cauldron_2d_drafter) | the terminal: a surface widget and a ready-made client |
-| [`cauldron_2d_net`](https://hexdocs.pm/cauldron_2d_net) | the browser: a Phoenix channel, the pages, `cauldron.js`, and links to served worlds |
+| [`cauldron_2d_net`](https://hexdocs.pm/cauldron_2d_net) | the network: the served side (a Phoenix channel, socket, pages and API) with `cauldron.js` for the browser, and the links an Elixir client uses to join a world over the socket or on a connected node — the wire, the remote calls, the load test |
 | [`cauldron_2d_wx`](https://hexdocs.pm/cauldron_2d_wx) | the desktop: a wx window drawing the same wire |
 | [`linocut`](https://hexdocs.pm/linocut) | pictures as text or code, and pictures derived from others |
 | [`cauldron_2d_easel`](https://hexdocs.pm/cauldron_2d_easel), [`_drafter`](https://hexdocs.pm/cauldron_2d_easel_drafter), [`_web`](https://hexdocs.pm/cauldron_2d_easel_web), [`_kino`](https://hexdocs.pm/cauldron_2d_easel_kino) | the atlas editors: in the terminal, in a browser, in Livebook |

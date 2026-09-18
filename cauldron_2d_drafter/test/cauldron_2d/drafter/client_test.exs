@@ -173,6 +173,20 @@ defmodule Cauldron2D.Drafter.ClientTest do
     {:ok, ctx: ctx, world: world, accounts: accounts, config_dir: Path.join(dir, "config")}
   end
 
+  test "a pan is kept while the scene follows the same subject and dropped when it follows another" do
+    panned = %{pan: {3.0, -2.0}, subject: "alice"}
+    assert Client.follow(panned, %{focus: {0.0, 0.0}, subject: "alice"}) == panned
+    assert Client.follow(panned, %{focus: {0.0, 0.0}}) == panned
+
+    assert Client.follow(panned, %{focus: {0.0, 0.0}, subject: "bob"}) == %{
+             pan: {0.0, 0.0},
+             subject: "bob"
+           }
+
+    assert Client.follow(%{pan: {0.0, 0.0}, subject: nil}, %{focus: {0.0, 0.0}, subject: "bob"}) ==
+             %{pan: {0.0, 0.0}, subject: "bob"}
+  end
+
   test "the title shows the game's name and any key opens the lobby", %{ctx: ctx} do
     assert DT.screen_text(ctx) =~ "little dots"
     DT.send_key(ctx, :enter)

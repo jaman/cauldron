@@ -32,9 +32,12 @@ defmodule Cauldron2D.Wx.View do
       view, whichever is larger) to 64; `zoom/2` sets a tile size from outside.
       Default `false`. A whole map that fits in 4096 pixels a side is drawn from one
       bitmap of it at the current size, so zooming out to see all of it costs nothing
-      a frame. Watching — joined with `spectate` among the link's props or params —
+      a frame; the sheet at each size is kept for the view's life, its bitmaps in one
+      table the painter reads, so a zoom never takes a sheet from under a paint in
+      progress. Watching — joined with `spectate` among the link's props or params —
       the view can also be panned: the arrows and a drag with the left button move
-      it, the wheel zooms about the pointer, and `0` recentres it as well
+      it, the wheel zooms about the pointer, `0` recentres it as well, and a frame
+      whose subject is not the one the pan was taken on drops the pan
     * `:on_stats` — called once a second with `%{frames: n, draws: n}`, the frames
       received and the times the canvas was painted in that second
     * `:show_stats` — draw those numbers in the canvas's top left corner, default
@@ -174,6 +177,7 @@ defmodule Cauldron2D.Wx.View do
       zoom?: Keyword.get(opts, :zoom, false),
       pixels: nil,
       pan: {0.0, 0.0},
+      subject: nil,
       watching?: false,
       drag: nil,
       png: nil,
@@ -185,6 +189,8 @@ defmodule Cauldron2D.Wx.View do
         Input.new(Keyword.get(opts, :keymap, %{}), steering: Keyword.get(opts, :steering, [])),
       link: nil,
       sheet: nil,
+      sheets: %{},
+      bitmaps: :ets.new(Sheet, [:set, :public]),
       map: nil,
       frame: nil,
       font: font,
@@ -243,6 +249,7 @@ defmodule Cauldron2D.Wx.View do
              frame: nil,
              over: nil,
              pan: {0.0, 0.0},
+             subject: nil,
              drag: nil,
              watching?: watching?(opts)
          }}
@@ -318,7 +325,7 @@ defmodule Cauldron2D.Wx.View do
   @impl :wx_object
   def handle_info({:cauldron_link, :sheet, index, png}, state) do
     pixels = state.pixels || index.tile * state.scale
-    {:noreply, %{state | index: index, png: png} |> resheet(pixels) |> staged()}
+    {:noreply, %{state | index: index, png: png, sheets: %{}} |> resheet(pixels) |> staged()}
   end
 
   def handle_info({:cauldron_link, :map, map}, state),
@@ -326,7 +333,7 @@ defmodule Cauldron2D.Wx.View do
 
   def handle_info({:cauldron_link, :frame, frame}, state) do
     :ets.update_counter(state.scene, :counts, {2, 1})
-    state = staged(%{state | frame: frame})
+    state = staged(%{state | frame: frame} |> followed())
     :wxWindow.refresh(state.canvas, eraseBackground: false)
     if state.hud, do: :wxWindow.refresh(state.hud, eraseBackground: false)
 
@@ -389,6 +396,13 @@ defmodule Cauldron2D.Wx.View do
   defp shown(%{frame: %{focus: {fx, fy}} = frame, pan: {px, py}}),
     do: %{frame | focus: {fx + px, fy + py}}
 
+  defp followed(%{frame: %{subject: subject}, subject: subject} = state), do: state
+
+  defp followed(%{frame: %{subject: subject}} = state),
+    do: %{state | pan: {0.0, 0.0}, subject: subject}
+
+  defp followed(state), do: state
+
   defp pan_by(%{pan: {px, py}} = state, {dx, dy}) do
     state = %{state | pan: {px + dx, py + dy}} |> staged()
     :wxWindow.refresh(state.canvas, eraseBackground: false)
@@ -450,9 +464,13 @@ defmodule Cauldron2D.Wx.View do
   end
 
   defp resheet(state, pixels) do
-    if state.sheet, do: Sheet.unload(state.sheet)
-    sheet = Sheet.load(state.index, state.png, pixels / state.index.tile)
-    %{state | sheet: sheet, pixels: pixels} |> relayer()
+    sheet =
+      Map.get_lazy(state.sheets, pixels, fn ->
+        Sheet.load(state.index, state.png, pixels / state.index.tile, bitmaps: state.bitmaps)
+      end)
+
+    %{state | sheet: sheet, sheets: Map.put(state.sheets, pixels, sheet), pixels: pixels}
+    |> relayer()
   end
 
   defp relayer(%{sheet: %Sheet{} = sheet, map: map} = state) when map != nil do

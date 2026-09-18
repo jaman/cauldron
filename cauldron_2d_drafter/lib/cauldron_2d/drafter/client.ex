@@ -92,7 +92,7 @@ defmodule Cauldron2D.Drafter.Client do
   alias Cauldron2D.{Atlas, Audio, Camera, Input, Player, Trace, World}
   alias Cauldron2D.Audio.Music
   alias Cauldron2D.Client.Game
-  alias Cauldron2D.Drafter.{Chat, Sprites, Surface}
+  alias Cauldron2D.Drafter.{Chat, Surface}
   alias Cauldron2D.Drafter.Client.{Screens, Settings}
   alias Cauldron2D.World.Presence
   alias Drafter.Session.Context
@@ -160,6 +160,7 @@ defmodule Cauldron2D.Drafter.Client do
       geometry: nil,
       zoom: 1,
       pan: {0.0, 0.0},
+      subject: nil,
       watching?: false,
       drag: nil,
       wheel_at: nil,
@@ -168,7 +169,6 @@ defmodule Cauldron2D.Drafter.Client do
       talk_text: "",
       talking?: false,
       talk: [],
-      sprites_sent: nil,
       selected: :preset,
       summary: nil,
       summary_arena: nil,
@@ -322,7 +322,7 @@ defmodule Cauldron2D.Drafter.Client do
           input: Input.expire(state.input, now()),
           fps: counted(state.fps, now())
       }
-      |> send_sprites()
+      |> followed()
 
     Audio.listener(state.audio, state.game.listener(frame.view))
     Audio.play(state.audio, frame.events)
@@ -344,9 +344,7 @@ defmodule Cauldron2D.Drafter.Client do
     %{state | talk: Enum.take(state.talk ++ [message], -20)}
   end
 
-  def on_message({:cauldron_atlas, _name, :changed}, state) do
-    send_sprites(%{state | sprites_sent: nil})
-  end
+  def on_message({:cauldron_atlas, _name, :changed}, state), do: state
 
   def on_message({:cauldron_players, _world, _change, _id}, state) do
     %{state | lobby: %{state.lobby | changes: state.lobby.changes + 1}}
@@ -568,13 +566,12 @@ defmodule Cauldron2D.Drafter.Client do
             talking?: false,
             zoom: 1,
             pan: {0.0, 0.0},
+            subject: nil,
             watching?: Map.get(extra, :spectate, false) == true,
             drag: nil
         }
 
-        %{state | input: new_input(state)}
-        |> send_sprites()
-        |> cue_music()
+        cue_music(%{state | input: new_input(state)})
 
       {:error, reason} ->
         if local, do: GenServer.stop(local)
@@ -620,6 +617,7 @@ defmodule Cauldron2D.Drafter.Client do
         talking?: false,
         zoom: 1,
         pan: {0.0, 0.0},
+        subject: nil,
         watching?: false,
         drag: nil
     }
@@ -636,25 +634,6 @@ defmodule Cauldron2D.Drafter.Client do
   @spec paused?(map()) :: boolean()
   def paused?(%{local_world: nil}), do: false
   def paused?(%{local_world: world}), do: Process.alive?(world) and World.paused?(world)
-
-  defp send_sprites(state) do
-    atlas = Atlas.fetch(state.game.atlas())
-
-    if (atlas != state.sprites_sent and Context.cell_size()) && kitty?() do
-      Drafter.Compositor.write_raw(Sprites.transmit(atlas))
-      %{state | sprites_sent: atlas}
-    else
-      state
-    end
-  end
-
-  defp kitty? do
-    case Context.terminal_protocol() do
-      {:ok, :kitty} -> true
-      :unprobed -> FrenchCurve.Capability.placements?()
-      _other -> false
-    end
-  end
 
   defp settings_key(event, %{rebinding: action} = state) when action != nil do
     case rebind_key(event) do
@@ -807,7 +786,23 @@ defmodule Cauldron2D.Drafter.Client do
   defp pane_cell(%{geometry: nil}, _mouse), do: nil
   defp pane_cell(%{geometry: %{rect: rect}}, %{x: x, y: y}), do: {x - rect.x, y - rect.y}
 
-  defp pan_by(%{pan: {px, py}} = state, {dx, dy}), do: %{state | pan: {px + dx, py + dy}}
+  defp pan_by(%{pan: {px, py}} = state, {dx, dy}),
+    do: %{followed(state) | pan: {px + dx, py + dy}}
+
+  defp followed(%{pan: {px, py}, view: view, game: game} = state)
+       when view != nil and px == 0 and py == 0,
+       do: %{state | subject: Map.get(game.scene(view), :subject)}
+
+  defp followed(%{view: view, game: game} = state) when view != nil,
+    do: follow(state, game.scene(view))
+
+  defp followed(state), do: state
+
+  @doc "The state with its pan dropped when the scene's `:subject` is not the one the pan was taken on; a scene with no subject keeps the pan."
+  @spec follow(map(), Game.scene()) :: map()
+  def follow(%{subject: subject} = state, %{subject: subject}), do: state
+  def follow(state, %{subject: subject}), do: %{state | pan: {0.0, 0.0}, subject: subject}
+  def follow(state, _scene), do: state
 
   @doc "The zoom levels this client steps through: `Cauldron2D.Drafter.Surface.zoom_levels/2` for the game's atlas and the display in use."
   @spec zoom_levels(map()) :: [number()]
@@ -831,8 +826,8 @@ defmodule Cauldron2D.Drafter.Client do
     scene = game.scene(view)
     {fx, fy} = scene.focus
     {px, py} = state.pan
-    {nx, ny} = Camera.zoom_about({fx + px, fy + py}, cell, size, from, to, scene.bounds)
-    %{state | zoom: to, pan: {nx - fx, ny - fy}}
+    {nx, ny} = Camera.zoom_about({fx + px, fy + py}, cell, size, from, to)
+    %{state | zoom: to, pan: {nx - fx, ny - fy}, subject: Map.get(scene, :subject)}
   end
 
   defp zoom_to(state, to, _anchor), do: %{state | zoom: to}
@@ -943,7 +938,7 @@ defmodule Cauldron2D.Drafter.Client do
     rect = geometry.rect
 
     origin =
-      Camera.exact_origin(focus(state, scene), Camera.zoomed(geometry.size, zoom), scene.bounds)
+      Camera.exact_origin(focus(state, scene), Camera.zoomed(geometry.size, zoom))
 
     Camera.tile_at(origin, {x - rect.x, y - rect.y}, zoom)
   end

@@ -47,12 +47,13 @@ defmodule Cauldron2D.Net.Frame do
 
   @type row :: Hud.row()
 
-  @doc "One tick: the focus, the movers, the labels, the hud rows (with their tags when any row has one) and the outcome when the round is over for this player."
+  @doc "One tick: the focus, the movers, the labels, the hud rows (with their tags when any row has one), the subject when the scene names one, and the outcome when the round is over for this player."
   @spec frame(
           %{
             required(:focus) => {number(), number()},
             required(:movers) => [{atom(), {number(), number()}}],
-            optional(:labels) => list()
+            optional(:labels) => list(),
+            optional(:subject) => term()
           },
           [row()],
           map() | nil,
@@ -75,6 +76,9 @@ defmodule Cauldron2D.Net.Frame do
         for(row <- hud, do: for(run <- Hud.runs(row), do: [elem(run, 0), hex(Hud.colour(run))])),
       over: outcome && Map.take(outcome, [:title, :lines])
     }
+
+    frame =
+      if Map.has_key?(scene, :subject), do: Map.put(frame, :subject, scene.subject), else: frame
 
     if Enum.any?(tags),
       do: Map.put(frame, :tags, Enum.map(tags, &(&1 && Atom.to_string(&1)))),

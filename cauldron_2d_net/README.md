@@ -48,7 +48,7 @@ PCM rides the same socket as the frames.
 |---|---|
 | `sheet` | `{url, tile, columns, void, arts: {name: index}, frames: [[x, y]…], anim: {"index": {indices: [index…], fps}}}` |
 | `map` | `{width, height, tile, wrap, rows: [[index…]…]}` once, 0 for nothing |
-| `frame` | `{focus: [x, y], movers: [[index, x, y]…], labels: [[text, x, y, "#rrggbb", scale]…], hud: [[[text, "#rrggbb" or null]…]…], tags: [name or null…] when any row has one, over: {title, lines} or null}` |
+| `frame` | `{focus: [x, y], movers: [[index, x, y]…], labels: [[text, x, y, "#rrggbb", scale]…], hud: [[[text, "#rrggbb" or null]…]…], tags: [name or null…] when any row has one, subject: what the focus follows when the scene names it, over: {title, lines} or null}` |
 | `audio` | `{rate, channels}` the PCM comes in, or `{off: true}` for none; a join param `audio` of `{rate, channels}` asks for a format, `false` for none |
 | `pcm` (binary) | signed 16-bit little-endian PCM in the `audio` format |
 | `input` (browser → server) | `{held: [action…], aim: [x, y] or null}` |
@@ -67,7 +67,10 @@ pinch, `0` back to `scale`; `game.zoom(tile)` and `game.zoomBy(factor)` from the
 Watching — `spectate` among the join `params`, or `watching: true` — the view can be
 moved as well: the arrows, a drag with the mouse or one finger pan it, the wheel and a
 pinch zoom about the pointer or the fingers, `0` recentres; `game.panBy(dx, dy)` in
-tiles and `game.recentre()` from the page. Flying, the view stays on the ship, and the
+tiles and `game.recentre()` from the page, and a frame whose `subject` differs from the
+last drops the pan, so a newly watched ship comes up centred. The focus is always the centre of the view: at
+a map's edge, or zoomed out past the whole map, the void shows around it rather than the
+view sliding off the ship, so zooming out and back in lands where it started. Flying, the view stays on the ship, and the
 aim is where the mouse is on the screen: it is worked out again from the mouse's last
 place after every draw, so a ship flying under a still mouse keeps aiming at the point
 ahead of it rather than at the spot the mouse last passed over. `game.levels(sfx, music)`

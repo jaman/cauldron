@@ -41,6 +41,12 @@ defmodule Cauldron2D.Net.Link.WorldTest do
     assert scene.cell.({3, 0}) == {:wall, [], nil}
     assert scene.movers == [{:dot, {1.0, 1.0}}]
     assert scene.labels == [{"me", {1.0, 1.5}, {255, 255, 0}, scale: 1}]
+    refute Map.has_key?(scene, :subject)
+
+    assert World.scene(
+             %{wire: Map.put(@frame, :subject, "bob"), map: @map, sheet: @sheet, arena: "pit"},
+             :link_world_test
+           ).subject == "bob"
   end
 
   test "the hud and the outcome read from the wire, and a closed connection says so" do

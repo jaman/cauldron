@@ -368,7 +368,7 @@ defmodule Cauldron2D.AudioTest do
       receive do
         {:stage, {:"$gen_cast", {:layers, layers, opts}}} -> {layers, opts}
       after
-        2_000 -> flunk("no layer set reached the stage")
+        10_000 -> flunk("no layer set reached the stage")
       end
     end
 

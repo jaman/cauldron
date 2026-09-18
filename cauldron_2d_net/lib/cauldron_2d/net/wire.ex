@@ -58,7 +58,8 @@ defmodule Cauldron2D.Net.Wire do
           movers: [{non_neg_integer(), float(), float()}],
           labels: [{String.t(), float(), float(), String.t() | nil, pos_integer()}],
           hud: [[{String.t(), String.t() | nil}]],
-          over: map() | nil
+          over: map() | nil,
+          subject: term()
         }
   def frame(payload) do
     [fx, fy] = fetch(payload, :focus)
@@ -72,7 +73,8 @@ defmodule Cauldron2D.Net.Wire do
           do: {text, x / 1, y / 1, colour, scale}
         ),
       hud: for(row <- fetch(payload, :hud), do: for([text, colour] <- row, do: {text, colour})),
-      over: fetch(payload, :over)
+      over: fetch(payload, :over),
+      subject: fetch(payload, :subject)
     }
   end
 

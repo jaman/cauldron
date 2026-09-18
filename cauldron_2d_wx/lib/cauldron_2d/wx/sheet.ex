@@ -8,12 +8,16 @@ defmodule Cauldron2D.Wx.Sheet do
 
   `index` is what `Cauldron2D.Net.Wire.sheet/1` gives; `png` the bytes; the scale the
   pixels a sheet pixel becomes. Needs a running wx. The cut bitmaps are kept in a
-  public ETS table, so any process with the wx environment can draw from the sheet.
+  public ETS table, so any process with the wx environment can draw from the sheet:
+  the sheet's own, or one given as `:bitmaps` and shared by many sheets, which then
+  lives as long as its owner rather than any one sheet — a painter in another process
+  can hold a sheet the loader has moved on from and still draw it.
   """
 
   alias Cauldron2D.Wx.Const
 
   @type t :: %__MODULE__{
+          id: integer(),
           tile: pos_integer(),
           scale: number(),
           frames: [{integer(), integer()}],
@@ -23,11 +27,20 @@ defmodule Cauldron2D.Wx.Sheet do
           void: {byte(), byte(), byte()}
         }
 
-  defstruct [:tile, :scale, :frames, :image, :bitmaps, anim: %{}, void: {0, 0, 0}]
+  defstruct [:id, :tile, :scale, :frames, :image, :bitmaps, anim: %{}, void: {0, 0, 0}]
 
-  @doc "Load the sheet, scaled `scale` times — a whole number, or a fraction such as 0.25 that leaves a tile a whole number of pixels."
-  @spec load(%{tile: pos_integer(), frames: [{integer(), integer()}]}, binary(), number()) :: t()
-  def load(%{tile: tile, frames: frames} = index, png, scale) do
+  @doc """
+  Load the sheet, scaled `scale` times — a whole number, or a fraction such as 0.25 that
+  leaves a tile a whole number of pixels. `:bitmaps` is an ETS table to keep the cut
+  bitmaps in; default a new one of the sheet's own.
+  """
+  @spec load(
+          %{tile: pos_integer(), frames: [{integer(), integer()}]},
+          binary(),
+          number(),
+          keyword()
+        ) :: t()
+  def load(%{tile: tile, frames: frames} = index, png, scale, opts \\ []) do
     path =
       Path.join(System.tmp_dir!(), "cauldron_web_sheet_#{System.unique_integer([:positive])}.png")
 
@@ -44,12 +57,13 @@ defmodule Cauldron2D.Wx.Sheet do
     :wxImage.destroy(image)
 
     %__MODULE__{
+      id: System.unique_integer([:positive]),
       tile: tile,
       scale: scale,
       frames: frames,
       anim: Map.get(index, :anim, %{}),
       image: :wxBitmap.new(scaled),
-      bitmaps: :ets.new(__MODULE__, [:set, :public]),
+      bitmaps: Keyword.get_lazy(opts, :bitmaps, fn -> :ets.new(__MODULE__, [:set, :public]) end),
       void: Map.get(index, :void, {0, 0, 0})
     }
   end
@@ -63,18 +77,18 @@ defmodule Cauldron2D.Wx.Sheet do
   def bitmap_at(%__MODULE__{} = sheet, index, at_ms),
     do: bitmap(sheet, Cauldron2D.Sheet.index_at(sheet, index, at_ms))
 
-  @doc "Let the sheet's cut bitmaps go."
+  @doc "Let the sheet's cut bitmaps go, leaving the table to any other sheet sharing it."
   @spec unload(t()) :: :ok
-  def unload(%__MODULE__{bitmaps: bitmaps}) do
-    :ets.delete(bitmaps)
+  def unload(%__MODULE__{bitmaps: bitmaps, id: id}) do
+    :ets.match_delete(bitmaps, {{id, :_}, :_})
     :ok
   end
 
   @doc "The bitmap for `index`, cut on first use; `nil` for an index the sheet has not got."
   @spec bitmap(t(), non_neg_integer()) :: term() | nil
-  def bitmap(%__MODULE__{bitmaps: bitmaps} = sheet, index) do
-    case :ets.lookup(bitmaps, index) do
-      [{^index, bitmap}] ->
+  def bitmap(%__MODULE__{bitmaps: bitmaps, id: id} = sheet, index) do
+    case :ets.lookup(bitmaps, {id, index}) do
+      [{_key, bitmap}] ->
         bitmap
 
       [] ->
@@ -91,7 +105,7 @@ defmodule Cauldron2D.Wx.Sheet do
                 {round(x * sheet.scale), round(y * sheet.scale), size, size}
               )
 
-            :ets.insert(bitmaps, {index, bitmap})
+            :ets.insert(bitmaps, {{id, index}, bitmap})
             bitmap
         end
     end

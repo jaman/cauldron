@@ -205,11 +205,6 @@
     var originX = focus[0] + this.pan[0] - view[0] / 2;
     var originY = focus[1] + this.pan[1] - view[1] / 2;
     var map = this.map;
-
-    if (!map.wrap) {
-      originX = Math.max(0, Math.min(originX, map.width - view[0]));
-      originY = Math.max(0, Math.min(originY, map.height - view[1]));
-    }
     this.origin = [originX, originY];
 
     if (this.image) {
@@ -535,6 +530,7 @@
     var watching = options.watching === true || !!joinParams.spectate;
     var drag = null;
     var pointer = null;
+    var subject = null;
 
     function zoomTo(cssTile, anchor) {
       if (!zoom) return;
@@ -575,6 +571,10 @@
     });
     channel.on("map", function (map) { renderer.map = map; });
     channel.on("frame", function (frame) {
+      if (frame.subject !== undefined && frame.subject !== subject) {
+        subject = frame.subject;
+        renderer.pan = [0, 0];
+      }
       renderer.frame = frame;
       counts.frames += 1;
       if (hud) hud.innerHTML = frame.hud.map(function (row, i) {

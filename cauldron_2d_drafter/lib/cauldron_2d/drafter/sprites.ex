@@ -10,19 +10,31 @@ defmodule Cauldron2D.Drafter.Sprites do
   changes the atlas.
   """
 
-  alias Cauldron2D.Atlas
+  alias Cauldron2D.{Atlas, Surface}
   alias FrenchCurve.Backend.Kitty
 
   @span 4096
 
-  @doc "The bytes that store every frame of every art of `atlas` in the terminal, without displaying any."
+  @doc """
+  The bytes that store every frame of every art of `atlas` in the terminal, without
+  displaying any.
+
+  ## Options
+
+    * `:scale` — a whole number of times each sprite's pixels are repeated, so a placement
+      is drawn at that size without the terminal scaling it. Default `1`
+    * `:compress` — zlib each transmit. Default `true`
+  """
   @spec transmit(Atlas.name() | Atlas.t(), keyword()) :: iodata()
   def transmit(atlas, opts \\ []) do
     atlas = Atlas.fetch(atlas)
     compress? = Keyword.get(opts, :compress, true)
+    scale = Keyword.get(opts, :scale, 1)
 
     for {art, frame_index, sprite} <- frames(atlas) do
-      Kitty.transmit(sprite.raster, image_id(atlas, art) + frame_index, compress: compress?)
+      Kitty.transmit(Surface.magnify(sprite.raster, scale), image_id(atlas, art) + frame_index,
+        compress: compress?
+      )
     end
   end
 

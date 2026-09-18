@@ -1,9 +1,9 @@
 defmodule Cauldron2D.Net.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/jaman/cauldron"
-  @description "A Cauldron2D world in a browser, and the links an Elixir client uses to join a served world."
+  @description "A Cauldron2D world over the network: served to browsers, desktops and terminals over a WebSocket or from node to node, and the links a client joins it by."
 
   def project do
     [
@@ -29,9 +29,9 @@ defmodule Cauldron2D.Net.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.1.0", "../cauldron_2d", []),
+      family(:cauldron_2d, "~> 0.1.1", "../cauldron_2d", []),
       family(:french_curve, "~> 0.1.4", "../../french_curve", override: true),
-      family(:tuning_fork, "~> 0.1.7", "../../tuning_fork/tuning_fork", []),
+      family(:tuning_fork, "~> 0.1.8", "../../tuning_fork/tuning_fork", []),
       {:phoenix, "~> 1.8"},
       {:mint, "~> 1.6"},
       {:mint_web_socket, "~> 1.0"},

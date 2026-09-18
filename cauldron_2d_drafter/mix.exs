@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Drafter.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @source_url "https://github.com/jaman/cauldron"
   @description "Puts a Cauldron2D surface on screen as a drafter widget."
 
@@ -33,7 +33,7 @@ defmodule Cauldron2D.Drafter.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.1.0", "../cauldron_2d", []),
+      family(:cauldron_2d, "~> 0.1.1", "../cauldron_2d", []),
       family(:drafter, "~> 0.4.0", "../../drafter", []),
       family(:french_curve, "~> 0.1.4", "../../french_curve", override: true)
     ]

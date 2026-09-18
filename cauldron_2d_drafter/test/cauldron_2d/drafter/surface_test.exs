@@ -11,6 +11,7 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
 
   alias Cauldron2D.Atlas
   alias Cauldron2D.Drafter.Surface
+  alias Drafter.Session.Context
   alias FrenchCurve.Raster
 
   @tile 8
@@ -35,7 +36,6 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
       Surface.mount(%{
         atlas: :widget_test,
         focus: {5, 5},
-        bounds: {40, 20},
         cell: fn
           {5, 5} -> {:floor, [:player], nil}
           {0, _} -> :void
@@ -250,7 +250,7 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
 
     test "in text mode a tile at zoom 2 is four cells wide and two rows tall, and at 0.5 every other tile is drawn",
          %{state: state} do
-      one = %{state | mode: :text, focus: {5, 5}, bounds: :unbounded}
+      one = %{state | mode: :text, focus: {5, 5}}
 
       lines =
         one |> Map.put(:zoom, 2) |> Surface.render(rect(20, 10)) |> text() |> String.split("\n")
@@ -269,7 +269,7 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
     end
 
     test "in braille mode zoom 2 lights the art over four times the cells", %{state: state} do
-      braille = %{state | mode: :braille, bounds: :unbounded}
+      braille = %{state | mode: :braille}
 
       lit = fn zoom ->
         braille
@@ -287,7 +287,7 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
     test "in pixel mode zoom in transmits fewer pixels fitted to the same pane, zoom out the same pixels over more tiles",
          %{state: state} do
       on_a_real_kitty()
-      pixel = %{state | mode: :kitty, placements: false, bounds: :unbounded}
+      pixel = %{state | mode: :kitty, placements: false}
       {native, _, _} = Surface.image(pixel, rect(80, 24), :map)
       {closer, _, _} = Surface.image(%{pixel | zoom: 2}, rect(80, 24), :map)
       {farther, _, _} = Surface.image(%{pixel | zoom: 0.5}, rect(80, 24), :map)
@@ -302,11 +302,55 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
 
     test "a sixel terminal gets the zoomed-in image scaled up itself, since sixels cannot be fitted",
          %{state: state} do
-      pixel = %{state | mode: :sixel, bounds: :unbounded}
+      pixel = %{state | mode: :sixel}
       {native, _, _} = Surface.image(pixel, rect(80, 24), :map)
       {closer, _, _} = Surface.image(%{pixel | zoom: 2}, rect(80, 24), :map)
       assert IO.iodata_to_binary(native) =~ "\"1;1;320;192"
       assert IO.iodata_to_binary(closer) =~ "\"1;1;320;192"
+    end
+
+    test "with the terminal's cell size the frame is sent at the pane's own pixels, whatever the zoom",
+         %{state: state} do
+      on_a_real_kitty()
+      Context.put_cell_size({8, 16})
+      on_exit(fn -> Process.delete(:drafter_cell_size) end)
+      pixel = %{state | mode: :kitty, placements: false}
+
+      for zoom <- [1, 2, 0.5, 0.25] do
+        {paint, _, region} = Surface.image(%{pixel | zoom: zoom}, rect(80, 24), :map)
+        assert IO.iodata_to_binary(paint) =~ "s=640,v=384"
+        refute IO.iodata_to_binary(paint) =~ "c=80,r=24"
+        assert region.cols == 80 and region.rows == 24
+      end
+
+      assert Enum.count(asked(%{pixel | zoom: 0.125}, rect(80, 24))) >
+               16 * Enum.count(asked(%{pixel | zoom: 1}, rect(80, 24)))
+    end
+
+    test "a sixel terminal that knows its cells gets the same pixels", %{state: state} do
+      Context.put_cell_size({8, 16})
+      on_exit(fn -> Process.delete(:drafter_cell_size) end)
+      {paint, _, _} = Surface.image(%{state | mode: :sixel, zoom: 2}, rect(80, 24), :map)
+      assert IO.iodata_to_binary(paint) =~ "\"1;1;640;384"
+    end
+
+    test "iTerm is sent the pane's pixels fitted to the pane's cells", %{state: state} do
+      on_iterm()
+      Context.put_cell_size({8, 16})
+      on_exit(fn -> Process.delete(:drafter_cell_size) end)
+      {paint, _, _} = Surface.image(%{state | mode: :iterm2, zoom: 2}, rect(80, 24), :map)
+      paint = IO.iodata_to_binary(paint)
+      assert paint =~ "width=80;height=24"
+
+      png =
+        paint
+        |> String.split(":")
+        |> List.last()
+        |> String.trim_trailing("\a")
+        |> Base.decode64!()
+
+      <<_::binary-16, width::32, height::32, _::binary>> = png
+      assert {width, height} == {640, 384}
     end
 
     test "the levels a surface can draw exactly, by mode" do
@@ -338,7 +382,6 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
     test "what is not given falls back to its documented default" do
       state = Surface.mount(%{})
 
-      assert state.bounds == :unbounded
       assert state.movers == []
       assert state.mode == nil
       assert state.on_geometry == nil
@@ -358,7 +401,6 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
 
       assert kept.mode == :kitty
       assert kept.compress == false
-      assert kept.bounds == {40, 20}
     end
 
     test "every option can be changed by a re-render, not only the camera ones", %{state: state} do
@@ -386,10 +428,6 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
 
       assert Surface.update(%{mode: nil}, forced).mode == nil
       assert Surface.update(%{}, forced).mode == :kitty
-    end
-
-    test "bounds set back to nil means unbounded rather than nothing", %{state: state} do
-      assert Surface.update(%{bounds: nil}, state).bounds == :unbounded
     end
   end
 

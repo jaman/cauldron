@@ -6,8 +6,8 @@ defmodule Cauldron2D.Wx.Painter do
 
       Cauldron2D.Wx.Painter.blits(frame, map, {width, height}, scale)
 
-  The focus sits at the centre of the canvas; a map that does not wrap is clamped so
-  the canvas never shows past its edge. `scale` is the pixel size of a tile.
+  The focus sits at the centre of the canvas, at a map's edge and past it alike; a map
+  that wraps repeats around it. `scale` is the pixel size of a tile.
   """
 
   @type frame :: %{focus: {number(), number()}, movers: [{non_neg_integer(), number(), number()}]}
@@ -22,19 +22,8 @@ defmodule Cauldron2D.Wx.Painter do
   @doc "The world position at the canvas's top-left corner."
   @spec origin(frame(), map_layer(), {pos_integer(), pos_integer()}, pos_integer()) ::
           {float(), float()}
-  def origin(%{focus: {fx, fy}}, map, {width, height}, scale) do
-    view_w = width / scale
-    view_h = height / scale
-    ox = fx - view_w / 2
-    oy = fy - view_h / 2
-
-    if map.wrap do
-      {ox / 1, oy / 1}
-    else
-      {ox |> min(map.width - view_w) |> max(0.0) |> Kernel./(1),
-       oy |> min(map.height - view_h) |> max(0.0) |> Kernel./(1)}
-    end
-  end
+  def origin(%{focus: {fx, fy}}, _map, {width, height}, scale),
+    do: {fx - width / scale / 2, fy - height / scale / 2}
 
   @doc "Every tile and mover in view, bottom to top, as `{index, x, y}` in pixels."
   @spec blits(frame(), map_layer(), {pos_integer(), pos_integer()}, pos_integer()) :: [blit()]
@@ -162,7 +151,7 @@ defmodule Cauldron2D.Wx.Painter do
     {ox + cx / scale, oy + cy / scale}
   end
 
-  @doc "The focus that keeps the world under canvas point `{cx, cy}` there when the tile goes from `from` to `to` pixels; a clamped map may still move it."
+  @doc "The focus that keeps the world under canvas point `{cx, cy}` there when the tile goes from `from` to `to` pixels."
   @spec zoom_about(
           frame(),
           map_layer(),

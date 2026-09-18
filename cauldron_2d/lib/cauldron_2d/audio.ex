@@ -368,6 +368,8 @@ defmodule Cauldron2D.Audio do
   def terminate(_reason, %{own_stage?: true, stage: stage}) when is_pid(stage) do
     if Process.alive?(stage), do: GenServer.stop(stage)
     :ok
+  catch
+    :exit, _already_going_down -> :ok
   end
 
   def terminate(_reason, _state), do: :ok

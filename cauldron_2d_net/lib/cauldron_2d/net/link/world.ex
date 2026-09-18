@@ -63,7 +63,7 @@ defmodule Cauldron2D.Net.Link.World do
     GenServer.start_link(__MODULE__, opts, if(name, do: [name: name], else: []))
   end
 
-  @doc "The scene of a wire view for a surface drawing from `atlas`: focus, bounds, a cell function over the map, movers and labels."
+  @doc "The scene of a wire view for a surface drawing from `atlas`: focus, bounds, a cell function over the map, movers, labels, and the subject when the frame carries one."
   @spec scene(map(), Cauldron2D.Atlas.name()) :: Cauldron2D.Client.Game.scene()
   def scene(%{wire: nil, map: map}, _atlas),
     do: %{focus: {0.0, 0.0}, bounds: bounds(map), cell: fn _ -> :void end, movers: [], labels: []}
@@ -85,7 +85,13 @@ defmodule Cauldron2D.Net.Link.World do
         ),
       labels: labels(frame)
     }
+    |> subject(frame)
   end
+
+  defp subject(scene, %{subject: subject}) when subject != nil,
+    do: Map.put(scene, :subject, subject)
+
+  defp subject(scene, _frame), do: scene
 
   defp bounds(nil), do: :unbounded
   defp bounds(%{width: width, height: height}), do: {width, height}
