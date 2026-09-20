@@ -22,6 +22,11 @@ Start with [Your first game](cauldron_2d/guides/tutorial.md), which builds
 art, the terminal, sound, more players, the browser and the window — then
 [`cauldron_2d/README.md`](cauldron_2d/README.md) for the engine's parts and design.
 Each package's documentation is on [hexdocs.pm](https://hexdocs.pm/cauldron_2d).
+To draw before reading, the art notebook opens straight into Livebook — the editor in a
+cell, a picture as text and as code, an animation, a directory installed as an atlas:
+
+[![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjaman%2Fcauldron%2Fmain%2Fcauldron_2d_easel_kino%2Fnotebooks%2Feasel.livemd)
+
 `GAP_ANALYSIS.md` is what the stack was found to be missing on 2026-09-17 and `STATE.md`
 is what has been done about it.
 

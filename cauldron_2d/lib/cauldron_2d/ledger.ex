@@ -26,9 +26,20 @@ defmodule Cauldron2D.Ledger do
   seven days) or `:all` — ranked by one metric, each with every metric's value, the
   rounds counted and the name last played under, twenty at most. Boards are computed from
   the table and kept for ten seconds.
+
+  ## The file
+
+  The file belongs to one operating system process at a time, held through
+  `Cauldron2D.Ledger.Lock`. Starting a ledger on a held file fails with
+  `{:error, {:held, pid}}`, or with `held: :idle` starts one that keeps nothing: its
+  boards are empty, `record/4` and `forget/2` answer `{:error, {:held, pid}}`, and
+  `access/1` says `{:held, pid}`. A DETS failure stops the ledger, and a restart reopens
+  the file repaired.
   """
 
   use GenServer
+
+  alias Cauldron2D.Ledger.Lock
 
   @type period :: :day | :week | :all
   @type metric :: atom()
@@ -51,6 +62,7 @@ defmodule Cauldron2D.Ledger do
     * `:path` — the DETS file. Required
     * `:metrics` — the metrics, as the module documentation describes. Required
     * `:name` — the registered name; default the module, `nil` for none
+    * `:held` — what to do when another process holds the file: `:stop` (default) or `:idle`
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -59,13 +71,14 @@ defmodule Cauldron2D.Ledger do
   end
 
   @doc "Keep a result from `arena`, taken `at` (default now)."
-  @spec record(GenServer.server(), String.t(), map(), DateTime.t()) :: :ok
+  @spec record(GenServer.server(), String.t(), map(), DateTime.t()) :: :ok | {:error, term()}
   def record(ledger, arena, row, at \\ DateTime.utc_now())
   def record(_ledger, _arena, %{id: {:robot, _}}, _at), do: :ok
   def record(ledger, arena, row, at), do: GenServer.call(ledger, {:record, arena, row, at})
 
   @doc "Drop every result `keep_out?` is true of — a function of the row as it was recorded, with its `:arena` and `:at` — and say how many went."
-  @spec forget(GenServer.server(), (map() -> boolean())) :: non_neg_integer()
+  @spec forget(GenServer.server(), (map() -> boolean())) ::
+          {:ok, non_neg_integer()} | {:error, term()}
   def forget(ledger, keep_out?) when is_function(keep_out?, 1),
     do: GenServer.call(ledger, {:forget, keep_out?})
 
@@ -73,58 +86,81 @@ defmodule Cauldron2D.Ledger do
   @spec count(GenServer.server()) :: non_neg_integer()
   def count(ledger), do: GenServer.call(ledger, :count)
 
-  @doc "The board of `period` by `metric`; `arena:` narrows it to one arena."
+  @doc "The board of `period` by `metric`: the top #{@top}, or `top: n` of them, or every account with `top: :all`; `arena:` narrows it to one arena."
   @spec board(GenServer.server(), period(), metric(), keyword()) :: [entry()]
-  def board(ledger, period, metric, opts \\ []),
-    do: GenServer.call(ledger, {:board, period, metric, Keyword.get(opts, :arena)})
+  def board(ledger, period, metric, opts \\ []) do
+    GenServer.call(
+      ledger,
+      {:board, period, metric, Keyword.get(opts, :arena), Keyword.get(opts, :top, @top)}
+    )
+  end
 
   @doc "The metrics the ledger was started with, in order."
   @spec metrics(GenServer.server()) :: [metric()]
   def metrics(ledger), do: GenServer.call(ledger, :metrics)
+
+  @doc "Whether the ledger holds its file: `:read_write`, or `{:held, pid}` naming the operating system process that does."
+  @spec access(GenServer.server()) :: :read_write | {:held, pos_integer()}
+  def access(ledger), do: GenServer.call(ledger, :access)
+
+  @doc "The operating system process holding the file at `path`, or nil when it is free."
+  @spec holder(Path.t()) :: pos_integer() | nil
+  def holder(path), do: Lock.holder(path)
 
   @impl GenServer
   def init(opts) do
     path = Keyword.fetch!(opts, :path)
     File.mkdir_p!(Path.dirname(path))
 
-    {:ok, table} =
-      :dets.open_file(:"cauldron_ledger_#{:erlang.unique_integer([:positive])}",
-        file: String.to_charlist(path),
-        type: :set
-      )
+    state = %{
+      path: path,
+      table: nil,
+      held: nil,
+      boards: %{},
+      metrics: Keyword.fetch!(opts, :metrics)
+    }
 
-    {:ok, %{table: table, boards: %{}, metrics: Keyword.fetch!(opts, :metrics)}}
+    case {Lock.take(path), Keyword.get(opts, :held, :stop)} do
+      {:ok, _held} -> open(state)
+      {{:error, held}, :idle} -> {:ok, %{state | held: held}}
+      {{:error, held}, :stop} -> {:stop, held}
+    end
   end
 
   @impl GenServer
+  def handle_call(:metrics, _from, state), do: {:reply, Keyword.keys(state.metrics), state}
+
+  def handle_call(request, _from, %{held: held} = state) when is_tuple(held) do
+    {:reply, held_reply(request, held), state}
+  end
+
   def handle_call({:record, arena, row, at}, _from, state) do
     key = {DateTime.to_unix(at, :microsecond), account(row)}
+    entry = {key, Map.merge(row, %{arena: arena, at: DateTime.to_unix(at)})}
 
-    :ok =
-      :dets.insert(state.table, {key, Map.merge(row, %{arena: arena, at: DateTime.to_unix(at)})})
-
-    :ok = :dets.sync(state.table)
-    {:reply, :ok, %{state | boards: %{}}}
+    with :ok <- :dets.insert(state.table, entry),
+         :ok <- :dets.sync(state.table) do
+      {:reply, :ok, %{state | boards: %{}}}
+    else
+      {:error, reason} -> {:stop, reason, {:error, reason}, state}
+    end
   end
 
   def handle_call({:forget, keep_out?}, _from, state) do
-    keys =
-      :dets.foldl(
-        fn {key, row}, acc -> if keep_out?.(row), do: [key | acc], else: acc end,
-        [],
-        state.table
-      )
-
-    Enum.each(keys, &:dets.delete(state.table, &1))
-    :ok = :dets.sync(state.table)
-    {:reply, length(keys), %{state | boards: %{}}}
+    with {:ok, keys} <- keys_to_forget(state.table, keep_out?),
+         :ok <- delete_all(state.table, keys),
+         :ok <- :dets.sync(state.table) do
+      {:reply, {:ok, length(keys)}, %{state | boards: %{}}}
+    else
+      {:error, reason} -> {:stop, reason, {:error, reason}, state}
+    end
   end
 
   def handle_call(:count, _from, state), do: {:reply, :dets.info(state.table, :size), state}
-  def handle_call(:metrics, _from, state), do: {:reply, Keyword.keys(state.metrics), state}
+  def handle_call(:access, _from, state), do: {:reply, :read_write, state}
 
-  def handle_call({:board, period, metric, arena}, _from, state) do
-    key = {period, metric, arena}
+  def handle_call({:board, period, metric, arena, top}, _from, state) do
+    key = {period, metric, arena, top}
     now = System.monotonic_time(:millisecond)
 
     case Map.get(state.boards, key) do
@@ -132,18 +168,55 @@ defmodule Cauldron2D.Ledger do
         {:reply, board, state}
 
       _stale ->
-        board = compute(state, period, metric, arena)
+        board = compute(state, period, metric, arena, top)
         {:reply, board, %{state | boards: Map.put(state.boards, key, {board, now})}}
     end
   end
 
   @impl GenServer
-  def terminate(_reason, state) do
+  def terminate(_reason, %{held: nil} = state) do
     :dets.close(state.table)
+    Lock.release(state.path)
     :ok
   end
 
-  defp compute(state, period, metric, arena) do
+  def terminate(_reason, _idle), do: :ok
+
+  defp open(state) do
+    case :dets.open_file(:"cauldron_ledger_#{:erlang.unique_integer([:positive])}",
+           file: String.to_charlist(state.path),
+           type: :set
+         ) do
+      {:ok, table} -> {:ok, %{state | table: table}}
+      {:error, reason} -> {:stop, reason}
+    end
+  end
+
+  defp held_reply({:record, _arena, _row, _at}, held), do: {:error, held}
+  defp held_reply({:forget, _keep_out?}, held), do: {:error, held}
+  defp held_reply({:board, _period, _metric, _arena, _top}, _held), do: []
+  defp held_reply(:count, _held), do: 0
+  defp held_reply(:access, held), do: held
+
+  defp keys_to_forget(table, keep_out?) do
+    case :dets.foldl(&key_if(&1, &2, keep_out?), [], table) do
+      {:error, reason} -> {:error, reason}
+      keys -> {:ok, keys}
+    end
+  end
+
+  defp key_if({key, row}, keys, keep_out?), do: if(keep_out?.(row), do: [key | keys], else: keys)
+
+  defp delete_all(table, keys) do
+    Enum.find_value(keys, :ok, fn key ->
+      case :dets.delete(table, key) do
+        :ok -> nil
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+  end
+
+  defp compute(state, period, metric, arena, top) do
     since = since(period)
 
     fn {_key, row}, acc ->
@@ -153,8 +226,11 @@ defmodule Cauldron2D.Ledger do
     |> Enum.group_by(&account/1)
     |> Enum.map(fn {account, rows} -> entry(account, rows, metric, state.metrics) end)
     |> Enum.sort_by(&{-&1.value, &1.name})
-    |> Enum.take(@top)
+    |> cut(top)
   end
+
+  defp cut(entries, :all), do: entries
+  defp cut(entries, top), do: Enum.take(entries, top)
 
   defp account(%{id: id}), do: id
   defp account(%{name: name}), do: name

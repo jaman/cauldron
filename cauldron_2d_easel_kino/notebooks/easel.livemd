@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:cauldron_2d_easel_kino, path: Path.join(__DIR__, "..")}
+  {:cauldron_2d_easel_kino, "~> 0.1"}
 ])
 ```
 

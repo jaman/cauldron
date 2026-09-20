@@ -31,6 +31,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     def refusal_text(:already_joined), do: "you are already in it"
     def refusal_text(other), do: inspect(other)
     def player_label({:bot, n}), do: "Bot #{n}"
+    def player_label("alice"), do: "red-fox-12"
     def player_label(id), do: to_string(id)
 
     def pages(%{served_by: %{host: host}}),
@@ -187,6 +188,16 @@ defmodule Cauldron2D.Drafter.ClientTest do
              %{pan: {0.0, 0.0}, subject: "bob"}
   end
 
+  test "the session is listed under the username from mount until the client stops", %{ctx: ctx} do
+    assert [%{id: "alice", kind: :terminal}] =
+             Enum.filter(Cauldron2D.Sessions.list(), &(&1.id == "alice"))
+
+    Cauldron2D.Sessions.subscribe()
+    DT.stop(ctx)
+    assert_receive {:cauldron_sessions, :closed, %{id: "alice"}}
+    assert Enum.filter(Cauldron2D.Sessions.list(), &(&1.id == "alice")) == []
+  end
+
   test "the title shows the game's name and any key opens the lobby", %{ctx: ctx} do
     assert DT.screen_text(ctx) =~ "little dots"
     DT.send_key(ctx, :enter)
@@ -284,6 +295,27 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
     assert Enum.any?(plain, &(&1 =~ ~r/Arenas\s+Players\s+Map/))
     refute Enum.any?(plain, &(&1 =~ "Kind"))
+  end
+
+  test "the lobby's header shows the player their own name and, when the game writes them differently, how others see them" do
+    header = fn username ->
+      Screens.lobby(%{
+        game: DotsClient,
+        username: username,
+        keys: Client.default_keys(),
+        chat?: true,
+        lobby: %{selected: 0, messages: [], team: nil}
+      })
+      |> flatten_tree()
+      |> Enum.find_value(fn
+        {:header, text, _} -> text
+        _ -> nil
+      end)
+    end
+
+    assert header.("alice") =~ "alice (red-fox-12)"
+    assert header.("bob") =~ "bob"
+    refute header.("bob") =~ "("
   end
 
   test "h opens the guide from the title and the lobby, the arrows and page keys scroll it, Esc returns",
@@ -964,7 +996,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     DT.send_key(ctx, :c)
     for key <- [:h, :i], do: DT.send_key(ctx, key)
     DT.send_key(ctx, :enter)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "alice: hi" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "red-fox-12: hi" end)
   end
 
   test "every settings item is reachable with the cursor and changed with the arrows", %{ctx: ctx} do
@@ -1152,7 +1184,10 @@ defmodule Cauldron2D.Drafter.ClientTest do
     %{players: %{"alice" => %{pos: {x, _}}}} = World.snapshot(world)
     assert_in_delta x, 5.0, 0.001
     DT.send_key(ctx, :enter)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "alice: ddd" end, timeout: 2_000)
+
+    assert :ok ==
+             DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "red-fox-12: ddd" end, timeout: 2_000)
+
     refute DT.screen_text(ctx) =~ "say:"
   end
 end

@@ -11,6 +11,7 @@ defmodule Cauldron2D.Application do
         Cauldron2D.Atlas.Tables,
         Cauldron2D.Audio.Rendered,
         Cauldron2D.World.Presence,
+        Cauldron2D.Sessions,
         Cauldron2D.World.Events
       ] ++
         Cauldron2D.Arenas.child_specs() ++

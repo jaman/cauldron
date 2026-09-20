@@ -74,7 +74,8 @@ defmodule Cauldron2D.Client.Game do
     * `pages/1` — extra pages reachable from the title, from the props: `[%{key, hint,
       title, render}]`, `render` a function returning rows of runs
     * `refusal_text/1` — the words a refused join is reported with
-    * `player_label/1` — how a player id is written in a lobby
+    * `player_label/1` — how a player id is written in a lobby and signed in chat; the
+      lobby header shows the player their own id and, when this differs, this after it
     * `client_keys/0` — the client's own keys, as the terminal client documents them
     * `chat?/0` — whether the lobby and arena carry a chat; `true` without it
     * `frame_rates/0` — the frame rates a settings screen offers

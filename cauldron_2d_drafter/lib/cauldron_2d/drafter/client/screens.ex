@@ -81,7 +81,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
     vertical(
       [
-        header("#{game.title().name}  ·  #{state.username}"),
+        header("#{game.title().name}  ·  #{self_label(state)}"),
         horizontal(
           [
             vertical(
@@ -295,7 +295,21 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     end
   end
 
-  defp player_label(game, id) do
+  @doc """
+  The player's own name as the header shows it: the username, and after it in
+  parentheses how the game's `player_label/1` writes them when that differs.
+  """
+  @spec self_label(map()) :: String.t()
+  def self_label(%{game: game, username: username}) do
+    case player_label(game, username) do
+      ^username -> username
+      seen_as -> "#{username} (#{seen_as})"
+    end
+  end
+
+  @doc "How the game writes the player `id`: its `player_label/1`, else the id as text."
+  @spec player_label(module(), term()) :: String.t()
+  def player_label(game, id) do
     if Code.ensure_loaded?(game) and function_exported?(game, :player_label, 1),
       do: game.player_label(id),
       else: plain_label(id)

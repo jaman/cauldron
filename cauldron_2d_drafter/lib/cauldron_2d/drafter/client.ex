@@ -89,7 +89,7 @@ defmodule Cauldron2D.Drafter.Client do
 
   use Drafter.App, key_release: true, cell_size: true, frame_pacing: :always
 
-  alias Cauldron2D.{Atlas, Audio, Camera, Input, Player, Trace, World}
+  alias Cauldron2D.{Atlas, Audio, Camera, Input, Player, Sessions, Trace, World}
   alias Cauldron2D.Audio.Music
   alias Cauldron2D.Client.Game
   alias Cauldron2D.Drafter.{Chat, Surface}
@@ -133,6 +133,7 @@ defmodule Cauldron2D.Drafter.Client do
       )
 
     Chat.ensure_started()
+    Sessions.track(username, kind)
 
     %{
       game: game,
@@ -224,7 +225,7 @@ defmodule Cauldron2D.Drafter.Client do
   def handle_event(:talk_submit, _text, state) do
     case String.trim(state.talk_text) do
       "" -> :ok
-      text -> Chat.say({:arena, state.arena.id}, state.username, text)
+      text -> Chat.say({:arena, state.arena.id}, said_as(state), text)
     end
 
     Drafter.blur(:talk_input)
@@ -236,7 +237,7 @@ defmodule Cauldron2D.Drafter.Client do
   def handle_event(:chat_submit, _text, state) do
     case String.trim(state.chat_text) do
       "" -> Drafter.blur(:chat_input)
-      text -> Chat.say(:lobby, state.username, text)
+      text -> Chat.say(:lobby, said_as(state), text)
     end
 
     {:ok, %{state | chat_text: ""}}
@@ -310,6 +311,8 @@ defmodule Cauldron2D.Drafter.Client do
     Drafter.blur(:"page_#{key}")
     %{state | screen: {:page, key}}
   end
+
+  defp said_as(%{game: game, username: username}), do: Screens.player_label(game, username)
 
   @impl true
   def on_message({:cauldron_frame, frame}, %{arena: arena} = state) when arena != nil do
