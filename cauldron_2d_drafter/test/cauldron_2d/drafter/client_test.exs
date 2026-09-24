@@ -47,7 +47,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     def pages(_props), do: []
     def toggles, do: []
 
-    def arenas(_props) do
+    def worlds(_props) do
       humans = if Process.whereis(:dots_world), do: World.players(:dots_world), else: []
 
       [
@@ -83,13 +83,13 @@ defmodule Cauldron2D.Drafter.ClientTest do
     def music, do: []
     def cue(_view, _screen), do: nil
     def steering, do: [:left, :right]
-    def client_keys, do: %{fps: :i}
+    def client_keys, do: %{fps: :i, display: :g, glyphs: :b, mouse_look: :m}
 
     def outcome(%{me: %{pos: {x, _}}}) when x > 6.0,
       do: %{
         title: "Far enough",
         lines: ["you reached x=" <> Float.to_string(Float.round(x, 1))],
-        next: :same_arena
+        next: :same_world
       }
 
     def outcome(_view), do: nil
@@ -108,6 +108,27 @@ defmodule Cauldron2D.Drafter.ClientTest do
         {"Floor", [%{art: :floor, name: "Floor", text: "what the dots lie on"}]}
       ]
     end
+  end
+
+  defmodule AimingDotsClient do
+    @moduledoc false
+    @behaviour Cauldron2D.Client.Game
+
+    defdelegate title, to: DotsClient
+    defdelegate atlas, to: DotsClient
+    defdelegate actions, to: DotsClient
+    defdelegate keymaps, to: DotsClient
+    defdelegate toggles, to: DotsClient
+    defdelegate worlds(props), to: DotsClient
+    defdelegate scene(view), to: DotsClient
+    defdelegate hud(view), to: DotsClient
+    defdelegate listener(view), to: DotsClient
+    defdelegate sounds, to: DotsClient
+    defdelegate music, to: DotsClient
+    defdelegate cue(view, screen), to: DotsClient
+    defdelegate steering, to: DotsClient
+
+    def padmap(_props), do: %{aim: [{:stick, :left}], left: [:dpad_left], right: [:dpad_right]}
   end
 
   setup_all do
@@ -198,13 +219,6 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert Enum.filter(Cauldron2D.Sessions.list(), &(&1.id == "alice")) == []
   end
 
-  test "the title shows the game's name and any key opens the lobby", %{ctx: ctx} do
-    assert DT.screen_text(ctx) =~ "little dots"
-    DT.send_key(ctx, :enter)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
-    assert DT.screen_text(ctx) =~ "Main"
-  end
-
   test "the arrow keys move the lobby's selection even though the chat line could take focus", %{
     ctx: ctx
   } do
@@ -293,7 +307,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
         })
       )
 
-    assert Enum.any?(plain, &(&1 =~ ~r/Arenas\s+Players\s+Map/))
+    assert Enum.any?(plain, &(&1 =~ ~r/Worlds\s+Players\s+Map/))
     refute Enum.any?(plain, &(&1 =~ "Kind"))
   end
 
@@ -338,11 +352,11 @@ defmodule Cauldron2D.Drafter.ClientTest do
     DT.send_key(ctx, :escape)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "little dots" end)
     DT.send_key(ctx, :enter)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
     DT.send_key(ctx, :h)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Dot 1" end)
     DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
   end
 
   test "the lobby follows players coming and going without a key being pressed", %{
@@ -357,28 +371,17 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "nobody yet" end)
   end
 
-  test "the lobby knows which arena a screen row shows" do
-    arenas = __MODULE__.ManyArenas.arenas(%{})
-    assert Screens.arena_at(arenas, 0, 3) == 0
-    assert Screens.arena_at(arenas, 0, 2) == nil
-    assert Screens.arena_at(arenas, 0, 3 + Screens.lobby_window()) == nil
-    assert Screens.arena_at(arenas, 20, 3) == nil
-    assert Screens.arena_at(arenas, 20, 4) == 20 - div(Screens.lobby_window(), 2)
-    assert Screens.arena_at([], 0, 3) == nil
+  test "the lobby knows which world a screen row shows" do
+    worlds = __MODULE__.ManyWorlds.worlds(%{})
+    assert Screens.world_at(worlds, 0, 3) == 0
+    assert Screens.world_at(worlds, 0, 2) == nil
+    assert Screens.world_at(worlds, 0, 3 + Screens.lobby_window()) == nil
+    assert Screens.world_at(worlds, 20, 3) == nil
+    assert Screens.world_at(worlds, 20, 4) == 20 - div(Screens.lobby_window(), 2)
+    assert Screens.world_at([], 0, 3) == nil
   end
 
-  test "joining an arena puts the player in the world under the game's status rows", %{
-    ctx: ctx,
-    world: world
-  } do
-    DT.send_key(ctx, :enter)
-    DT.send_key(ctx, :enter)
-    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end, timeout: 2_000)
-    refute DT.screen_text(ctx) =~ "Esc  lobby"
-  end
-
-  test "= and - zoom the arena in and out, shown under the world, and 0 puts it back", %{
+  test "= and - zoom the world in and out, shown under the world, and 0 puts it back", %{
     ctx: ctx,
     world: world
   } do
@@ -400,7 +403,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "zoom 1/2×" end)
     assert DT.get_state(ctx).zoom == 0.5
     DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
     assert DT.get_state(ctx).zoom == 1
   end
 
@@ -532,17 +535,17 @@ defmodule Cauldron2D.Drafter.ClientTest do
     def hud(_view), do: %{left: [["s"]], width: 14, bottom: [[{"b", {1, 2, 3}}]]}
   end
 
-  defmodule ManyArenas do
+  defmodule ManyWorlds do
     @moduledoc false
     def title, do: %{name: "MANY", tagline: ""}
 
-    def arenas(_props),
+    def worlds(_props),
       do:
         for(
           n <- 1..40,
           do: %{
             id: n,
-            name: "arena #{String.pad_leading(Integer.to_string(n), 2, "0")}",
+            name: "world #{String.pad_leading(Integer.to_string(n), 2, "0")}",
             world: :none,
             players: 0,
             map: "m"
@@ -563,11 +566,11 @@ defmodule Cauldron2D.Drafter.ClientTest do
   defp flatten_tree({:layout, _, children, _}), do: Enum.flat_map(children, &flatten_tree/1)
   defp flatten_tree(other), do: [other]
 
-  defmodule KindsOfArena do
+  defmodule KindsOfWorld do
     @moduledoc false
     def title, do: %{name: "KINDS", tagline: ""}
 
-    def arenas(_props) do
+    def worlds(_props) do
       [
         %{
           id: :flag,
@@ -603,11 +606,11 @@ defmodule Cauldron2D.Drafter.ClientTest do
     end
   end
 
-  test "the lobby lists arenas in columns — name, kind, who is flying, map — and describes the chosen one beside them" do
+  test "the lobby lists worlds in columns — name, kind, who is flying, map — and describes the chosen one beside them" do
     lobby = fn selected ->
       labels(
         Screens.lobby(%{
-          game: KindsOfArena,
+          game: KindsOfWorld,
           username: "alice",
           keys: Client.default_keys(),
           chat?: true,
@@ -617,7 +620,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     end
 
     first = lobby.(0)
-    assert Enum.any?(first, &(&1 =~ ~r/Arenas\s+Kind\s+Players\s+Map/))
+    assert Enum.any?(first, &(&1 =~ ~r/Worlds\s+Kind\s+Players\s+Map/))
     assert Enum.any?(first, &(&1 =~ ~r/▶ flag\s+capture the flag\s+2 players\s+Four Flags/))
     assert Enum.any?(first, &(&1 =~ ~r/  ring\s+free for all\s+nobody\s+The Ring/))
     assert Enum.any?(first, &(&1 =~ ~r/  odd\s+king of the hill\s+nobody\s+Odd\s*$/))
@@ -629,11 +632,11 @@ defmodule Cauldron2D.Drafter.ClientTest do
     refute Enum.any?(second, &(&1 =~ "teams 1"))
   end
 
-  test "the lobby shows a window of the arenas around the selection, saying how many more lie either side" do
+  test "the lobby shows a window of the worlds around the selection, saying how many more lie either side" do
     lobby = fn selected ->
       labels(
         Screens.lobby(%{
-          game: ManyArenas,
+          game: ManyWorlds,
           username: "alice",
           keys: Client.default_keys(),
           chat?: true,
@@ -643,22 +646,22 @@ defmodule Cauldron2D.Drafter.ClientTest do
     end
 
     top = lobby.(0)
-    assert Enum.any?(top, &(&1 =~ "▶ arena 01"))
-    refute Enum.any?(top, &(&1 =~ "arena 20"))
+    assert Enum.any?(top, &(&1 =~ "▶ world 01"))
+    refute Enum.any?(top, &(&1 =~ "world 20"))
     assert Enum.any?(top, &(&1 =~ ~r/▼ \d+ more/))
     refute Enum.any?(top, &(&1 =~ "▲"))
 
     middle = lobby.(20)
-    assert Enum.any?(middle, &(&1 =~ "▶ arena 21"))
+    assert Enum.any?(middle, &(&1 =~ "▶ world 21"))
     assert Enum.any?(middle, &(&1 =~ ~r/▲ \d+ more/))
     assert Enum.any?(middle, &(&1 =~ ~r/▼ \d+ more/))
 
     last = lobby.(39)
-    assert Enum.any?(last, &(&1 =~ "▶ arena 40"))
+    assert Enum.any?(last, &(&1 =~ "▶ world 40"))
     refute Enum.any?(last, &(&1 =~ "▼"))
   end
 
-  test "the arena screen lays a plain hud under the world and a column hud beside it" do
+  test "the world screen lays a plain hud under the world and a column hud beside it" do
     state = fn game ->
       %{
         game: game,
@@ -672,7 +675,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     end
 
     assert {:layout, :vertical, [{:cauldron_surface, _}, {:label, [{"a", %{}}], _}], _} =
-             Screens.arena(state.(PlainHud))
+             Screens.play(state.(PlainHud))
 
     assert {:layout, :vertical,
             [
@@ -683,7 +686,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
                ], _},
               {:label, [{"b", %{fg: {1, 2, 3}}}], _}
             ], _} =
-             Screens.arena(state.(ColumnHud))
+             Screens.play(state.(ColumnHud))
 
     assert column[:width] == 14
   end
@@ -732,50 +735,27 @@ defmodule Cauldron2D.Drafter.ClientTest do
              DT.wait_for(ctx, fn c -> not (DT.screen_text(c) =~ "Esc  lobby") end, timeout: 2_000)
   end
 
-  test "started at the lobby the client has no title: it shows the arenas at once and stops on escape",
-       %{ctx: first, accounts: accounts} do
-    DT.stop(first)
-
-    ctx =
-      DT.start_headless(
-        Client,
-        %{
-          game: DotsClient,
-          username: "alice",
-          accounts: accounts,
-          sink: TuningFork.Sink.Silent,
-          start: :lobby
-        },
-        size: {80, 24}
-      )
-
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
-    refute DT.screen_text(ctx) =~ "little dots"
-    DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> not Process.alive?(c.app_pid) end)
-  end
-
   test "escape walks back to the title and out", %{ctx: ctx, world: world} do
     DT.send_key(ctx, :enter)
     DT.send_key(ctx, :enter)
     assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
 
     DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
     DT.send_key(ctx, :escape)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "little dots" end)
     DT.send_key(ctx, :escape)
     assert :ok == DT.wait_for(ctx, fn c -> not Process.alive?(c.app_pid) end)
   end
 
-  test "q leaves the arena for the lobby, and the lobby for the title", %{ctx: ctx, world: world} do
+  test "q leaves the world for the lobby, and the lobby for the title", %{ctx: ctx, world: world} do
     DT.send_key(ctx, :enter)
     DT.send_key(ctx, :enter)
     assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
 
     DT.send_key(ctx, :q)
     assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == [] end)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
 
     DT.send_key(ctx, :q)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "little dots" end)
@@ -803,7 +783,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
     DT.send_key(ctx, :escape)
     assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == [] end)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
   end
 
   test "the pointer steers only when pointer steering is on", %{ctx: ctx, world: world} do
@@ -819,14 +799,14 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert %{players: %{"alice" => %{aim: nil}}} = World.snapshot(world)
 
     DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
     DT.send_key(ctx, :s)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Pointer steering   off" end)
     for _ <- 1..3, do: DT.send_key(ctx, :down)
     DT.send_key(ctx, :right)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Pointer steering   on" end)
     DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
     DT.send_key(ctx, :enter)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end, timeout: 2_000)
 
@@ -883,7 +863,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "left: h\n" end)
 
     DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
 
     assert {:ok, %{props: %{settings: %{bindings: %{left: [:h]}}}}} =
              Drafter.Accounts.fetch(accounts, "alice")
@@ -959,7 +939,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "little dots" end)
   end
 
-  test "settings open over the arena with Tab, keep the player in the world, and return", %{
+  test "settings open over the world with Tab, keep the player in the world, and return", %{
     ctx: ctx,
     world: world
   } do
@@ -983,12 +963,6 @@ defmodule Cauldron2D.Drafter.ClientTest do
     Process.sleep(200)
     %{players: %{"alice" => %{pos: {x, _}}}} = World.snapshot(world)
     assert x > 5.0, "the new preset's keys steer after returning from settings"
-  end
-
-  test "the lobby shows how to reach settings", %{ctx: ctx} do
-    DT.send_key(ctx, :enter)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
-    assert DT.screen_text(ctx) =~ "s  settings"
   end
 
   test "chat reaches the lobby", %{ctx: ctx} do
@@ -1038,7 +1012,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "▶ Controls" end)
   end
 
-  test "braille is a display choice the arena draws with", %{ctx: ctx, world: world} do
+  test "braille is a display choice the world draws with", %{ctx: ctx, world: world} do
     DT.send_key(ctx, :s)
     for _ <- 1..6, do: DT.send_key(ctx, :down)
     DT.send_key(ctx, :right)
@@ -1119,7 +1093,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end, timeout: 2_000)
 
     DT.send_key(ctx, :escape)
-    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Arenas" end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Worlds" end)
   end
 
   test "a steering key takes the aim away from the pointer until it moves again", %{
@@ -1170,7 +1144,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
              )
   end
 
-  test "t opens a talk line in the arena; what is said reaches everyone in it and keys do not steer meanwhile",
+  test "t opens a talk line in the world; what is said reaches everyone in it and keys do not steer meanwhile",
        %{ctx: ctx, world: world} do
     DT.send_key(ctx, :enter)
     DT.send_key(ctx, :enter)
@@ -1189,5 +1163,757 @@ defmodule Cauldron2D.Drafter.ClientTest do
              DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "red-fox-12: ddd" end, timeout: 2_000)
 
     refute DT.screen_text(ctx) =~ "say:"
+  end
+end
+
+defmodule Cauldron2D.Drafter.ClientControllerTest do
+  @moduledoc """
+  A game controller's events steer the world through the client's pad.
+  """
+
+  use ExUnit.Case, async: false
+
+  alias Cauldron2D.{Atlas, World}
+  alias Cauldron2D.Drafter.Client
+  alias Cauldron2D.Drafter.ClientTest.DotsClient
+  alias Cauldron2D.TestGames.Dots
+  alias Drafter.Test, as: DT
+  alias Drafter.Test.HeadlessDriver
+  alias Drafter.Widget.Registry
+  alias FrenchCurve.Raster
+
+  setup_all do
+    Atlas.new(:dots, tile: 8)
+    |> Atlas.put(:floor, Raster.new(8, 8, background: {20, 20, 30, 255}),
+      glyph: "· ",
+      color: {60, 60, 80}
+    )
+    |> Atlas.put(:dot, Raster.new(8, 8, background: {250, 250, 250, 255}),
+      glyph: "@ ",
+      color: {250, 250, 250}
+    )
+    |> Atlas.install()
+
+    Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
+    Registry.register(Cauldron2D.Drafter.Surface)
+    :ok
+  end
+
+  setup do
+    {:ok, world} = World.start_link(game: Dots, hz: 50, name: :dots_world)
+
+    dir = Path.join(System.tmp_dir!(), "client_pad_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    previous_config = System.get_env("XDG_CONFIG_HOME")
+    System.put_env("XDG_CONFIG_HOME", Path.join(dir, "config"))
+
+    ctx =
+      DT.start_headless(
+        Client,
+        %{
+          game: DotsClient,
+          username: "alice",
+          sink: TuningFork.Sink.Silent,
+          settings: %{display: :glyphs, pointer: false}
+        },
+        size: {80, 24}
+      )
+
+    on_exit(fn ->
+      DT.stop(ctx)
+      if Process.alive?(world), do: GenServer.stop(world)
+      File.rm_rf!(dir)
+
+      if previous_config,
+        do: System.put_env("XDG_CONFIG_HOME", previous_config),
+        else: System.delete_env("XDG_CONFIG_HOME")
+    end)
+
+    {:ok, ctx: ctx, world: world}
+  end
+
+  defp pad(ctx, event) do
+    HeadlessDriver.inject_event({:controller, event})
+    DT.sync(ctx)
+  end
+
+  test "the left stick and the d-pad hold the game's steering actions, at the stick's strength",
+       %{ctx: ctx, world: world} do
+    DT.send_key(ctx, :enter)
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end, timeout: 2_000)
+
+    pad(ctx, %{type: :connected, device: 0, name: "Pad"})
+    pad(ctx, %{type: :axis, device: 0, axis: :left_x, value: 0.75})
+
+    assert %{held: held, strength: %{right: 0.75}} = DT.get_state(ctx).last_input
+    assert MapSet.to_list(held) == [:right]
+
+    pad(ctx, %{type: :axis, device: 0, axis: :left_x, value: 0.0})
+    pad(ctx, %{type: :button, device: 0, button: :dpad_left, pressed: true})
+
+    assert %{held: held} = DT.get_state(ctx).last_input
+    assert MapSet.to_list(held) == [:left]
+    refute Map.has_key?(DT.get_state(ctx).last_input, :strength)
+
+    pad(ctx, %{type: :disconnected, device: 0})
+    assert MapSet.size(DT.get_state(ctx).last_input.held) == 0
+  end
+
+  test "a stick bound to aim aims a fixed way ahead of the focus in the direction it is pushed, and lets go when centred",
+       %{ctx: plain, world: world} do
+    DT.stop(plain)
+
+    ctx =
+      DT.start_headless(
+        Client,
+        %{
+          game: Cauldron2D.Drafter.ClientTest.AimingDotsClient,
+          username: "bob",
+          sink: TuningFork.Sink.Silent,
+          settings: %{display: :glyphs, pointer: true}
+        },
+        size: {80, 24}
+      )
+
+    DT.send_key(ctx, :enter)
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn _ -> "bob" in World.players(world) end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end, timeout: 2_000)
+
+    pad(ctx, %{type: :connected, device: 0, name: "Pad"})
+    pad(ctx, %{type: :axis, device: 0, axis: :left_x, value: 0.0})
+    pad(ctx, %{type: :axis, device: 0, axis: :left_y, value: -1.0})
+
+    state = DT.get_state(ctx)
+    {fx, fy} = Client.focus(state, Client.scene(state))
+    assert %{held: held, aim: {ax, ay}} = state.last_input
+    assert MapSet.size(held) == 0
+    assert_in_delta ax, fx, 0.01
+    assert_in_delta ay, fy - 8.0, 0.01
+
+    pad(ctx, %{type: :axis, device: 0, axis: :left_y, value: 0.0})
+    assert DT.get_state(ctx).last_input.aim == nil
+
+    pad(ctx, %{type: :button, device: 0, button: :dpad_left, pressed: true})
+    assert MapSet.to_list(DT.get_state(ctx).last_input.held) == [:left]
+    DT.stop(ctx)
+  end
+
+  test "in the lobby the d-pad moves the selection and A joins", %{ctx: ctx, world: world} do
+    DT.send_key(ctx, :enter)
+    assert DT.get_state(ctx).screen == :lobby
+
+    pad(ctx, %{type: :button, device: 0, button: :dpad_down, pressed: true})
+    pad(ctx, %{type: :button, device: 0, button: :dpad_down, pressed: false})
+    assert DT.get_state(ctx).lobby.selected == 1
+
+    pad(ctx, %{type: :button, device: 0, button: :dpad_up, pressed: true})
+    pad(ctx, %{type: :button, device: 0, button: :dpad_up, pressed: false})
+    assert DT.get_state(ctx).lobby.selected == 0
+
+    pad(ctx, %{type: :button, device: 0, button: :a, pressed: true})
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
+  end
+end
+
+defmodule Cauldron2D.Drafter.Client.SettingsDisplayTest do
+  use ExUnit.Case, async: true
+
+  alias Cauldron2D.Drafter.Client.Settings
+
+  test "the display choices run auto, braille, the glyph sets, glyphs, and wrap" do
+    settings = Settings.new(Cauldron2D.Drafter.ClientTest.DotsClient, %{})
+
+    displays =
+      Enum.scan(1..7, settings, fn _, acc -> Settings.step_display(acc, 1) end)
+      |> Enum.map(& &1.display)
+
+    assert displays == [:braille, :half, :quad, :sextant, :octant, :glyphs, :auto]
+  end
+
+  test "a glyph set is the surface mode of its name" do
+    settings = Settings.new(Cauldron2D.Drafter.ClientTest.DotsClient, %{display: :octant})
+
+    assert Settings.surface_mode(settings) == :octant
+    assert Settings.surface_mode(%{settings | display: :glyphs}) == :text
+  end
+end
+
+defmodule Cauldron2D.Drafter.ClientProjectionTest do
+  @moduledoc """
+  The world's projection, turned and tilted from the keys and the pad.
+  """
+
+  use ExUnit.Case, async: false
+
+  alias Cauldron2D.{Atlas, World}
+  alias Cauldron2D.Drafter.Client
+  alias Cauldron2D.Drafter.ClientTest.DotsClient
+  alias Cauldron2D.TestGames.Dots
+  alias Drafter.Test, as: DT
+  alias Drafter.Test.HeadlessDriver
+  alias Drafter.Widget.Registry
+  alias FrenchCurve.Raster
+
+  setup_all do
+    Atlas.new(:dots, tile: 8)
+    |> Atlas.put(:floor, Raster.new(8, 8, background: {20, 20, 30, 255}),
+      glyph: "· ",
+      color: {60, 60, 80}
+    )
+    |> Atlas.put(:dot, Raster.new(8, 8, background: {250, 250, 250, 255}),
+      glyph: "@ ",
+      color: {250, 250, 250}
+    )
+    |> Atlas.install()
+
+    Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
+    Registry.register(Cauldron2D.Drafter.Surface)
+    :ok
+  end
+
+  setup do
+    {:ok, world} = World.start_link(game: Dots, hz: 50, name: :dots_world)
+    dir = Path.join(System.tmp_dir!(), "client_look_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    previous_config = System.get_env("XDG_CONFIG_HOME")
+    System.put_env("XDG_CONFIG_HOME", Path.join(dir, "config"))
+
+    ctx =
+      DT.start_headless(
+        Client,
+        %{
+          game: DotsClient,
+          username: "alice",
+          sink: TuningFork.Sink.Silent,
+          settings: %{display: :octant, pointer: false}
+        },
+        size: {80, 24}
+      )
+
+    on_exit(fn ->
+      DT.stop(ctx)
+      if Process.alive?(world), do: GenServer.stop(world)
+      File.rm_rf!(dir)
+
+      if previous_config,
+        do: System.put_env("XDG_CONFIG_HOME", previous_config),
+        else: System.delete_env("XDG_CONFIG_HOME")
+    end)
+
+    DT.send_key(ctx, :enter)
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end, timeout: 2_000)
+
+    {:ok, ctx: ctx, world: world}
+  end
+
+  defp pad(ctx, event) do
+    HeadlessDriver.inject_event({:controller, event})
+    DT.sync(ctx)
+  end
+
+  test "v cycles the projection through top, isometric and first person, shown under the world",
+       %{ctx: ctx} do
+    assert DT.get_state(ctx).look.projection == :top
+
+    DT.send_key(ctx, :v)
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.projection == :iso
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "isometric" end, timeout: 2_000)
+
+    DT.send_key(ctx, :v)
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.projection == :first_person
+
+    assert :ok ==
+             DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "first person" end, timeout: 2_000)
+
+    DT.send_key(ctx, :v)
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.projection == :top
+  end
+
+  test "the brackets turn the isometric view and the quotes tilt it", %{ctx: ctx} do
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :"]")
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.facing == 1
+
+    DT.send_key(ctx, :"[")
+    DT.send_key(ctx, :"[")
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.facing == 3
+
+    DT.send_key(ctx, :"'")
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.tilt > 1.0
+  end
+
+  test "in first person the brackets turn the eye and the quotes pitch it, and the right stick does both",
+       %{ctx: ctx} do
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :"]")
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.heading > 0.0
+
+    DT.send_key(ctx, :";")
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.pitch < 0.0
+
+    before = DT.get_state(ctx).look
+    pad(ctx, %{type: :axis, device: 0, axis: :right_x, value: -1.0})
+    pad(ctx, %{type: :axis, device: 0, axis: :right_y, value: -1.0})
+
+    assert :ok ==
+             DT.wait_for(
+               ctx,
+               fn c ->
+                 look = DT.get_state(c).look
+                 look.heading < before.heading and look.pitch > before.pitch
+               end,
+               timeout: 2_000
+             )
+  end
+
+  test "in first person a drag turns and pitches the eye, and the pointer alone does not",
+       %{ctx: ctx} do
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :v)
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.projection == :first_person
+
+    DT.send_mouse(ctx, %{type: :move, x: 20, y: 10, modifiers: []})
+    DT.sync(ctx)
+    before = DT.get_state(ctx).look
+
+    DT.send_mouse(ctx, %{type: :move, x: 30, y: 14, modifiers: []})
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.heading == before.heading, "a bare move must not steer"
+
+    DT.send_mouse(ctx, %{type: :mouse_down, button: :left, x: 30, y: 14, modifiers: []})
+    DT.send_mouse(ctx, %{type: :drag, button: :left, x: 40, y: 18, modifiers: []})
+    DT.sync(ctx)
+    dragged = DT.get_state(ctx).look
+
+    assert dragged.heading > before.heading
+    assert dragged.pitch < before.pitch
+
+    DT.send_mouse(ctx, %{type: :drag, button: :left, x: 20, y: 10, modifiers: []})
+    DT.sync(ctx)
+    back = DT.get_state(ctx).look
+
+    assert back.heading < dragged.heading
+    assert back.pitch > dragged.pitch
+  end
+
+  test "start cycles the projection and the bumpers turn, as the game's client_pad may rebind",
+       %{ctx: ctx} do
+    pad(ctx, %{type: :button, device: 0, button: :start, pressed: true})
+    assert DT.get_state(ctx).look.projection == :iso
+
+    pad(ctx, %{type: :button, device: 0, button: :right_bumper, pressed: true})
+    assert DT.get_state(ctx).look.facing == 1
+  end
+
+  test "in the isometric view the right stick nudges the aim a tile at a time, turned with the facing",
+       %{ctx: ctx} do
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :"]")
+    DT.sync(ctx)
+
+    pad(ctx, %{type: :axis, device: 0, axis: :right_x, value: 1.0})
+    {fx, fy} = DT.get_state(ctx).view.me.pos
+    assert %{aim: {ax, ay}} = DT.get_state(ctx).last_input
+    assert_in_delta ax, fx, 0.001
+    assert_in_delta ay, fy + 1, 0.001
+
+    DT.send_mouse(ctx, %{type: :move, x: 10, y: 5, modifiers: []})
+    DT.sync(ctx)
+    assert DT.get_state(ctx).pad_aim == nil
+  end
+
+  test "mouse look turns the eye with the pointer in first person once switched on",
+       %{ctx: ctx} do
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :v)
+    DT.sync(ctx)
+    before = DT.get_state(ctx).look.heading
+
+    DT.send_mouse(ctx, %{type: :move, x: 10, y: 5, modifiers: []})
+    DT.send_mouse(ctx, %{type: :move, x: 20, y: 5, modifiers: []})
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.heading == before
+
+    DT.send_key(ctx, :m)
+    DT.send_mouse(ctx, %{type: :move, x: 30, y: 8, modifiers: []})
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look.heading > before
+    assert DT.get_state(ctx).look.pitch < 0.0
+  end
+
+  test "the display keys toggle pictures against glyph sets and cycle the sets", %{ctx: ctx} do
+    assert DT.get_state(ctx).settings.display == :octant
+
+    DT.send_key(ctx, :b)
+    DT.sync(ctx)
+    assert DT.get_state(ctx).settings.display == :half
+
+    DT.send_key(ctx, :g)
+    DT.sync(ctx)
+    assert DT.get_state(ctx).settings.display == :auto
+
+    DT.send_key(ctx, :g)
+    DT.sync(ctx)
+    assert DT.get_state(ctx).settings.display == :half
+  end
+end
+
+defmodule Cauldron2D.Drafter.ClientSteeringTest do
+  @moduledoc """
+  The four direction actions are steered for the projection in use before they reach
+  the world: turned with the isometric view, and along the eye in first person.
+  """
+
+  use ExUnit.Case, async: false
+
+  alias Cauldron2D.{Atlas, World}
+  alias Cauldron2D.Drafter.Client
+  alias Cauldron2D.TestGames.Dots
+  alias Drafter.Test, as: DT
+  alias Drafter.Widget.Registry
+  alias FrenchCurve.Raster
+
+  defmodule FourWays do
+    @moduledoc false
+    @behaviour Cauldron2D.Client.Game
+
+    def title, do: %{name: "FOUR", tagline: "ways"}
+    def atlas, do: :dots
+    def actions, do: [:left, :right, :up, :down]
+
+    def keymaps,
+      do: [arrows: %{left: [:left], right: [:right], up: [:up], down: [:down]}]
+
+    def toggles, do: []
+
+    def worlds(_props),
+      do: [%{id: :main, name: "Main", world: :dots_world, players: 0, humans: [], map: "flat"}]
+
+    def scene(view),
+      do: %{
+        focus: view.me.pos,
+        bounds: {view.width, view.height},
+        cell: fn _ -> {:floor, [], nil} end,
+        movers: view.movers
+      }
+
+    def hud(_view), do: [["x="]]
+    def listener(view), do: view.me.pos
+    def sounds, do: fn _ -> nil end
+    def music, do: []
+    def cue(_view, _screen), do: nil
+  end
+
+  setup_all do
+    Atlas.new(:dots, tile: 8)
+    |> Atlas.put(:floor, Raster.new(8, 8, background: {20, 20, 30, 255}), glyph: "· ")
+    |> Atlas.put(:dot, Raster.new(8, 8, background: {250, 250, 250, 255}), glyph: "@ ")
+    |> Atlas.install()
+
+    Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
+    Registry.register(Cauldron2D.Drafter.Surface)
+    :ok
+  end
+
+  setup do
+    {:ok, world} = World.start_link(game: Dots, hz: 50, name: :dots_world)
+    dir = Path.join(System.tmp_dir!(), "client_steer_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    previous_config = System.get_env("XDG_CONFIG_HOME")
+    System.put_env("XDG_CONFIG_HOME", Path.join(dir, "config"))
+
+    ctx =
+      DT.start_headless(
+        Client,
+        %{
+          game: FourWays,
+          username: "alice",
+          sink: TuningFork.Sink.Silent,
+          settings: %{display: :glyphs, pointer: false}
+        },
+        size: {80, 24}
+      )
+
+    on_exit(fn ->
+      DT.stop(ctx)
+      if Process.alive?(world), do: GenServer.stop(world)
+      File.rm_rf!(dir)
+
+      if previous_config,
+        do: System.put_env("XDG_CONFIG_HOME", previous_config),
+        else: System.delete_env("XDG_CONFIG_HOME")
+    end)
+
+    DT.send_key(ctx, :enter)
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end, timeout: 2_000)
+    {:ok, ctx: ctx}
+  end
+
+  defp held(ctx),
+    do: ctx |> DT.get_state() |> Map.fetch!(:last_input) |> Map.fetch!(:held) |> MapSet.to_list()
+
+  test "top down, a direction is sent as pressed", %{ctx: ctx} do
+    DT.send_key(ctx, :left)
+    DT.sync(ctx)
+    assert held(ctx) == [:left]
+  end
+
+  test "isometric, a direction is turned with the view", %{ctx: ctx} do
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :"]")
+    DT.sync(ctx)
+    assert DT.get_state(ctx).look == %{DT.get_state(ctx).look | projection: :iso, facing: 1}
+
+    DT.send_key(ctx, :left)
+    DT.sync(ctx)
+    assert held(ctx) == [:up]
+  end
+
+  test "first person, the directions go as held with the eye's heading beside them", %{ctx: ctx} do
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :v)
+    DT.send_key(ctx, :"]")
+    DT.sync(ctx)
+
+    DT.send_key(ctx, :up)
+    DT.sync(ctx)
+    assert held(ctx) == [:up]
+    assert_in_delta DT.get_state(ctx).last_input.heading, :math.pi() / 12, 1.0e-9
+  end
+end
+
+defmodule Cauldron2D.Drafter.ClientFlowTest do
+  @moduledoc """
+  Where the client starts and where back goes, as the game's `start/0` or the mount
+  prop says: the lobby flow with or without a title, straight into a world, or a
+  function of the game's own.
+  """
+
+  use ExUnit.Case, async: false
+
+  alias Cauldron2D.{Atlas, World}
+  alias Cauldron2D.Drafter.Client
+  alias Cauldron2D.Drafter.ClientTest.DotsClient
+  alias Cauldron2D.TestGames.Dots
+  alias Drafter.Test, as: DT
+  alias Drafter.Widget.Registry
+  alias FrenchCurve.Raster
+
+  defmodule Direct do
+    @moduledoc false
+    @behaviour Cauldron2D.Client.Game
+
+    defdelegate title, to: DotsClient
+    defdelegate atlas, to: DotsClient
+    defdelegate actions, to: DotsClient
+    defdelegate keymaps, to: DotsClient
+    defdelegate toggles, to: DotsClient
+    defdelegate worlds(props), to: DotsClient
+    defdelegate scene(view), to: DotsClient
+    defdelegate hud(view), to: DotsClient
+    defdelegate listener(view), to: DotsClient
+    defdelegate sounds, to: DotsClient
+    defdelegate music, to: DotsClient
+    defdelegate cue(view, screen), to: DotsClient
+    def start, do: {:play, :other}
+  end
+
+  defmodule Custom do
+    @moduledoc false
+    @behaviour Cauldron2D.Client.Game
+
+    defdelegate title, to: DotsClient
+    defdelegate atlas, to: DotsClient
+    defdelegate actions, to: DotsClient
+    defdelegate keymaps, to: DotsClient
+    defdelegate toggles, to: DotsClient
+    defdelegate worlds(props), to: DotsClient
+    defdelegate scene(view), to: DotsClient
+    defdelegate hud(view), to: DotsClient
+    defdelegate listener(view), to: DotsClient
+    defdelegate sounds, to: DotsClient
+    defdelegate music, to: DotsClient
+    defdelegate cue(view, screen), to: DotsClient
+    defdelegate guide, to: DotsClient
+    def start, do: &Client.to_guide/1
+  end
+
+  setup_all do
+    Atlas.new(:dots, tile: 8)
+    |> Atlas.put(:floor, Raster.new(8, 8, background: {20, 20, 30, 255}), glyph: "· ")
+    |> Atlas.put(:dot, Raster.new(8, 8, background: {250, 250, 250, 255}), glyph: "@ ")
+    |> Atlas.install()
+
+    Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
+    Registry.register(Cauldron2D.Drafter.Surface)
+    :ok
+  end
+
+  setup do
+    {:ok, world} = World.start_link(game: Dots, hz: 50, name: :dots_world)
+    dir = Path.join(System.tmp_dir!(), "client_flow_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    previous_config = System.get_env("XDG_CONFIG_HOME")
+    System.put_env("XDG_CONFIG_HOME", Path.join(dir, "config"))
+
+    on_exit(fn ->
+      if Process.alive?(world), do: GenServer.stop(world)
+      File.rm_rf!(dir)
+
+      if previous_config,
+        do: System.put_env("XDG_CONFIG_HOME", previous_config),
+        else: System.delete_env("XDG_CONFIG_HOME")
+    end)
+
+    {:ok, world: world}
+  end
+
+  defp start(game, props \\ %{}) do
+    ctx =
+      DT.start_headless(
+        Client,
+        Map.merge(
+          %{
+            game: game,
+            username: "alice",
+            sink: TuningFork.Sink.Silent,
+            settings: %{display: :glyphs, pointer: false}
+          },
+          props
+        ),
+        size: {80, 24}
+      )
+
+    on_exit(fn -> DT.stop(ctx) end)
+    ctx
+  end
+
+  test "the default flow is the title, then the lobby, then the world, and back retraces it",
+       %{world: world} do
+    ctx = start(DotsClient)
+    assert DT.get_state(ctx).screen == :title
+
+    DT.send_key(ctx, :enter)
+    assert DT.get_state(ctx).screen == :lobby
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
+    assert DT.get_state(ctx).screen == :play
+
+    DT.send_key(ctx, :escape)
+    assert DT.get_state(ctx).screen == :lobby
+    DT.send_key(ctx, :escape)
+    assert DT.get_state(ctx).screen == :title
+  end
+
+  test "the lobby flow without a title opens on the lobby and stops on back from it" do
+    ctx = start(DotsClient, %{start: {:lobby, title: false}})
+    assert DT.get_state(ctx).screen == :lobby
+
+    DT.send_key(ctx, :escape)
+    assert :ok == DT.wait_for(ctx, fn c -> not Process.alive?(c.app_pid) end, timeout: 2_000)
+  end
+
+  test "a game that starts in a world is in it at once, with no title or lobby, and stops when the player leaves",
+       %{world: world} do
+    ctx = start(Direct)
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end, timeout: 2_000)
+    assert DT.get_state(ctx).screen == :play
+    assert DT.get_state(ctx).joined.id == :other
+
+    DT.send_key(ctx, :escape)
+    assert :ok == DT.wait_for(ctx, fn c -> not Process.alive?(c.app_pid) end, timeout: 2_000)
+  end
+
+  test "a game that starts in a world but keeps the title goes title, world, title", %{
+    world: world
+  } do
+    ctx = start(Direct, %{start: {:play, :main, title: true}})
+    assert DT.get_state(ctx).screen == :title
+
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end, timeout: 2_000)
+    assert DT.get_state(ctx).joined.id == :main
+
+    DT.send_key(ctx, :escape)
+    assert DT.get_state(ctx).screen == :title
+  end
+
+  test "a function is the game's own entry point, given the client's state" do
+    ctx = start(Custom)
+    assert DT.get_state(ctx).screen == :guide
+  end
+
+  test "the mount prop wins over the game's start" do
+    ctx = start(Direct, %{start: :lobby})
+    assert DT.get_state(ctx).screen == :title
+  end
+end
+
+defmodule Cauldron2D.Drafter.ClientSteeredTest do
+  @moduledoc """
+  `Cauldron2D.Drafter.Client.steered/2` answers for every projection the client offers,
+  and for the isometric view at more facings than four.
+  """
+
+  use ExUnit.Case, async: true
+
+  alias Cauldron2D.Drafter.{Client, Surface}
+
+  test "it answers for every projection a game can put the client in" do
+    for projection <- Surface.projections() do
+      look = %{projection: projection, facing: 0, facings: 4, heading: 0.0}
+
+      steered = Client.steered(read([:up]), look)
+
+      assert MapSet.member?(steered.held, :up) or Map.has_key?(steered, :heading),
+             "#{projection} steered an :up into nothing the world can walk"
+    end
+  end
+
+  defp read(held, strength \\ %{}),
+    do: %{
+      held: MapSet.new(held),
+      strength: strength,
+      pressed: MapSet.new(),
+      released: MapSet.new()
+    }
+
+  test "isometric at finer facings sends the directions as held, with the view's heading" do
+    look = %{projection: :iso, facing: 5, facings: 16, heading: 0.0}
+    steered = Client.steered(read([:left]), look)
+    assert MapSet.to_list(steered.held) == [:left]
+    assert_in_delta steered.heading, :math.pi() / 8, 1.0e-9
+  end
+
+  test "a drag turns first person, mode 7 and a free isometric view, but not four facings" do
+    assert Client.turns_with_pointer?(%{projection: :first_person})
+    assert Client.turns_with_pointer?(%{projection: :mode7})
+    assert Client.turns_with_pointer?(%{projection: :iso, facings: 16})
+    refute Client.turns_with_pointer?(%{projection: :iso, facings: 4})
+    refute Client.turns_with_pointer?(%{projection: :oblique})
+    refute Client.turns_with_pointer?(%{projection: :top})
+  end
+
+  test "of the directions a stick holds, the isometric view keeps the one pushed hardest" do
+    look = %{projection: :iso, facing: 0, facings: 4, heading: 0.0}
+    read = read([:left, :up], %{left: 0.9, up: 0.3})
+    assert MapSet.to_list(Client.steered(read, look).held) == [:left]
   end
 end

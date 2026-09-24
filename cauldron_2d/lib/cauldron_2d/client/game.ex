@@ -11,46 +11,51 @@ defmodule Cauldron2D.Client.Game do
         def actions, do: [:left, :right, :launch]
         def keymaps, do: [arrows: %{left: [:left], right: [:right], launch: [:" "]}, wasd: %{...}]
         def toggles, do: []
-        def arenas(_props), do: Cauldron2D.Arenas.list()
+        def worlds(_props), do: Cauldron2D.Worlds.list()
         def scene(view), do: %{focus: view.me.pos, bounds: view.bounds, cell: &MyGame.cell/1, movers: view.movers, labels: []}
         def hud(view), do: [["Balls ", {Integer.to_string(view.me.balls), {255, 220, 0}}], [{:score, ["Score \#{view.me.score}"]}]]
         def listener(view), do: view.me.pos
         def sounds, do: &MyGame.Sound.voice/1
         def music, do: [{"meadow", %{bpm: 112, beats_per_bar: 4, layers: [...], sections: %{...}}}]
-        def cue(view, :arena), do: %{piece: "meadow", section: view.tension, layers: %{}}
+        def cue(view, :play), do: %{piece: "meadow", section: view.tension, layers: %{}}
         def cue(_view, _screen), do: nil
       end
 
   A view is whatever the game's `c:Cauldron2D.Game.view/2` returned for this player;
   `scene/1`, `hud/1`, `listener/1`, `outcome/1` and `cue/2` read it; none of them is
-  asked before an arena's first frame has arrived. The hud is data in
-  the shapes `Cauldron2D.Client.Hud` describes. `scene/1`'s `:labels` are text drawn over
+  asked before a world's first frame has arrived. The hud is data in
+  the shapes `Cauldron2D.Client.Hud` describes. `scene/1`'s `:volumes` are coloured
+  regions of space, as `Cauldron2D.Projection.Volume` describes them, that tint what is
+  seen through them in every projection. `scene/1`'s `:labels` are text drawn over
   the world as `Cauldron2D.Surface.compose/4` takes them, in tiles; default none. Its
   `:subject` names what the focus follows — the player's own ship, the ship they watch,
   a free camera — as a string, atom or number; a client that has panned the view drops
-  the pan when the subject changes, so a new ship comes up centred.
+  the pan when the subject changes, so a new ship comes up centred. Its `:heading`, in
+  radians with `0` along `+x`, is where the subject looks: a first-person view is drawn
+  along it, and a client whose scene gives none turns the eye itself. `:movers` may
+  carry a heading as a third element, `{art, {x, y}, heading}`, for the projections
+  that pose them.
 
-  `arenas/1` is given the client's props and read whenever a lobby draws, so it may
-  answer differently each time. An arena is `%{id, name, world, players, humans, map,
-  note, kind, teams}` as `Cauldron2D.Arenas.list/0` gives it: `world` is the name a
+  `worlds/1` is given the client's props and read whenever a lobby draws, so it may
+  answer differently each time. A world is `%{id, name, world, players, humans, map,
+  note, kind, teams}` as `Cauldron2D.Worlds.list/0` gives it: `world` is the name a
   player joins, `{module, opts}` for a world the client starts itself for this player
   alone (as `Cauldron2D.World.start_link/1` takes them, the client adding `:name`),
   `players` how many humans are in it and `humans` their ids where the lister knows
   them, `kind` `{text, rgb}`, `teams` the choices a player may join as (prop `:team`).
-  A lobby reads an arena's players from the listing alone; it never speaks to the
+  A lobby reads a world's players from the listing alone; it never speaks to the
   world, whose name may start it.
 
-  The lobby is the screen that lists the arenas — the worlds — and lets a player pick
+  The lobby is the screen that lists the worlds and lets a player pick
   one, a team in it, or watching; it has nothing to do with how the world steps, and a
   turn-based game whose players share a world keeps it. Who a player is once in the
   world — a character, a party, a side — is the game's: chosen through `join_props/1`,
-  on a page of its own from `pages/1`, or in the world itself. A game with `lobby?/0`
-  false has no arena to choose; its client goes from the title straight into its first
-  arena, and back to the title from it.
+  on a page of its own from `pages/1`, or in the world itself. Whether a client shows
+  a lobby at all, a title, or opens straight in a world, is the game's `start/0`.
 
-  `cue/2`'s second argument is the screen — `:title`, `:lobby`, `:settings`, `:arena`,
+  `cue/2`'s second argument is the screen — `:title`, `:lobby`, `:settings`, `:play`,
   `:summary` or `:guide` — and `nil` means no music. On `:summary` the view is the last
-  one the arena showed. A client whose music is static (`Cauldron2D.Audio` with
+  one the world showed. A client whose music is static (`Cauldron2D.Audio` with
   `static_music: true`, as a server's `Cauldron2D.Net.Audio` policy `:static` sets) asks
   `cue(view, {:static, screen})` first — the one section it will loop for the whole
   stay, so a game can answer with a piece written as a loop rather than the layered
@@ -62,8 +67,12 @@ defmodule Cauldron2D.Client.Game do
       delay on a press, with the milliseconds each is held, as `Cauldron2D.Input`'s
       `:holds`
     * `steering/0` — the actions the pointer also drives
+    * `padmap/1` — a `Cauldron2D.Input.Pad` padmap for game controllers, given the
+      client's props like `worlds/1` (so a game may keep a player's own bindings in
+      their account). Default `Cauldron2D.Input.Pad.default_map(actions())`: the d-pad
+      and left stick steer `:left`, `:right`, `:up` and `:down`, nothing else is bound
     * `outcome/1` — `nil` while play goes on, or `%{title, lines, next}` when it is over
-      for this player; `next` is `:next_arena`, `:same_arena` or `:lobby` (the default)
+      for this player; `next` is `:next_world`, `:same_world` or `:lobby` (the default)
     * `join_props/1` — extra props for the world's join, from `%{username, settings,
       params}` (`params` a browser's join params, absent elsewhere)
     * `map/1` — the static layer a browser or window draws once, `%{width, height, cell,
@@ -76,11 +85,29 @@ defmodule Cauldron2D.Client.Game do
     * `refusal_text/1` — the words a refused join is reported with
     * `player_label/1` — how a player id is written in a lobby and signed in chat; the
       lobby header shows the player their own id and, when this differs, this after it
-    * `client_keys/0` — the client's own keys, as the terminal client documents them
-    * `chat?/0` — whether the lobby and arena carry a chat; `true` without it
+    * `client_keys/0` — the client's own keys, as the terminal client documents them;
+      an entry `{:look, key} => keys` adds a key of the game's own that flips the
+      boolean `key` of the look, shown among the key hints by its name
+    * `client_pad/0` — the client's own actions on controller buttons, as the terminal
+      client documents them
+    * `look/0` — the view a client starts in: a map over `%{projection: :top | :oblique |
+      :iso | :mode7 | :first_person, projections: [projection], facing: step,
+      facings: steps in a turn, tilt: 0.5..1.5, heading: radians, pitch: -1.0..1.0,
+      mouse_look?: boolean}`, any key omitted.
+      `projections` lists the views the projection key cycles through, in order;
+      `density` is `Cauldron2D.Drafter.Surface`'s, the pixels a cell is drawn with.
+      Default top-down, cycling all three. Any other key is the game's own, kept on
+      the look and given to `scene/2`
+    * `scene/2` — as `scene/1`, given the client's look as well, for a scene that
+      changes with the view or with a key of the game's own on it; when defined it is
+      called in place of `scene/1`
+    * `start/0` — where the client starts: `:lobby` (the title, then the lobby), `{:lobby,
+      title: false}`, `{:play, id}` (straight into that world of `worlds/1`, `:first` for the
+      first), `{:play, id, title: true}`, or a function of the client's state for a flow of
+      the game's own; the terminal client documents each. Default `:lobby`
+    * `chat?/0` — whether the lobby and world carry a chat; `true` without it
     * `frame_rates/0` — the frame rates a settings screen offers
-    * `lobby?/0` — whether a screen of arenas stands between the title and play; `true`
-      without it
+    * `lobby?/0` — the older way of saying `start/0`: `false` is `{:play, :first, title: true}`
     * `home/0` — the name the game keeps its files under, as `Cauldron2D.Paths` takes it:
       rendered music goes to `Cauldron2D.Paths.cache(home, "music")`. Without it, the
       game's module name underscored, up to its first dot: `MyGame.Client` is `:my_game`
@@ -89,9 +116,9 @@ defmodule Cauldron2D.Client.Game do
   alias Cauldron2D.Client.Hud
 
   @type action :: atom()
-  @type screen :: :title | :lobby | :settings | :arena | :summary | :guide | {:static, atom()}
+  @type screen :: :title | :lobby | :settings | :play | :summary | :guide | {:static, atom()}
   @type rgb :: {byte(), byte(), byte()}
-  @type arena :: %{
+  @type world :: %{
           required(:id) => term(),
           required(:name) => String.t(),
           required(:world) => GenServer.server() | {module(), keyword()},
@@ -108,7 +135,9 @@ defmodule Cauldron2D.Client.Game do
           required(:cell) => ({integer(), integer()} -> term()),
           required(:movers) => [{term(), {number(), number()}}],
           optional(:labels) => list(),
-          optional(:subject) => String.t() | atom() | number()
+          optional(:volumes) => list(),
+          optional(:subject) => String.t() | atom() | number(),
+          optional(:heading) => number()
         }
   @type page :: %{key: atom(), hint: String.t(), title: String.t(), render: (-> [Hud.row()])}
 
@@ -118,8 +147,9 @@ defmodule Cauldron2D.Client.Game do
   @callback keymaps() ::
               %{atom() => Cauldron2D.Input.keymap()} | [{atom(), Cauldron2D.Input.keymap()}]
   @callback toggles() :: [action()]
-  @callback arenas(map()) :: [arena()]
+  @callback worlds(map()) :: [world()]
   @callback scene(term()) :: scene()
+  @callback scene(term(), map()) :: scene()
   @callback hud(term()) :: Hud.t()
   @callback listener(term()) :: {number(), number()} | nil
   @callback sounds() :: (atom() -> Cauldron2D.Audio.sound())
@@ -128,12 +158,13 @@ defmodule Cauldron2D.Client.Game do
 
   @callback holds() :: [{action(), pos_integer()}]
   @callback steering() :: [action()]
+  @callback padmap(map()) :: Cauldron2D.Input.Pad.padmap()
   @callback outcome(term()) ::
               nil
               | %{
                   required(:title) => String.t(),
                   required(:lines) => [String.t()],
-                  optional(:next) => :next_arena | :same_arena | :lobby
+                  optional(:next) => :next_world | :same_world | :lobby
                 }
   @callback join_props(map()) :: map()
   @callback map(term()) :: %{
@@ -147,14 +178,24 @@ defmodule Cauldron2D.Client.Game do
   @callback pages(map()) :: [page()]
   @callback refusal_text(term()) :: String.t()
   @callback player_label(term()) :: String.t()
-  @callback client_keys() :: %{atom() => atom() | nil}
+  @callback client_keys() :: %{atom() => atom() | [atom()] | nil}
+  @callback client_pad() :: %{atom() => atom() | [atom()] | nil}
+  @callback look() :: map()
+  @callback start() ::
+              :lobby
+              | {:lobby, keyword()}
+              | {:play, term()}
+              | {:play, term(), keyword()}
+              | (map() -> map())
   @callback chat?() :: boolean()
   @callback frame_rates() :: [:auto | pos_integer()]
   @callback lobby?() :: boolean()
   @callback home() :: atom()
 
-  @optional_callbacks holds: 0,
+  @optional_callbacks scene: 2,
+                      holds: 0,
                       steering: 0,
+                      padmap: 1,
                       outcome: 1,
                       join_props: 1,
                       map: 1,
@@ -167,6 +208,9 @@ defmodule Cauldron2D.Client.Game do
                       chat?: 0,
                       frame_rates: 0,
                       lobby?: 0,
+                      client_pad: 0,
+                      look: 0,
+                      start: 0,
                       home: 0
 
   @doc "Call an optional callback of `game` with `args`, or `default` when it has none."
@@ -199,9 +243,9 @@ defmodule Cauldron2D.Client.Game do
   defp topmost({base, [], _tint}), do: base
   defp topmost({_base, overlays, _tint}), do: List.last(overlays)
 
-  @doc "The arena whose id writes as `id`, from `game`'s arenas for `props`."
-  @spec arena(module(), map(), String.t()) :: arena() | nil
-  def arena(game, props, id), do: Enum.find(game.arenas(props), &(to_string(&1.id) == id))
+  @doc "The world whose id writes as `id`, from `game`'s worlds for `props`."
+  @spec world(module(), map(), String.t()) :: world() | nil
+  def world(game, props, id), do: Enum.find(game.worlds(props), &(to_string(&1.id) == id))
 
   @doc "The player's outcome for `view`, `nil` while play goes on."
   @spec outcome(module(), term()) :: map() | nil

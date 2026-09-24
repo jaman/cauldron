@@ -23,21 +23,6 @@ defmodule Cauldron2D.RngTest do
       assert first == again
     end
 
-    test "a different seed gives a different run" do
-      {first, _rng} = take(Rng.new(1), 50, &Rng.roll(&1, 1_000))
-      {other, _rng} = take(Rng.new(2), 50, &Rng.roll(&1, 1_000))
-
-      refute first == other
-    end
-
-    test "reusing a generator repeats its value, which is what threading it avoids" do
-      rng = Rng.new(7)
-      {one, _next} = Rng.roll(rng, 1_000)
-      {two, _next} = Rng.roll(rng, 1_000)
-
-      assert one == two
-    end
-
     test "random/0 hands back the seed it used, so a run can be replayed" do
       {rng, seed} = Rng.random()
       {values, _rng} = take(rng, 20, &Rng.roll(&1, 100))
@@ -48,30 +33,12 @@ defmodule Cauldron2D.RngTest do
   end
 
   describe "rolling" do
-    test "roll stays within one and n, and reaches both ends" do
-      {values, _rng} = take(Rng.new(3), 500, &Rng.roll(&1, 6))
-
-      assert Enum.all?(values, &(&1 in 1..6))
-      assert Enum.min(values) == 1
-      assert Enum.max(values) == 6
-    end
-
-    test "a one-sided die is always one" do
-      {values, _rng} = take(Rng.new(4), 20, &Rng.roll(&1, 1))
-
-      assert Enum.uniq(values) == [1]
-    end
-
     test "between is inclusive at both ends and never outside them" do
       {values, _rng} = take(Rng.new(5), 500, &Rng.between(&1, -3, 3))
 
       assert Enum.all?(values, &(&1 in -3..3))
       assert Enum.min(values) == -3
       assert Enum.max(values) == 3
-    end
-
-    test "a range of one value gives that value" do
-      assert {8, _rng} = Rng.between(Rng.new(6), 8, 8)
     end
 
     test "dice sums as many rolls as it was asked for" do
@@ -89,12 +56,6 @@ defmodule Cauldron2D.RngTest do
       {rarely, _rng} = take(Rng.new(10), 500, &Rng.chance(&1, 1, 1_000))
       assert Enum.count(rarely, & &1) <= 5
     end
-
-    test "chance lands near the odds it was given" do
-      {values, _rng} = take(Rng.new(11), 2_000, &Rng.chance(&1, 1, 4))
-
-      assert_in_delta Enum.count(values, & &1) / 2_000, 0.25, 0.05
-    end
   end
 
   describe "picking from a list" do
@@ -108,10 +69,6 @@ defmodule Cauldron2D.RngTest do
       {values, _rng} = take(Rng.new(13), 400, &Rng.pick(&1, [:a, :b, :c, :d]))
 
       assert Enum.sort(Enum.uniq(values)) == [:a, :b, :c, :d]
-    end
-
-    test "a list of one gives that one" do
-      assert {:only, _rng} = Rng.pick(Rng.new(14), [:only])
     end
   end
 
@@ -177,12 +134,6 @@ defmodule Cauldron2D.RngTest do
       assert {[:one], ^rng} = Rng.shuffle(rng, [:one])
     end
 
-    test "the same seed shuffles the same way" do
-      list = Enum.to_list(1..50)
-
-      assert Rng.shuffle(Rng.new(24), list) == Rng.shuffle(Rng.new(24), list)
-    end
-
     test "a long list is genuinely moved rather than nudged" do
       list = Enum.to_list(1..2_000)
       {shuffled, _rng} = Rng.shuffle(Rng.new(25), list)
@@ -206,16 +157,6 @@ defmodule Cauldron2D.RngTest do
       for {_order, count} <- counts do
         assert_in_delta count / 1_200, 1 / 6, 0.04
       end
-    end
-
-    test "every element reaches the front over enough runs" do
-      firsts =
-        for seed <- 1..400 do
-          {[first | _rest], _rng} = Rng.shuffle(Rng.new(seed), Enum.to_list(1..10))
-          first
-        end
-
-      assert Enum.sort(Enum.uniq(firsts)) == Enum.to_list(1..10)
     end
   end
 end

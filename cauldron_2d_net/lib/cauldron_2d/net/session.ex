@@ -34,7 +34,7 @@ defmodule Cauldron2D.Net.Session do
           name: String.t(),
           audio: pid() | nil,
           sheet: Sheet.t(),
-          sheet_url: String.t(),
+          sheet_url: String.t() | {module(), atom()},
           actions: %{String.t() => atom()},
           map_sent?: boolean(),
           cue: term(),
@@ -75,7 +75,9 @@ defmodule Cauldron2D.Net.Session do
   `props` carries `:settings` (`:sfx` and `:music` levels, default
   `Cauldron2D.Audio.default_levels/0`) and
   anything the game's `join_props/1` adds. Options: `:sheet_url`, where the game serves
-  the sheet PNG (default `"/atlas.png"`); `:sink`, a sink for the audio instead of
+  the sheet PNG — a path, or `{module, function}` of no arguments called each time a
+  sheet is sent, for a path that changes with the sheet (default `"/atlas.png"`);
+  `:sink`, a sink for the audio instead of
   `TuningFork.Sink.Process` to this process; `:audio`, the PCM format asked for as
   `%{rate: hertz, channels: 1 | 2}` (default 44 100 Hz stereo — 22 050 Hz mono is a
   quarter of the bytes) or `:off` for no sound; `:policy`, a sound policy instead of
@@ -136,7 +138,10 @@ defmodule Cauldron2D.Net.Session do
         )
 
       {:ok, session,
-       [{"sheet", Sheet.index(sheet, sheet_url)}, {"audio", audio_push(session.format)}]}
+       [
+         {"sheet", Sheet.index(sheet, sheet_url(sheet_url))},
+         {"audio", audio_push(session.format)}
+       ]}
     end
   end
 
@@ -162,7 +167,7 @@ defmodule Cauldron2D.Net.Session do
 
   defp music_of(_policy, :off), do: :off
   defp music_of(%{music: :off}, _format), do: :off
-  defp music_of(%{music: :arena}, _format), do: :shared
+  defp music_of(%{music: :world}, _format), do: :shared
   defp music_of(%{music: :static}, _format), do: :static
   defp music_of(_personal_or_dynamic, _format), do: :own
 
@@ -262,8 +267,11 @@ defmodule Cauldron2D.Net.Session do
     sheet = Sheet.cached(session.game.atlas())
 
     {%{session | sheet: sheet, map_sent?: false},
-     [{"sheet", Sheet.index(sheet, session.sheet_url)}]}
+     [{"sheet", Sheet.index(sheet, sheet_url(session.sheet_url))}]}
   end
+
+  defp sheet_url({mod, fun}), do: apply(mod, fun, [])
+  defp sheet_url(path) when is_binary(path), do: path
 
   @doc "A `{:cauldron_frame, message}` from the world: the map first if not yet sent, then the frame; events and cues reach the audio."
   @spec frame(t(), %{view: term(), events: list()}) :: {t(), [push()]}
@@ -371,9 +379,9 @@ defmodule Cauldron2D.Net.Session do
   end
 
   defp wanted_cue(%{music: :static, game: game}, view),
-    do: game.cue(view, {:static, :arena}) || game.cue(view, :arena)
+    do: game.cue(view, {:static, :play}) || game.cue(view, :play)
 
-  defp wanted_cue(%{game: game}, view), do: game.cue(view, :arena)
+  defp wanted_cue(%{game: game}, view), do: game.cue(view, :play)
 
   defp start_audio(game, levels, sink, format, sfx?, music) do
     music? = music in [:own, :static]

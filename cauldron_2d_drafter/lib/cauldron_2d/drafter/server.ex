@@ -10,8 +10,8 @@ defmodule Cauldron2D.Drafter.Server do
   port on the server — `:sound_port` for the first account, the next number for the
   next, and so on — kept in its props as `:pulse_port`; the terminal client's audio
   goes as raw PCM through the `ssh -R <port>:127.0.0.1:4713` tunnel to a player
-  program on the player's machine. The arenas are the game's, registered with
-  `Cauldron2D.Arenas` before or after the server starts.
+  program on the player's machine. The worlds are the game's, registered with
+  `Cauldron2D.Worlds` before or after the server starts.
 
   ## Options
 
@@ -33,7 +33,7 @@ defmodule Cauldron2D.Drafter.Server do
       Default `<atlas>@<host>`, when the VM is not already named
 
   Returns `{:ok, %{daemon, accounts, http, node, beacon}}`; `stop/1` stops what was
-  started, leaving the arenas registered.
+  started, leaving the worlds registered.
   """
 
   alias Cauldron2D.{Beacon, Paths}

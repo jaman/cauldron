@@ -17,6 +17,6 @@ mix test
 | `priv/art/*.pic`, `atlas.txt`, `lib/cistern/art.ex` | the art |
 | `lib/cistern/client.ex`, `lib/mix/tasks/cistern.ex` | on screen |
 | `lib/cistern/sound.ex` | sound and music |
-| `lib/cistern/arenas.ex`, `brain.ex` | more players and a robot |
+| `lib/cistern/worlds.ex`, `brain.ex` | more players and a robot |
 | `lib/cistern/web.ex`, `lib/mix/tasks/cistern.serve.ex` | a browser |
 | `lib/mix/tasks/cistern.desktop.ex` | a window |

@@ -63,7 +63,7 @@ defmodule Cauldron2D.LedgerTest do
     assert length(Ledger.board(ledger, :all, :kills, top: :all)) == 2
 
     assert [%{account: "a1", value: 5}, %{account: "b1", value: 2}] =
-             Ledger.board(ledger, :all, :kills, arena: "Pit")
+             Ledger.board(ledger, :all, :kills, world: "Pit")
   end
 
   test "a period leaves out what is older, and a robot's result is dropped" do

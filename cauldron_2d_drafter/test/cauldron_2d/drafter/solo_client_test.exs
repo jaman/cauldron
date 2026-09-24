@@ -19,7 +19,7 @@ defmodule Cauldron2D.Drafter.SoloClientTest do
     def lobby?, do: false
     def chat?, do: false
 
-    def arenas(_props),
+    def worlds(_props),
       do: [%{id: :solo, name: "Solo", world: {Dots, [hz: 50]}, players: 0, map: "flat"}]
 
     def scene(view),
@@ -86,7 +86,7 @@ defmodule Cauldron2D.Drafter.SoloClientTest do
     {:ok, ctx: ctx, trace: trace}
   end
 
-  test "with CAULDRON_TRACE set, the keys pressed in the arena, the inputs sent and the frames received are traced",
+  test "with CAULDRON_TRACE set, the keys pressed in the world, the inputs sent and the frames received are traced",
        %{ctx: ctx, trace: trace} do
     DT.send_key(ctx, :enter)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end)
@@ -112,7 +112,7 @@ defmodule Cauldron2D.Drafter.SoloClientTest do
     assert DT.screen_text(ctx) =~ "one player, own world"
     DT.send_key(ctx, :enter)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "x=" end)
-    refute DT.screen_text(ctx) =~ "Arenas"
+    refute DT.screen_text(ctx) =~ "Worlds"
     assert DT.screen_text(ctx) =~ "me"
     worlds_before = length(Process.list())
 

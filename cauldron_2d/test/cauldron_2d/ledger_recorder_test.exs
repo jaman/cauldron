@@ -42,7 +42,7 @@ defmodule Cauldron2D.Ledger.RecorderTest do
     def drain_events(state), do: {state.events, %{state | events: []}}
   end
 
-  test "every tagged event in the world goes to the ledger under the arena's name, and the recorder stops with the world" do
+  test "every tagged event in the world goes to the ledger under the world's name, and the recorder stops with the world" do
     path =
       Path.join(System.tmp_dir!(), "cauldron_recorder_#{System.unique_integer([:positive])}.dets")
 
@@ -53,14 +53,14 @@ defmodule Cauldron2D.Ledger.RecorderTest do
     {:ok, recorder} =
       Ledger.Recorder.start_link(
         world: world,
-        arena: "Pit",
+        label: "Pit",
         ledger: ledger,
         on_result: fn row -> send(test, {:seen, row}) end
       )
 
     :ok = Player.join(world, :alice, %{})
     assert_receive {:seen, %{id: :alice}}, 1_000
-    assert [%{account: :alice, value: 1}] = Ledger.board(ledger, :all, :kills, arena: "Pit")
+    assert [%{account: :alice, value: 1}] = Ledger.board(ledger, :all, :kills, world: "Pit")
     ref = Process.monitor(recorder)
     GenServer.stop(world)
     assert_receive {:DOWN, ^ref, :process, ^recorder, :normal}, 500

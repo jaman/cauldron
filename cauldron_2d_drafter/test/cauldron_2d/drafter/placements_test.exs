@@ -32,10 +32,12 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
   end
 
   setup do
+    Context.put_terminal_env(%{"TERM" => "xterm-kitty"})
     Context.put_terminal_protocol(:kitty)
     Context.put_cell_size({10, 20})
 
     on_exit(fn ->
+      Process.delete(:drafter_terminal_env)
       Process.delete(:drafter_terminal_protocol)
       Process.delete(:drafter_cell_size)
     end)
@@ -46,7 +48,7 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
         focus: {5, 5},
         cell: fn _ -> {:floor, [], nil} end,
         movers: [{:ship, {5.25, 5.5}}, {:shot, {6.0, 5.0}}],
-        id: :arena
+        id: :world
       })
 
     {:ok, state: state}
@@ -103,7 +105,7 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
 
   describe "a frame with placements" do
     test "places each mover at its cell with a pixel offset, on the sprite layer", %{state: state} do
-      {paint, _clear, region} = Surface.image(state, rect(), :arena)
+      {paint, _clear, region} = Surface.image(state, rect(), :world)
       paint = IO.iodata_to_binary(paint)
 
       ship = Sprites.image_id(:placement_test, :ship)
@@ -117,16 +119,16 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
 
     test "the sprites are stored at the size of the cells they occupy, once", %{state: state} do
       ship = Sprites.image_id(:placement_test, :ship)
-      {paint, _clear, _region} = Surface.image(state, rect(), :arena)
+      {paint, _clear, _region} = Surface.image(state, rect(), :world)
       assert IO.iodata_to_binary(paint) =~ "a=t,i=#{ship},f=32,s=20,v=20"
-      {again, _clear, _region} = Surface.image(state, rect(), :arena)
+      {again, _clear, _region} = Surface.image(state, rect(), :world)
       refute IO.iodata_to_binary(again) =~ "a=t,i=#{ship}"
     end
 
     test "the grid is stored at its own size and fitted to the pane by the terminal", %{
       state: state
     } do
-      {paint, _clear, region} = Surface.image(state, rect(), {:arena, :fitted_grid})
+      {paint, _clear, region} = Surface.image(state, rect(), {:world, :fitted_grid})
       paint = IO.iodata_to_binary(paint)
       assert paint =~ "s=88,v=88"
       assert paint =~ "c=20,r=10"
@@ -135,7 +137,7 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
 
     test "a larger font stores the sprites larger, at the same cell", %{state: state} do
       Context.put_cell_size({16, 32})
-      {paint, _clear, _region} = Surface.image(state, rect(), :arena)
+      {paint, _clear, _region} = Surface.image(state, rect(), :world)
       paint = IO.iodata_to_binary(paint)
       assert paint =~ "a=t,i=#{Sprites.image_id(:placement_test, :ship)},f=32,s=32,v=32"
       assert paint =~ "X=8,Y=16"
@@ -143,24 +145,14 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
     end
 
     test "zoomed in the movers are composited, not placed", %{state: state} do
-      {paint, _clear, _region} = Surface.image(%{state | zoom: 2}, rect(), :arena)
-      refute IO.iodata_to_binary(paint) =~ "a=d,d=z"
-    end
-
-    test "the cursor is put at the mover's cell inside the pane", %{state: state} do
-      {paint, _clear, _region} = Surface.image(state, rect(), :arena)
-      paint = IO.iodata_to_binary(paint)
-      origin = Cauldron2D.Camera.origin({5, 5}, {10, 10})
-      {ox, oy} = origin
-      column = floor((5.25 - ox) * 2)
-      row = floor(5.5 - oy)
-      assert paint =~ "\e[#{2 + row + 1};#{3 + column + 1}H"
+      {paint, _clear, _region} = Surface.image(%{state | zoom: 2}, rect(), :world)
+      refute IO.iodata_to_binary(paint) =~ ~r{a=p[^\e]*z=1}
     end
 
     test "the grid is sent once and only placed again while its tiles do not change", %{
       state: state
     } do
-      id = {:arena, System.unique_integer()}
+      id = {:world, System.unique_integer()}
 
       state = %{
         state
@@ -179,12 +171,12 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
     end
 
     test "a mover outside the pane is not placed", %{state: state} do
-      {paint, _, _} = Surface.image(%{state | movers: [{:ship, {30.0, 15.0}}]}, rect(), :arena)
+      {paint, _, _} = Surface.image(%{state | movers: [{:ship, {30.0, 15.0}}]}, rect(), :world)
       refute IO.iodata_to_binary(paint) =~ "a=p,i=#{Sprites.image_id(:placement_test, :ship)}"
     end
 
     test "clearing removes the grid image and the sprite layer", %{state: state} do
-      {_, clear, _} = Surface.image(state, rect(), :arena)
+      {_, clear, _} = Surface.image(state, rect(), :world)
       clear = IO.iodata_to_binary(clear)
       assert clear =~ "a=d,d=i"
       assert clear =~ "a=d,d=z,z=1"
@@ -194,8 +186,8 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
   describe "without the terminal's cell size" do
     test "movers are composited into one image instead", %{state: state} do
       Process.delete(:drafter_cell_size)
-      {paint, _, _} = Surface.image(state, rect(), :arena)
-      refute IO.iodata_to_binary(paint) =~ "a=d,d=z"
+      {paint, _, _} = Surface.image(state, rect(), :world)
+      refute IO.iodata_to_binary(paint) =~ ~r{a=p[^\e]*z=1}
     end
   end
 
@@ -205,18 +197,20 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
       Context.put_terminal_protocol(:sixel)
       assert Surface.protocol(state) == :sixel
       assert Surface.protocol(%{state | mode: :text}) == nil
-      assert Surface.image(%{state | mode: :text}, rect(), :arena) == nil
+      assert Surface.image(%{state | mode: :text}, rect(), :world) == nil
     end
 
-    test "a probe that named no protocol falls back to detection", %{state: state} do
+    test "a probe that named no protocol falls back to detecting the session's environment",
+         %{state: state} do
       Context.put_terminal_protocol(nil)
-      assert Surface.protocol(state) == Cauldron2D.Renderer.protocol(nil)
+      assert Surface.protocol(state) == FrenchCurve.Capability.detect(Context.terminal_env())
+      assert Surface.protocol(state) == :kitty
     end
   end
 
   describe "scrolling by fractions of a tile" do
     test "the grid is placed through a source window shifted by the fraction", %{state: state} do
-      {paint, _, region} = Surface.image(%{state | focus: {5.3, 5.2}}, rect(), :arena)
+      {paint, _, region} = Surface.image(%{state | focus: {5.3, 5.2}}, rect(), :world)
       paint = IO.iodata_to_binary(paint)
 
       assert paint =~ "x=2,y=2,w=80,h=80"
@@ -227,7 +221,7 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
     test "a mover at the focus sits at the same pane cell whatever the fraction", %{state: state} do
       placement = fn focus ->
         {paint, _, _} =
-          Surface.image(%{state | focus: focus, movers: [{:ship, focus}]}, rect(), :arena)
+          Surface.image(%{state | focus: focus, movers: [{:ship, focus}]}, rect(), :world)
 
         paint = IO.iodata_to_binary(paint)
 
@@ -246,7 +240,7 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
 
     test "without placements the composed image is cropped to the pane", %{state: state} do
       Process.delete(:drafter_cell_size)
-      {paint, _, _} = Surface.image(%{state | focus: {5.3, 5.2}}, rect(), :arena)
+      {paint, _, _} = Surface.image(%{state | focus: {5.3, 5.2}}, rect(), :world)
       assert IO.iodata_to_binary(paint) =~ "s=80,v=80"
     end
   end

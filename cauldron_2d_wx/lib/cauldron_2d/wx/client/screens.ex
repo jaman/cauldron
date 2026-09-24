@@ -30,7 +30,7 @@ defmodule Cauldron2D.Wx.Client.Screens do
     screen(state, size) ++ status(state, size)
   end
 
-  @doc "How many arenas the lobby lists at once."
+  @doc "How many worlds the lobby lists at once."
   @spec window() :: pos_integer()
   def window, do: @window
 
@@ -71,46 +71,46 @@ defmodule Cauldron2D.Wx.Client.Screens do
       state.selected
       |> Kernel.-(div(@window, 2))
       |> max(0)
-      |> min(max(length(state.arenas) - @window, 0))
+      |> min(max(length(state.worlds) - @window, 0))
 
-    shown = state.arenas |> Enum.drop(first) |> Enum.take(@window)
-    chosen = Enum.at(state.arenas, state.selected)
+    shown = state.worlds |> Enum.drop(first) |> Enum.take(@window)
+    chosen = Enum.at(state.worlds, state.selected)
 
     header = [
-      {@margin, 40, "Arenas  ·  #{state.username}", @accent, :big, nil},
+      {@margin, 40, "Worlds  ·  #{state.username}", @accent, :big, nil},
       {@margin, 90, "↑↓ choose   Enter join   w watch   t team   s settings   h guide   Esc back",
        @dim, :small, nil}
     ]
 
     rows =
-      for {arena, offset} <- Enum.with_index(shown), index = first + offset do
+      for {world, offset} <- Enum.with_index(shown), index = first + offset do
         marker = if index == state.selected, do: "▶ ", else: "  "
         colour = if index == state.selected, do: @ink, else: @dim
 
-        {@margin, 130 + offset * @line, marker <> arena_line(arena), colour, :normal,
+        {@margin, 130 + offset * @line, marker <> world_line(world), colour, :normal,
          {:row, index}}
       end
 
     header ++ rows ++ chosen_lines(state, chosen, 130 + @window * @line + 20)
   end
 
-  defp arena_line(arena) do
+  defp world_line(world) do
     kind =
-      case Map.get(arena, :kind) do
+      case Map.get(world, :kind) do
         {text, _rgb} -> "  ·  #{text}"
         text when is_binary(text) -> "  ·  #{text}"
         _none -> ""
       end
 
-    map = if Map.get(arena, :map), do: "  ·  #{arena.map}", else: ""
-    "#{arena.name}#{kind}  ·  #{Map.get(arena, :players, 0)} playing#{map}"
+    map = if Map.get(world, :map), do: "  ·  #{world.map}", else: ""
+    "#{world.name}#{kind}  ·  #{Map.get(world, :players, 0)} playing#{map}"
   end
 
   defp chosen_lines(_state, nil, _y), do: []
 
-  defp chosen_lines(state, arena, y) do
-    note = if Map.get(arena, :note), do: [{@margin, y, arena.note, @dim, :normal, nil}], else: []
-    teams = Map.get(arena, :teams, [])
+  defp chosen_lines(state, world, y) do
+    note = if Map.get(world, :note), do: [{@margin, y, world.note, @dim, :normal, nil}], else: []
+    teams = Map.get(world, :teams, [])
 
     team =
       if teams == [] do

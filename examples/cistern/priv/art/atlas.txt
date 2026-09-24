@@ -1,4 +1,5 @@
 bucket	u 	#c8a060	
+bucket_robot	u 	#6f9ec4		from bucket; colour B #6f9ec4; colour R #35526f; colour H #cfe8ff
 drop	o 	#6cb8ff	6
 drop_gold	o 	#ffd040	6	from drop; colour W #ffd040; colour L #fff0b0
 floor	==	#4c527a	

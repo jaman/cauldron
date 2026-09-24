@@ -70,7 +70,7 @@ defmodule Cauldron2D.Net.SessionTest do
     def keymaps, do: [arrows: %{left: [:left], right: [:right], fire: [:" "]}]
     def toggles, do: []
 
-    def arenas(_props),
+    def worlds(_props),
       do: [
         %{id: :main, name: "Main", world: :dots_web_world, players: 0},
         %{id: :own, name: "Own", world: {Cauldron2D.Net.SessionTest.Dots, [hz: 50]}, players: 0}
@@ -116,7 +116,7 @@ defmodule Cauldron2D.Net.SessionTest do
          }}
       ]
 
-    def cue(_view, :arena), do: %{piece: "hum", section: :on, layers: %{}}
+    def cue(_view, :play), do: %{piece: "hum", section: :on, layers: %{}}
     def cue(_view, _screen), do: nil
 
     def join_props(%{username: name, params: params}),
@@ -250,9 +250,9 @@ defmodule Cauldron2D.Net.SessionTest do
       :ok = Session.leave(silent)
     end
 
-    test "with the music shared by arena, sessions in one world share one stage and get its music mixed under their own effects",
+    test "with the music shared by world, sessions in one world share one stage and get its music mixed under their own effects",
          %{world: world} do
-      Policy.set(music: :arena, sfx: :personal)
+      Policy.set(music: :world, sfx: :personal)
       {:ok, one, _} = Session.join(DotsWeb, world, "cat", %{settings: %{sfx: 1.0, music: 1.0}})
       test = self()
 
@@ -288,7 +288,7 @@ defmodule Cauldron2D.Net.SessionTest do
 
     test "with the music shared and effects off a session has no stage of its own and passes the shared music straight through",
          %{world: world} do
-      Policy.set(music: :arena, sfx: :off)
+      Policy.set(music: :world, sfx: :off)
 
       {:ok, session, pushes} =
         Session.join(DotsWeb, world, "eve", %{settings: %{sfx: 1.0, music: 1.0}})
@@ -342,8 +342,8 @@ defmodule Cauldron2D.Net.SessionTest do
     end
   end
 
-  test "an arena of the player's own starts a world for them, can be paused, and stops when they leave" do
-    %{world: own} = Game.arena(DotsWeb, %{}, "own")
+  test "a world of the player's own starts a world for them, can be paused, and stops when they leave" do
+    %{world: own} = Game.world(DotsWeb, %{}, "own")
 
     {:ok, session, _pushes} =
       Session.join(DotsWeb, own, "dave", %{settings: %{sfx: 0.0, music: 0.0}},
@@ -359,10 +359,18 @@ defmodule Cauldron2D.Net.SessionTest do
     refute Process.alive?(world)
   end
 
-  test "a changed atlas sends a new sheet and the map again", %{world: world} do
-    {:ok, session, _pushes} =
+  def versioned_sheet_url,
+    do:
+      "/atlas.png?v=" <> Integer.to_string(:persistent_term.get({__MODULE__, :sheet_version}, 1))
+
+  test "a changed atlas sends a new sheet and the map again, at the address the game gives for it then",
+       %{world: world} do
+    :persistent_term.put({__MODULE__, :sheet_version}, 1)
+
+    {:ok, session, [{"sheet", %{url: "/atlas.png?v=1"}}, _audio]} =
       Session.join(DotsWeb, world, "carol", %{settings: %{sfx: 0.0, music: 0.0}},
-        sink: TuningFork.Sink.Silent
+        sink: TuningFork.Sink.Silent,
+        sheet_url: {__MODULE__, :versioned_sheet_url}
       )
 
     assert_receive {:cauldron_frame, message}, 500
@@ -375,7 +383,11 @@ defmodule Cauldron2D.Net.SessionTest do
     |> Atlas.install()
 
     assert_receive {:cauldron_atlas, :dots_web, :changed}
-    {session, [{"sheet", %{arts: %{"gem" => _}}}]} = Session.atlas_changed(session)
+    :persistent_term.put({__MODULE__, :sheet_version}, 2)
+
+    {session, [{"sheet", %{arts: %{"gem" => _}, url: "/atlas.png?v=2"}}]} =
+      Session.atlas_changed(session)
+
     assert_receive {:cauldron_frame, message}, 500
     {_session, [{"map", _}, {"frame", _}]} = Session.frame(session, message)
     :ok = Session.leave(session)

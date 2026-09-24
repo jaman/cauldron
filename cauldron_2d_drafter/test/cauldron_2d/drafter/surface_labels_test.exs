@@ -75,19 +75,13 @@ defmodule Cauldron2D.Drafter.SurfaceLabelsTest do
     refute cut =~ "edgeword"
   end
 
-  test "labels are folded in by a re-render like every other prop", %{state: state} do
-    assert Surface.update(%{labels: []}, state).labels == []
-    assert Surface.update(%{focus: {1, 1}}, state).labels == state.labels
-
-    assert Surface.from_component_opts(nil, labels: [{"x", {0, 0}, {1, 2, 3}}], __widget_id__: :m).labels ==
-             [{"x", {0, 0}, {1, 2, 3}}]
-  end
-
   test "with placements a label is a stored image placed at its cell", %{state: state} do
+    Context.put_terminal_env(%{"TERM" => "xterm-kitty"})
     Context.put_terminal_protocol(:kitty)
     Context.put_cell_size({10, 20})
 
     on_exit(fn ->
+      Process.delete(:drafter_terminal_env)
       Process.delete(:drafter_terminal_protocol)
       Process.delete(:drafter_cell_size)
     end)

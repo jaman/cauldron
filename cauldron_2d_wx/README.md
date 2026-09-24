@@ -16,7 +16,7 @@ end
 
 | module | what it is |
 |---|---|
-| `Cauldron2D.Wx.Client` | the window around the worlds — title, lobby, settings, arena, summary, guide, the game's pages — from a `Cauldron2D.Client.Game`; `run/1` opens it |
+| `Cauldron2D.Wx.Client` | the window around the worlds — title, lobby, settings, world, summary, guide, the game's pages — from a `Cauldron2D.Client.Game`; `run/1` opens it |
 | `Cauldron2D.Wx.Keys` | a game's keymap as wx key codes |
 | `Cauldron2D.Wx.View` | the panel: canvas, hud where the game wants it, keys, pointer, sound; `join/2` with a link, `leave/1`, `levels/3`, `pointer/2`, `show_stats/2` (frames and draws a second) |
 | `Cauldron2D.Wx.Text` | a canvas for the screens around the worlds: text items drawn as a game draws them over a backdrop of the game's, keys handed to the owner |
@@ -39,7 +39,7 @@ Cauldron2D.Wx.View.join(view, {:socket, url: "http://host:port", token: token, t
 
 A game implements `Cauldron2D.Client.Game` once and `Cauldron2D.Wx.Client` runs it;
 a game with screens of its own draws them on `Cauldron2D.Wx.Text`, which draws whatever
-items it is given and reports keys, with the arena on `Cauldron2D.Wx.View`. The
+items it is given and reports keys, with the world on `Cauldron2D.Wx.View`. The
 view's sizes, hud placement and colours are options; the canvas clears to the sheet's
 void colour. Needs an Erlang built with wx. Tests cover the wire, the input, the painter and the local link; the window itself
 is exercised by hand.

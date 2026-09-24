@@ -1,15 +1,15 @@
 defmodule Cauldron2D.Stats do
   @moduledoc """
-  How this node is keeping up: every running arena's world as `Cauldron2D.World.stats/1`
+  How this node is keeping up: every running world as `Cauldron2D.World.stats/1`
   gives it, and the node it runs on.
 
-      Cauldron2D.Stats.arenas()
+      Cauldron2D.Stats.worlds()
       Cauldron2D.Stats.node()
   """
 
-  alias Cauldron2D.{Arenas, World}
+  alias Cauldron2D.{World, Worlds}
 
-  @type arena :: %{
+  @type world :: %{
           name: String.t(),
           players: non_neg_integer(),
           hz: number(),
@@ -26,11 +26,11 @@ defmodule Cauldron2D.Stats do
           busy: float()
         }
 
-  @doc "Every running arena's world stats, with the arena's id as its `:name`, sorted."
-  @spec arenas() :: [arena()]
-  def arenas do
-    for id <- Enum.sort_by(Arenas.running_ids(), &to_string/1),
-        pid = Arenas.running(id),
+  @doc "Every running world's stats, with the world's id as its `:name`, sorted."
+  @spec worlds() :: [world()]
+  def worlds do
+    for id <- Enum.sort_by(Worlds.running_ids(), &to_string/1),
+        pid = Worlds.running(id),
         stats = world_stats(pid),
         do: Map.put(stats, :name, to_string(id))
   end

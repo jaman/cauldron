@@ -29,10 +29,22 @@ defmodule Cauldron2D.Game do
   @type state :: term()
   @type player_id :: term()
 
+  @typedoc """
+  A player's input: `Cauldron2D.Input.state/1`'s map, which a client looking through an
+  eye adds `:heading` to — where the player looks, in radians with `0` along `+x` — so
+  a game can walk `:up` along it, `:down` against it and `:left` and `:right` across it.
+  """
+  @type input :: %{
+          required(:held) => MapSet.t(atom()),
+          required(:aim) => {number(), number()} | nil,
+          optional(:strength) => %{atom() => float()},
+          optional(:heading) => float()
+        }
+
   @callback init(keyword()) :: state()
   @callback join(state(), player_id(), map()) :: {:ok, state()} | {:error, term()}
   @callback leave(state(), player_id()) :: state()
-  @callback handle_input(state(), player_id(), Cauldron2D.Input.state()) :: state()
+  @callback handle_input(state(), player_id(), input()) :: state()
   @callback step(state(), float()) :: state()
   @callback view(state(), player_id()) :: term()
   @callback drain_events(state()) :: {[term()], state()}

@@ -65,7 +65,8 @@ defmodule Cauldron2D.AtlasLoadTest do
 
     File.rm!(Path.join(dir, "broken.png"))
     png(Path.join(dir, "odd.png"), Raster.new(@tile + 1, @tile))
-    assert {:error, {:art, "odd.png", :size}} = Atlas.load(:atlas_load_odd, dir, tile: @tile)
+    assert {:ok, atlas} = Atlas.load(:atlas_load_odd, dir, tile: @tile)
+    assert Atlas.entry(atlas, :odd).size == {@tile + 1, @tile}
   end
 
   test "a missing directory is an error", %{dir: dir} do
@@ -144,5 +145,93 @@ defmodule Cauldron2D.AtlasLoadDeriveTest do
     assert {:error, {:art, name, message}} = Atlas.load(:atlas_derived_loop, dir, tile: 4)
     assert name in [:loop_a, :loop_b]
     assert message =~ "loop"
+  end
+end
+
+defmodule Cauldron2D.AtlasLoadSolidsTest do
+  use ExUnit.Case, async: false
+
+  alias Cauldron2D.Atlas
+  alias FrenchCurve.Raster
+
+  @tile 4
+
+  setup do
+    dir = Path.join(System.tmp_dir!(), "cauldron_solids_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+
+    for {name, key, colour} <- [
+          {"wall", "W", "#808080"},
+          {"roof", "R", "#c03030"},
+          {"door", "D", "#603010"},
+          {"hero_f", "F", "#f0c0a0"},
+          {"hero_b", "B", "#a08060"}
+        ] do
+      rows = String.duplicate(String.duplicate(key, @tile) <> "\n", @tile)
+      File.write!(Path.join(dir, "#{name}.pic"), "#{key} #{colour}\n\n#{rows}")
+    end
+
+    File.write!(
+      Path.join(dir, "atlas.txt"),
+      "wall\t# \t\t\t\t2\ttop=roof side=wall south=door\t\nhero_f\t@ \t\t\t\t\t\tfront=hero_f back=hero_b\n"
+    )
+
+    {:ok, dir: dir}
+  end
+
+  test "a manifest's height, faces and poses come from the named pictures", %{dir: dir} do
+    assert {:ok, atlas} = Atlas.load(:atlas_solids_dir, dir, tile: @tile)
+
+    assert Atlas.entry(atlas, :wall).height == 2
+
+    assert Raster.to_rgba_binary(Atlas.face(atlas, :wall, :top).raster) ==
+             Raster.to_rgba_binary(Atlas.entry(atlas, :roof).sprite.raster)
+
+    assert Raster.to_rgba_binary(Atlas.face(atlas, :wall, :south).raster) ==
+             Raster.to_rgba_binary(Atlas.entry(atlas, :door).sprite.raster)
+
+    assert Raster.to_rgba_binary(Atlas.face(atlas, :wall, :north).raster) ==
+             Raster.to_rgba_binary(Atlas.entry(atlas, :wall).sprite.raster)
+
+    assert Raster.to_rgba_binary(Atlas.pose(atlas, :hero_f, :back, 0).raster) ==
+             Raster.to_rgba_binary(Atlas.entry(atlas, :hero_b).sprite.raster)
+  end
+
+  test "a face naming an art the directory does not have is an error", %{dir: dir} do
+    File.write!(Path.join(dir, "atlas.txt"), "wall\t\t\t\t\t1\ttop=missing\t\n")
+
+    assert {:error, {:art, :wall, _message}} = Atlas.load(:atlas_solids_bad, dir, tile: @tile)
+  end
+end
+
+defmodule Cauldron2D.AtlasLoadManifestOnlyTest do
+  use ExUnit.Case, async: false
+
+  alias Cauldron2D.Atlas
+  alias FrenchCurve.Raster
+
+  @tile 4
+
+  test "an art the manifest alone names is built from its faces, its picture the side" do
+    dir =
+      Path.join(System.tmp_dir!(), "cauldron_manifest_only_#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf!(dir) end)
+    rows = String.duplicate(String.duplicate("W", @tile) <> "\n", @tile)
+    File.write!(Path.join(dir, "wall.pic"), "W #808080\n\n#{rows}")
+    File.write!(Path.join(dir, "roof.pic"), "R #c03030\n\n#{String.replace(rows, "W", "R")}")
+    File.write!(Path.join(dir, "atlas.txt"), "house\t##\t\t\t\t2\ttop=roof side=wall\t\n")
+
+    assert {:ok, atlas} = Atlas.load(:atlas_manifest_only, dir, tile: @tile)
+    assert Atlas.entry(atlas, :house).height == 2
+    assert Atlas.entry(atlas, :house).glyph == "##"
+
+    assert Raster.to_rgba_binary(Atlas.entry(atlas, :house).sprite.raster) ==
+             Raster.to_rgba_binary(Atlas.entry(atlas, :wall).sprite.raster)
+
+    assert Raster.to_rgba_binary(Atlas.face(atlas, :house, :top).raster) ==
+             Raster.to_rgba_binary(Atlas.entry(atlas, :roof).sprite.raster)
   end
 end

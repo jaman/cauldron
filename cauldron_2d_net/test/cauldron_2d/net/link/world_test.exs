@@ -33,7 +33,7 @@ defmodule Cauldron2D.Net.Link.WorldTest do
   }
 
   test "a wire view becomes a scene over the local atlas, with movers, labels and a wrapping cell" do
-    scene = World.scene(%{wire: @frame, map: @map, sheet: @sheet, arena: "pit"}, :link_world_test)
+    scene = World.scene(%{wire: @frame, map: @map, sheet: @sheet, world: "pit"}, :link_world_test)
     assert scene.focus == {1.5, 1.0}
     assert scene.bounds == {3, 2}
     assert scene.cell.({0, 0}) == {:wall, [], nil}
@@ -44,20 +44,20 @@ defmodule Cauldron2D.Net.Link.WorldTest do
     refute Map.has_key?(scene, :subject)
 
     assert World.scene(
-             %{wire: Map.put(@frame, :subject, "bob"), map: @map, sheet: @sheet, arena: "pit"},
+             %{wire: Map.put(@frame, :subject, "bob"), map: @map, sheet: @sheet, world: "pit"},
              :link_world_test
            ).subject == "bob"
   end
 
   test "the hud and the outcome read from the wire, and a closed connection says so" do
-    view = %{wire: @frame, map: @map, sheet: @sheet, arena: "pit"}
+    view = %{wire: @frame, map: @map, sheet: @sheet, world: "pit"}
     assert World.hud(view) == [[{"fuel", {255, 0, 0}}, {"3", nil}]]
     assert World.outcome(view) == nil
 
     assert World.outcome(%{view | wire: %{@frame | over: %{"title" => "Over", "lines" => ["a"]}}}) ==
              %{title: "Over", lines: ["a"]}
 
-    closed = %{wire: nil, map: @map, sheet: @sheet, arena: "pit", closed: :normal}
+    closed = %{wire: nil, map: @map, sheet: @sheet, world: "pit", closed: :normal}
     assert [[{"connection closed: :normal", _}]] = World.hud(closed)
     assert World.scene(closed, :link_world_test).movers == []
   end

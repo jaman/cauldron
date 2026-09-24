@@ -22,16 +22,16 @@ pixels. `CAULDRON_WEB_DESIGN.md` at the repository root is the design.
 
 | module | what it is |
 |---|---|
-| `Cauldron2D.Net.Pages` | the pages around the worlds — title, lobby, arena, settings, guide — as a plug a game forwards a path to, from its `Cauldron2D.Client.Game` |
+| `Cauldron2D.Net.Pages` | the pages around the worlds — title, lobby, world, settings, guide — as a plug a game forwards a path to, from its `Cauldron2D.Client.Game` |
 | `Cauldron2D.Net.Socket` | `use`d by a game's socket module: the player's name and settings from a verify function, the channel on the topic |
 | `Cauldron2D.Net.Keys` | a game's keymap as `KeyboardEvent.code` names |
 | `Cauldron2D.Net.Sheet` | a `Cauldron2D.Atlas` as one PNG plus an index of every art's place on it |
 | `Cauldron2D.Net.Frame` | the wire form of the static map and of one tick's frame |
 | `Cauldron2D.Net.Session` | a player's life on a channel: join, frames, input, levels, leave |
 | `Cauldron2D.Net.Channel` | `use`d by a game's channel module; pushes frames as JSON and PCM as binary |
-| `Cauldron2D.Net.Audio` | the server's sound policy: music per session, per arena (`Audio.Shared`, one stage a world), at a rate the node's load sets (`Audio.Governor`), or off; effects per session or off |
+| `Cauldron2D.Net.Audio` | the server's sound policy: music per session, per world (`Audio.Shared`, one stage a world), at a rate the node's load sets (`Audio.Governor`), or off; effects per session or off |
 | `Cauldron2D.Net.Load` | a load test over the wire: sessions ramped until the worlds or the frames degrade, every report kept as JSON lines |
-| `priv/static/cauldron.js` | `Cauldron.mount(canvas, opts)`: the channel, the canvas renderer, keys, pointer, on-screen touch zones the page lays out, Web Audio |
+| `priv/static/cauldron.js` | `Cauldron.mount(canvas, opts)`: the channel, the canvas renderer, keys, pointer, game controllers, on-screen touch zones the page lays out, tilt steering, Web Audio |
 | `Cauldron2D.Net.Wire` | the channel protocol and the frame, map and sheet shapes, for an Elixir client |
 | `Cauldron2D.Net.Link.Socket` | an Elixir client's connection to a server over its WebSocket |
 | `Cauldron2D.Net.Link.Local` | the same connection to a world that is a process, here or on a connected node |
@@ -75,6 +75,27 @@ aim is where the mouse is on the screen: it is worked out again from the mouse's
 place after every draw, so a ship flying under a still mouse keeps aiming at the point
 ahead of it rather than at the spot the mouse last passed over. `game.levels(sfx, music)`
 sets the sound levels and `game.music(on)` switches the music off or back on at its level.
+
+The handle also exposes the input every built-in source writes to, so a page can add
+a source of its own — its own tilt model, a WebHID reader, anything: `game.aim([x,
+y])` sets the aim to a world point (`null` lets go), and drops the mouse's aim as the
+pad does; `game.hold(action, down, strength)` holds or releases an action, at an
+analog strength `0..1` when given; `game.focus()` is the current focus in world
+units, for an aim a fixed way from it; `game.input()` is what would be sent now
+(`held`, `aim`, `strength`). The built-in tilt is the default model: `touch: {tilt:
+{range, deadzone, distance, smoothing, invert}}`, `invert` turning the up-down axis
+the other way.
+
+A game controller holds actions like the keys do. The world page loads `gamepad.js`
+from the `gamepad` package (served at `/gamepad.js`) and passes `padmap`, the game's
+`padmap/1` as `Cauldron2D.Net.Keys.browser_padmap/1` writes it — buttons by their wire
+names to actions, each direction of an axis to actions; a page mounting the canvas
+itself passes the same. A button holds its actions in full; an axis past the deadzone
+(`pad: {deadzone}`, default 0.3) holds its direction's actions at its magnitude, sent
+as the input's `strength`; a controller that goes away lets go of everything it held.
+A stick bound to `aim` aims instead, eight tiles from the focus the way it points and
+following the focus while held; with a `push` on the binding it also holds an action
+past its ring, harder the further it goes, as an on-screen thumbstick's `push` does.
 
 ## License
 

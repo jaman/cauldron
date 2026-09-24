@@ -14,6 +14,8 @@ defmodule Linocut.Derive do
     * `flip h` / `flip v` — mirror left to right, or top to bottom
     * `turn 90` / `180` / `270` — clockwise, a quarter turn at a time
     * `shift DX DY` — move the picture, what leaves the edge lost, what enters transparent
+    * `scale N` — the picture `N` times as wide and tall, every key repeated `N` times
+      each way
     * `frame N` — keep the `N`th frame alone, counting from 1
     * `reverse` — the frames in the other order
     * `over NAME [DX DY]` — lay `NAME`'s first frame on every frame, its transparent
@@ -36,6 +38,7 @@ defmodule Linocut.Derive do
           | {:flip, :h | :v}
           | {:turn, 90 | 180 | 270}
           | {:shift, integer(), integer()}
+          | {:scale, pos_integer()}
           | {:frame, pos_integer()}
           | :reverse
           | {:over, String.t(), integer(), integer()}
@@ -94,6 +97,14 @@ defmodule Linocut.Derive do
 
   defp op(["shift", dx, dy]), do: with({:ok, x, y} <- integers(dx, dy), do: {:ok, {:shift, x, y}})
   defp op(["frame", n]), do: with({:ok, index, _} <- integers(n, "0"), do: {:ok, {:frame, index}})
+
+  defp op(["scale", n]) do
+    case Integer.parse(n) do
+      {times, ""} when times > 0 -> {:ok, {:scale, times}}
+      _other -> {:error, "`scale #{n}` needs a whole number above zero"}
+    end
+  end
+
   defp op(["reverse"]), do: {:ok, :reverse}
   defp op(["over", name]), do: {:ok, {:over, name, 0, 0}}
 
@@ -169,6 +180,7 @@ defmodule Linocut.Derive do
     do: {:ok, frames(pic, &(&1 |> clockwise() |> clockwise() |> clockwise()))}
 
   defp apply_op({:shift, dx, dy}, pic, _lookup), do: {:ok, frames(pic, &shift(&1, dx, dy))}
+  defp apply_op({:scale, times}, pic, _lookup), do: {:ok, frames(pic, &scale(&1, times))}
   defp apply_op(:reverse, pic, _lookup), do: {:ok, %{pic | frames: Enum.reverse(pic.frames)}}
 
   defp apply_op({:frame, n}, pic, _lookup) do
@@ -193,6 +205,13 @@ defmodule Linocut.Derive do
     |> Enum.map(&String.graphemes/1)
     |> Enum.reverse()
     |> Enum.zip_with(&Enum.join/1)
+  end
+
+  defp scale(rows, times) do
+    for row <- rows,
+        wide = row |> String.graphemes() |> Enum.map_join(&String.duplicate(&1, times)),
+        _repeat <- 1..times,
+        do: wide
   end
 
   defp shift(rows, dx, dy) do

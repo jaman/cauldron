@@ -1,7 +1,7 @@
 defmodule Cistern.Web do
   @moduledoc """
   The game in a browser: `Cauldron2D.Net.Pages` at `/play` for the title, the lobby,
-  the arena and the guide, and the player socket the arena page connects to.
+  the world and the guide, and the player socket the world page connects to.
 
       mix cistern.serve            # http://localhost:4300/play
 

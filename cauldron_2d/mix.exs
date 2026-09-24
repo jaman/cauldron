@@ -10,6 +10,9 @@ defmodule Cauldron2D.MixProject do
       app: :cauldron_2d,
       version: @version,
       elixir: "~> 1.18",
+      compilers: [:elixir_make | Mix.compilers()],
+      make_targets: ["all"],
+      make_clean: ["clean"],
       description: @description,
       start_permanent: Mix.env() == :prod,
       elixirc_options: [warnings_as_errors: true],
@@ -32,6 +35,7 @@ defmodule Cauldron2D.MixProject do
   defp deps do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:elixir_make, "~> 0.9", runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       family(:french_curve, "~> 0.1.4", "../../french_curve", override: true),
       family(:linocut, "~> 0.1.4", "../linocut", []),
@@ -52,7 +56,7 @@ defmodule Cauldron2D.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib mix.exs README.md)
+      files: ~w(lib c_src Makefile mix.exs README.md)
     ]
   end
 

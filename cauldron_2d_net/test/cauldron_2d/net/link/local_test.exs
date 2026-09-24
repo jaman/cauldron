@@ -56,7 +56,7 @@ defmodule Cauldron2D.Net.Link.LocalTest do
     def actions, do: [:left, :right, :fire]
     def keymaps, do: [arrows: %{left: [:left], right: [:right], fire: [:" "]}]
     def toggles, do: []
-    def arenas(_props), do: [%{id: :main, name: "Main", world: :dots_wx_world, players: 0}]
+    def worlds(_props), do: [%{id: :main, name: "Main", world: :dots_wx_world, players: 0}]
 
     def map(view),
       do: %{

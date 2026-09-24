@@ -1,10 +1,10 @@
 defmodule Cauldron2D.Drafter.Client.Screens do
   @moduledoc """
   The screens `Cauldron2D.Drafter.Client` draws, as functions from its state to drafter
-  elements: `title/1`, `lobby/1`, `settings/1`, `guide/1`, `page/2`, `arena/1` and
+  elements: `title/1`, `lobby/1`, `settings/1`, `guide/1`, `page/2`, `world/1` and
   `summary/1`.
 
-  The title, the lobby and the settings show their keys; the arena shows its key hints
+  The title, the lobby and the settings show their keys; the world shows its key hints
   only when `help?` is set, as a block of lines at the bottom, and the frames a second
   the world sends only when `fps?` is set. Nothing on any screen
   takes focus except the lobby chat while it is being typed into.
@@ -15,6 +15,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
   alias Cauldron2D.Client.Hud
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.Drafter.Client.Settings
+  alias Cauldron2D.Drafter.Surface
 
   @doc "The title screen: the game's name, its tagline and the menu."
   @spec title(map()) :: term()
@@ -74,10 +75,10 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     )
   end
 
-  @doc "The lobby: arenas to join, who is in the chosen one, the chat, and the keys."
+  @doc "The lobby: worlds to join, who is in the chosen one, the chat, and the keys."
   @spec lobby(map()) :: term()
   def lobby(%{game: game} = state) do
-    arenas = Client.arenas(state)
+    worlds = Client.worlds(state)
 
     vertical(
       [
@@ -86,13 +87,13 @@ defmodule Cauldron2D.Drafter.Client.Screens do
           [
             vertical(
               [
-                columns_row(arenas),
+                columns_row(worlds),
                 rule()
-                | arena_rows(arenas, state.lobby.selected) ++ team_row(arenas, state.lobby, state)
+                | world_rows(worlds, state.lobby.selected) ++ team_row(worlds, state.lobby, state)
               ],
               flex: 1
             ),
-            vertical(chosen_rows(arenas, state.lobby.selected, state), width: 30)
+            vertical(chosen_rows(worlds, state.lobby.selected, state), width: 30)
           ],
           flex: 1,
           gap: 2
@@ -146,67 +147,67 @@ defmodule Cauldron2D.Drafter.Client.Screens do
   @map_width 30
   @dim %{fg: :bright_black}
 
-  @doc "How many arenas the lobby lists at once; the window slides to keep the selection in view."
+  @doc "How many worlds the lobby lists at once; the window slides to keep the selection in view."
   @spec lobby_window() :: pos_integer()
   def lobby_window, do: @lobby_window
 
-  @arena_rows_from 3
+  @world_rows_from 3
 
-  @doc "The index of the arena drawn on screen row `y` of the lobby, or `nil` for a row that is none."
-  @spec arena_at([map()], non_neg_integer(), non_neg_integer()) :: non_neg_integer() | nil
-  def arena_at([], _selected, _y), do: nil
+  @doc "The index of the world drawn on screen row `y` of the lobby, or `nil` for a row that is none."
+  @spec world_at([map()], non_neg_integer(), non_neg_integer()) :: non_neg_integer() | nil
+  def world_at([], _selected, _y), do: nil
 
-  def arena_at(arenas, selected, y) do
-    {first, shown} = window(arenas, selected)
-    top = @arena_rows_from + if(first > 0, do: 1, else: 0)
+  def world_at(worlds, selected, y) do
+    {first, shown} = window(worlds, selected)
+    top = @world_rows_from + if(first > 0, do: 1, else: 0)
     index = first + y - top
     if y >= top and index < first + shown, do: index, else: nil
   end
 
-  defp window(arenas, selected) do
-    count = length(arenas)
+  defp window(worlds, selected) do
+    count = length(worlds)
     first = selected |> Kernel.-(div(@lobby_window, 2)) |> min(count - @lobby_window) |> max(0)
     {first, min(@lobby_window, count - first)}
   end
 
-  defp columns_row(arenas) do
+  defp columns_row(worlds) do
     kind =
-      if kinds?(arenas), do: [{String.pad_trailing("Kind", @kind_width), %{bold: true}}], else: []
+      if kinds?(worlds), do: [{String.pad_trailing("Kind", @kind_width), %{bold: true}}], else: []
 
     label(
-      [{"  " <> String.pad_trailing("Arenas", @name_width), %{bold: true}}] ++
+      [{"  " <> String.pad_trailing("Worlds", @name_width), %{bold: true}}] ++
         kind ++
         [{String.pad_trailing("Players", @flying_width), %{bold: true}}, {"Map", %{bold: true}}]
     )
   end
 
-  defp kinds?(arenas), do: Enum.any?(arenas, &Map.has_key?(&1, :kind))
+  defp kinds?(worlds), do: Enum.any?(worlds, &Map.has_key?(&1, :kind))
 
-  defp arena_rows([], _selected), do: [label("no arenas are open", style: @dim)]
+  defp world_rows([], _selected), do: [label("no worlds are open", style: @dim)]
 
-  defp arena_rows(arenas, selected) do
-    {first, shown} = window(arenas, selected)
-    rows = arenas |> Enum.with_index() |> Enum.slice(first, shown)
+  defp world_rows(worlds, selected) do
+    {first, shown} = window(worlds, selected)
+    rows = worlds |> Enum.with_index() |> Enum.slice(first, shown)
 
     more(first, "▲") ++
-      Enum.map(rows, &arena_row(&1, selected, kinds?(arenas))) ++
-      more(length(arenas) - first - shown, "▼")
+      Enum.map(rows, &world_row(&1, selected, kinds?(worlds))) ++
+      more(length(worlds) - first - shown, "▼")
   end
 
-  defp arena_row({arena, index}, selected, kinds?) do
+  defp world_row({world, index}, selected, kinds?) do
     chosen? = index == selected
     marker = if chosen?, do: "▶ ", else: "  "
     name_style = if chosen?, do: %{fg: :cyan, bold: true}, else: %{bold: true}
-    {kind, kind_colour} = kind_of(arena)
-    players = Map.get(arena, :players, 0)
+    {kind, kind_colour} = kind_of(world)
+    players = Map.get(world, :players, 0)
     players_style = if players > 0, do: %{fg: {111, 227, 154}}, else: @dim
 
     label(
-      [{marker <> fit(arena.name, @name_width), name_style}] ++
+      [{marker <> fit(world.name, @name_width), name_style}] ++
         if(kinds?, do: [{fit(kind, @kind_width), %{fg: kind_colour}}], else: []) ++
         [
           {fit(players_text(players), @flying_width), players_style},
-          {fit(Map.get(arena, :map, ""), @map_width), if(chosen?, do: %{}, else: @dim)}
+          {fit(Map.get(world, :map, ""), @map_width), if(chosen?, do: %{}, else: @dim)}
         ]
     )
   end
@@ -217,8 +218,8 @@ defmodule Cauldron2D.Drafter.Client.Screens do
   defp players_text(1), do: "1 player"
   defp players_text(n), do: "#{n} players"
 
-  defp kind_of(arena) do
-    case Map.get(arena, :kind) do
+  defp kind_of(world) do
+    case Map.get(world, :kind) do
       {text, {_, _, _} = colour} -> {text, colour}
       text when is_binary(text) -> {text, {200, 200, 210}}
       _none -> {"", @dim.fg}
@@ -228,8 +229,8 @@ defmodule Cauldron2D.Drafter.Client.Screens do
   defp more(0, _arrow), do: []
   defp more(count, arrow), do: [label("  #{arrow} #{count} more", style: @dim)]
 
-  defp team_row(arenas, %{selected: selected, team: team}, state) do
-    case Enum.at(arenas, selected) do
+  defp team_row(worlds, %{selected: selected, team: team}, state) do
+    case Enum.at(worlds, selected) do
       %{teams: [_ | _] = teams} ->
         [
           label(""),
@@ -245,28 +246,28 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     end
   end
 
-  defp chosen_rows(arenas, selected, state) do
-    case Enum.at(arenas, selected) do
+  defp chosen_rows(worlds, selected, state) do
+    case Enum.at(worlds, selected) do
       nil ->
         []
 
-      arena ->
-        {kind, kind_colour} = kind_of(arena)
-        teams = Map.get(arena, :teams, [])
+      world ->
+        {kind, kind_colour} = kind_of(world)
+        teams = Map.get(world, :teams, [])
 
         [
-          label(arena.name, style: %{fg: :cyan, bold: true}),
+          label(world.name, style: %{fg: :cyan, bold: true}),
           rule(),
-          label(Map.get(arena, :map, "")),
+          label(Map.get(world, :map, "")),
           label(kind, style: %{fg: kind_colour}),
-          label(Map.get(arena, :note) || "", style: @dim),
+          label(Map.get(world, :note) || "", style: @dim),
           label(if(teams == [], do: "no teams", else: "teams " <> Enum.join(teams, ", ")),
             style: @dim
           ),
           label(""),
           label("Players", style: %{bold: true})
         ] ++
-          player_rows(arena, state) ++
+          player_rows(world, state) ++
           [
             label(""),
             label(
@@ -287,8 +288,8 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     end
   end
 
-  defp player_rows(arena, _state) do
-    case Map.get(arena, :players, 0) do
+  defp player_rows(world, _state) do
+    case Map.get(world, :players, 0) do
       0 -> [label("  nobody yet", style: @dim)]
       1 -> [label("  1 player")]
       count -> [label("  #{count} players")]
@@ -463,39 +464,49 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     )
   end
 
-  defp summary_keys(%{summary: %{next: :same_arena}} = state) do
+  defp summary_keys(%{summary: %{next: :same_world}} = state) do
     "Enter  " <>
-      Client.next_arena(state).name <> " again     Esc  lobby     q  title"
+      Client.next_world(state).name <> " again     Esc  lobby     q  title"
   end
 
-  defp summary_keys(%{summary: %{next: :next_arena}} = state) do
-    case Client.next_arena(state) do
+  defp summary_keys(%{summary: %{next: :next_world}} = state) do
+    case Client.next_world(state) do
       nil -> "Enter  lobby     q  title"
-      arena -> "Enter  next: " <> arena.name <> "     Esc  lobby     q  title"
+      world -> "Enter  next: " <> world.name <> "     Esc  lobby     q  title"
     end
   end
 
   defp summary_keys(_state), do: "Enter  lobby     q  title"
 
-  @doc "The arena: the world with the game's hud beside or under it, and the hints when asked."
-  @spec arena(map()) :: term()
-  def arena(%{view: nil}), do: vertical([label("joining…", align: :center)])
+  @doc "The world: the world with the game's hud beside or under it, and the hints when asked."
+  @spec play(map()) :: term()
+  def play(%{view: nil}), do: vertical([label("joining…", align: :center)])
 
-  def arena(%{game: game, view: view, settings: settings} = state) do
-    scene = game.scene(view)
+  def play(%{game: game, view: view, settings: settings} = state) do
+    scene = Client.scene(state)
+    look = Client.look(state)
 
     surface =
       {:cauldron_surface,
        [
-         id: :arena,
+         id: :play,
          atlas: game.atlas(),
          focus: Client.focus(state, scene),
          zoom: Map.get(state, :zoom, 1),
          cell: scene.cell,
          movers: scene.movers,
          labels: Map.get(scene, :labels, []),
+         volumes: Map.get(scene, :volumes, []),
          mode: Settings.surface_mode(settings),
-         on_geometry: :arena_geometry,
+         projection: look.projection,
+         facing: look.facing,
+         facings: Map.get(look, :facings, 4),
+         tilt: look.tilt,
+         heading: Map.get(scene, :heading) || look.heading,
+         pitch: look.pitch,
+         density: Map.get(look, :density),
+         eye: Client.eye_height(game, scene),
+         on_geometry: :play_geometry,
          image_throttle: {1, :tick},
          image_priority: :normal,
          flex: 1
@@ -505,7 +516,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
       hud_layout(Hud.layout(game.hud(view)), surface) ++
         paused_row(state) ++
         talk_rows(state) ++
-        fps_row(state) ++ zoom_row(state) ++ help(state, arena_hints(game, state))
+        fps_row(state) ++ zoom_row(state) ++ help(state, play_hints(game, state))
     )
   end
 
@@ -536,7 +547,12 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
   defp zoom_row(state) do
     case Enum.reject(
-           [zoom_note(Map.get(state, :zoom, 1)), pan_note(Map.get(state, :pan, {0.0, 0.0}))],
+           [
+             look_note(Client.look(state)),
+             drawing_note(state),
+             zoom_note(Map.get(state, :zoom, 1)),
+             pan_note(Map.get(state, :pan, {0.0, 0.0}))
+           ],
            &is_nil/1
          ) do
       [] ->
@@ -550,6 +566,42 @@ defmodule Cauldron2D.Drafter.Client.Screens do
         ]
     end
   end
+
+  defp look_note(%{projection: :top}), do: nil
+
+  defp look_note(%{projection: :iso, facing: facing, tilt: tilt} = look) do
+    turn = iso_turn(facing, Map.get(look, :facings, 4))
+    "isometric  ·  #{turn}  ·  tilt #{round(:math.atan(tilt / 2) * 180 / :math.pi())}°"
+  end
+
+  defp look_note(%{projection: :oblique}), do: "oblique"
+
+  defp look_note(%{projection: :mode7} = look) do
+    heading = Integer.mod(round(look.heading * 180 / :math.pi()), 360)
+    "mode 7  ·  heading #{heading}°  ·  pitch #{Float.round(look.pitch / 1, 2)}"
+  end
+
+  defp look_note(%{projection: :first_person} = look) do
+    heading = Integer.mod(round(look.heading * 180 / :math.pi()), 360)
+    mouse = if look.mouse_look?, do: "  ·  mouse look", else: ""
+    "first person  ·  heading #{heading}°  ·  pitch #{Float.round(look.pitch / 1, 2)}#{mouse}"
+  end
+
+  defp iso_turn(facing, 4), do: "facing #{facing}"
+  defp iso_turn(facing, facings), do: "facing #{round(facing * 360 / facings)}°"
+
+  defp drawing_note(%{settings: %{display: :auto}} = state) do
+    if Client.look(state).projection == :top,
+      do: nil,
+      else: picture_note(Surface.protocol(%Surface{mode: nil}))
+  end
+
+  defp drawing_note(%{settings: %{display: :glyphs}}), do: "glyphs"
+  defp drawing_note(%{settings: %{display: set}}), do: "#{set} cells"
+  defp drawing_note(_state), do: nil
+
+  defp picture_note(nil), do: "glyphs"
+  defp picture_note(protocol), do: "picture (#{protocol})"
 
   defp zoom_note(1), do: nil
   defp zoom_note(zoom), do: "zoom " <> zoom_text(zoom)
@@ -597,7 +649,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     end)
   end
 
-  defp arena_hints(game, %{settings: settings} = state) do
+  defp play_hints(game, %{settings: settings} = state) do
     keys =
       Enum.map_join(game.actions(), "     ", fn action ->
         "#{Settings.keys_text(settings, action)}  #{action}"
@@ -621,7 +673,23 @@ defmodule Cauldron2D.Drafter.Client.Screens do
       if(Map.get(state, :watching?, false), do: "arrows / drag  pan", else: nil)
     ]
 
-    [keys, joined(chrome), joined(view)]
+    look = [
+      hint(state, :projection, "view"),
+      hint(state, :turn_left, "turn left"),
+      hint(state, :turn_right, "turn right"),
+      hint(state, :tilt_up, "tilt up"),
+      hint(state, :tilt_down, "tilt down"),
+      hint(state, :display, "picture / cells"),
+      hint(state, :glyphs, "glyph set"),
+      hint(state, :mouse_look, "mouse look")
+    ]
+
+    [keys, joined(chrome), joined(view), joined(look ++ look_hints(state))]
+  end
+
+  defp look_hints(state) do
+    for {:look, key} = action <- Map.keys(Map.get(state, :keys, %{})),
+        do: hint(state, action, key |> Atom.to_string() |> String.trim_trailing("?"))
   end
 
   defp joined(hints), do: hints |> Enum.reject(&is_nil/1) |> Enum.join("     ")

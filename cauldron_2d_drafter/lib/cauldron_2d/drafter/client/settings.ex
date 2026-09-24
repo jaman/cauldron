@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Drafter.Client.Settings do
   @moduledoc """
   A player's settings: which keys do what, whether the pointer steers, how loud things
-  are, how the arena is drawn.
+  are, how the world is drawn.
 
   Kept per kind of client — the terminal, a desktop, a browser, a phone: a kind is any
   atom, `:terminal` the default — on disk under
@@ -37,13 +37,14 @@ defmodule Cauldron2D.Drafter.Client.Settings do
             display: :auto,
             fps: :auto
 
-  @typedoc "How the arena is drawn: pixels where the terminal has them, else glyphs; braille; or glyphs."
-  @type display :: :auto | :braille | :glyphs
+  @typedoc "How the world is drawn: pixels where the terminal has them, else glyphs; braille; block characters of a glyph set; or glyphs."
+  @type display :: :auto | :braille | :half | :quad | :sextant | :octant | :glyphs
 
   @typedoc "Frames per second, or `:auto` for the terminal's best."
   @type fps :: :auto | pos_integer()
 
-  @displays [:auto, :braille, :glyphs]
+  @cell_sets [:half, :quad, :sextant, :octant]
+  @displays [:auto, :braille | @cell_sets] ++ [:glyphs]
   @frame_rates [:auto, 15, 30, 50, 60]
 
   @doc "Settings for `game` with `overrides` applied over the game's first preset."
@@ -79,7 +80,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   defp display_option(display) when display in @displays, do: display
   defp display_option(_other), do: :auto
 
-  @doc "The next or previous display choice, in the order auto, braille, glyphs, wrapping."
+  @doc "The next or previous display choice, in the order auto, braille, half, quad, sextant, octant, glyphs, wrapping."
   @spec step_display(t(), -1 | 1) :: t()
   def step_display(%__MODULE__{} = settings, delta),
     do: %{settings | display: step(@displays, settings.display, delta)}
@@ -95,19 +96,22 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   end
 
   @doc """
-  The frame rate to draw at: the setting, or for `:auto` the terminal's best — 15 where
-  every frame is a full image (iTerm2, sixel), 30 elsewhere.
+  The frame rate to draw at: the setting, or for `:auto` the terminal's best — 12 where
+  every frame is an inline image (iTerm2's own, sixel), 20 where every frame is a kitty
+  picture sent whole (a terminal without placements), 30 elsewhere.
   """
-  @spec frame_rate(t(), atom() | nil | :unprobed) :: pos_integer()
-  def frame_rate(%__MODULE__{fps: :auto}, protocol) when protocol in [:iterm2, :sixel], do: 15
-  def frame_rate(%__MODULE__{fps: :auto}, _protocol), do: 30
-  def frame_rate(%__MODULE__{fps: fps}, _protocol), do: fps
+  @spec frame_rate(t(), atom() | nil | :unprobed, boolean()) :: pos_integer()
+  def frame_rate(settings, protocol, placements? \\ true)
+  def frame_rate(%__MODULE__{fps: :auto}, protocol, _) when protocol in [:iterm2, :sixel], do: 12
+  def frame_rate(%__MODULE__{fps: :auto}, :kitty, false), do: 20
+  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?), do: 30
+  def frame_rate(%__MODULE__{fps: fps}, _protocol, _placements?), do: fps
 
   @doc "The surface mode for the display setting: `nil` lets the terminal decide."
-  @spec surface_mode(t()) :: nil | :braille | :text
+  @spec surface_mode(t()) :: nil | :braille | :half | :quad | :sextant | :octant | :text
   def surface_mode(%__MODULE__{display: :auto}), do: nil
-  def surface_mode(%__MODULE__{display: :braille}), do: :braille
   def surface_mode(%__MODULE__{display: :glyphs}), do: :text
+  def surface_mode(%__MODULE__{display: display}), do: display
 
   @doc "The presets in the order the settings screen offers them: the game's `keymaps/0` order for a keyword list, by name for a map."
   @spec presets(module()) :: [atom()]

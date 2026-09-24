@@ -2,7 +2,7 @@ defmodule Cauldron2D.Net.Audio do
   @moduledoc """
   The server's sound policy: what every session's sound costs it.
 
-      Cauldron2D.Net.Audio.set(music: :arena, sfx: :personal)
+      Cauldron2D.Net.Audio.set(music: :world, sfx: :personal)
       Cauldron2D.Net.Audio.set(music: :dynamic)
       Cauldron2D.Net.Audio.policy()
 
@@ -10,7 +10,7 @@ defmodule Cauldron2D.Net.Audio do
 
     * `:personal` — every session synthesises its own music, cued by its own view.
       Default
-    * `:arena` — one stage a world (`Cauldron2D.Net.Audio.Shared`), cued by the world's
+    * `:world` — one stage a world (`Cauldron2D.Net.Audio.Shared`), cued by the world's
       state, its music mixed under each session's own effects
     * `:static` — every session plays the first section it is cued and no other,
       rendered once a node and looped (`Cauldron2D.Audio` with `static_music: true`):
@@ -35,7 +35,7 @@ defmodule Cauldron2D.Net.Audio do
 
   alias Cauldron2D.Net.Audio.Governor
 
-  @type music :: :personal | :arena | :dynamic | :static | :off
+  @type music :: :personal | :world | :dynamic | :static | :off
   @type sfx :: :personal | :off
   @type policy :: %{music: music(), sfx: sfx(), rate: pos_integer()}
   @type format :: %{rate: pos_integer(), channels: 1 | 2} | :off
@@ -61,8 +61,8 @@ defmodule Cauldron2D.Net.Audio do
     sfx = Keyword.get(opts, :sfx, :personal)
     rate = Keyword.get(opts, :rate, 44_100)
 
-    unless music in [:personal, :arena, :dynamic, :static, :off],
-      do: raise(ArgumentError, "music is one of :personal, :arena, :dynamic, :static, :off")
+    unless music in [:personal, :world, :dynamic, :static, :off],
+      do: raise(ArgumentError, "music is one of :personal, :world, :dynamic, :static, :off")
 
     unless sfx in [:personal, :off], do: raise(ArgumentError, "sfx is :personal or :off")
     :persistent_term.put(@key, %{music: music, sfx: sfx, rate: rate})

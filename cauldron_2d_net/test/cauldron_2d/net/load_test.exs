@@ -4,7 +4,7 @@ defmodule Cauldron2D.Net.LoadTest do
   alias Cauldron2D.Net.Load
 
   defp interval(overrides) do
-    arena = %{
+    world = %{
       name: "Pit",
       players: 3,
       hz: 50,
@@ -19,7 +19,7 @@ defmodule Cauldron2D.Net.LoadTest do
         hz: 50,
         fps: %{mean: 50.0, min: 49.0},
         gap_ms: 40,
-        arenas: [arena],
+        worlds: [world],
         sessions: 10,
         joined: 10,
         node: %{}
@@ -44,12 +44,12 @@ defmodule Cauldron2D.Net.LoadTest do
     }
 
     assert ["Alrin's ticks run 21.0 ms at the 95th percentile, over the 20.0 ms budget"] =
-             Load.degraded(interval(%{arenas: [slow]}))
+             Load.degraded(interval(%{worlds: [slow]}))
 
     jittery = %{slow | tick_us: %{mean: 3000, p95: 6000, max: 9000}, behind: 40}
-    assert [] = Load.degraded(interval(%{arenas: [jittery]}))
+    assert [] = Load.degraded(interval(%{worlds: [jittery]}))
     behind = %{jittery | behind: 60}
-    assert ["Alrin ran behind on 23% of its ticks"] = Load.degraded(interval(%{arenas: [behind]}))
+    assert ["Alrin ran behind on 23% of its ticks"] = Load.degraded(interval(%{worlds: [behind]}))
   end
 
   test "a session starved of frames degrades the run" do

@@ -5,13 +5,13 @@ defmodule Cistern.Client do
 
       Drafter.run(Cauldron2D.Drafter.Client, props: %{game: Cistern.Client})
 
-  The lobby lists the arenas `Cistern.Arenas.register/0` made known; without any, the
+  The lobby lists the worlds `Cistern.Worlds.register/0` made known; without any, the
   game offers one world of the player's own.
   """
 
   @behaviour Cauldron2D.Client.Game
 
-  alias Cauldron2D.Arenas
+  alias Cauldron2D.Worlds
   alias Cistern.{Art, Game, Sound}
 
   @impl true
@@ -38,8 +38,8 @@ defmodule Cistern.Client do
   def steering, do: [:left, :right]
 
   @impl true
-  def arenas(_props) do
-    case Arenas.list() do
+  def worlds(_props) do
+    case Worlds.list() do
       [] ->
         [
           %{
@@ -51,8 +51,8 @@ defmodule Cistern.Client do
           }
         ]
 
-      arenas ->
-        arenas
+      worlds ->
+        worlds
     end
   end
 
@@ -66,12 +66,19 @@ defmodule Cistern.Client do
       bounds: view.size,
       cell: fn {_x, y} -> if(y == floor, do: {:floor, [], nil}, else: {:sky, [], nil}) end,
       movers:
-        Enum.map(view.buckets, &{:bucket, {&1.x, floor - 1.0}}) ++
-          Enum.map(view.buckets, &{:bucket, {&1.x + 1, floor - 1.0}}) ++
+        Enum.flat_map(view.buckets, &bucket(&1, floor - 1.0)) ++
           Enum.map(view.drops, &{&1.kind, {&1.x / 1, &1.y}}),
-      labels: Enum.map(view.buckets, &{&1.name, {&1.x, floor - 2.0}, {255, 240, 200}})
+      labels: Enum.map(view.buckets, &{&1.name, {&1.x, floor - 2.0}, name_colour(&1)})
     }
   end
+
+  defp name_colour(%{robot?: true}), do: {170, 215, 245}
+  defp name_colour(_bucket), do: {255, 240, 200}
+
+  defp bucket(%{robot?: true} = held, row), do: halves(:bucket_robot, held, row)
+  defp bucket(held, row), do: halves(:bucket, held, row)
+
+  defp halves(art, %{x: x}, row), do: [{art, {x, row}}, {art, {x + 1, row}}]
 
   @impl true
   def hud(%{me: nil}), do: [["watching"]]
@@ -98,7 +105,7 @@ defmodule Cistern.Client do
   def music, do: Sound.pieces()
 
   @impl true
-  def cue(%{drops: drops}, :arena), do: Sound.cue(length(drops))
+  def cue(%{drops: drops}, :play), do: Sound.cue(length(drops))
   def cue(_view, _screen), do: nil
 
   @impl true

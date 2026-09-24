@@ -24,7 +24,7 @@ defmodule Cauldron2D.Wx.Client.ScreensTest do
         game: Game,
         username: "alice",
         screen: :title,
-        arenas: [
+        worlds: [
           %{
             id: :pit,
             name: "The Pit",
@@ -65,7 +65,7 @@ defmodule Cauldron2D.Wx.Client.ScreensTest do
              {:page, :n} in actions(items)
   end
 
-  test "the lobby lists the arenas with the chosen one marked, its kind, players, note and teams" do
+  test "the lobby lists the worlds with the chosen one marked, its kind, players, note and teams" do
     items = Screens.draw(state(%{screen: :lobby}), {800, 600})
     assert Enum.any?(texts(items), &(&1 =~ "▶ The Pit"))
     assert Enum.any?(texts(items), &(&1 =~ "race"))

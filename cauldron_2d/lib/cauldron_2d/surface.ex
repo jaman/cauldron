@@ -10,6 +10,10 @@ defmodule Cauldron2D.Surface do
   `overlays` is ordered bottom to top and may be empty. `tint` is `nil` or the name of a tint
   registered on the atlas.
 
+  `base` must be an art of the atlas's tile size. An overlay may be any size: one the tile's
+  size is blended into its cell; any other stands on its cell, its bottom edge on the cell's
+  bottom edge and centred across it, drawn over every cell and tinted with its cell's tint.
+
   Overlays and movers are composited source-over: a half-transparent sprite on a
   half-transparent base leaves the result more opaque than either, not as opaque as the more
   opaque of the two. Over an opaque base — which most tiles are — this is the same arithmetic
@@ -19,8 +23,13 @@ defmodule Cauldron2D.Surface do
 
   `compose/3` also takes sprites placed at arbitrary pixel offsets rather than on the grid,
   as `[{art, {x, y}}]` where `{x, y}` is the sprite's top-left corner in the raster's own
-  pixel coordinates. Movers are drawn over the grid, in list order, and clipped to the
-  raster's edges. `blit/4` draws one onto an existing raster.
+  pixel coordinates. A mover is drawn at its art's own size, over the grid and its standing
+  overlays, in list order, and clipped to the raster's edges. `blit/4` draws one onto an
+  existing raster.
+
+  A mover may also be `{art, {x, y}, tint}`, or `{art, {x, y}, tint, pose, flip}` to draw
+  one of the art's poses — `:front`, `:back`, `:side` — mirrored when `flip` is true, so a
+  view that knows which way a mover faces can show it.
 
   ## Labels
 
@@ -28,6 +37,14 @@ defmodule Cauldron2D.Surface do
   `[{text, {x, y}, colour}]` or `[{text, {x, y}, colour, opts}]`, positioned by the
   text's top-left corner in the raster's pixel coordinates, with `opts` of `:scale`
   (default `1`) and `:background`, a colour filled behind the text (default none).
+
+  ## Volumes
+
+  `compose/4` also takes `:volumes`, coloured regions of space as
+  `Cauldron2D.Projection.Volume` describes them, seen from directly above. A volume's
+  `:at` is in tiles from the grid's top-left corner, and its shape is in tiles. Each
+  tints the grid and everything drawn on it, by how much of it a viewer looking straight
+  down has to see through.
 
   ## Caching
 
@@ -42,6 +59,7 @@ defmodule Cauldron2D.Surface do
   """
 
   alias Cauldron2D.Atlas
+  alias Cauldron2D.Projection.Volume
   alias FrenchCurve.Raster
 
   @type cell :: :void | {Atlas.art(), [Atlas.art()], Atlas.tint() | nil}
@@ -68,6 +86,8 @@ defmodule Cauldron2D.Surface do
       the first frame of everything
     * `:labels` — text drawn over the grid and the movers, as the module documentation
       describes. Default `[]`
+    * `:volumes` — coloured regions tinting everything beneath them, as the module
+      documentation describes. Default `[]`
   """
   @spec compose(
           Atlas.name() | Atlas.t(),
@@ -91,16 +111,54 @@ defmodule Cauldron2D.Surface do
     columns = rows |> hd() |> length()
     {width, height} = {columns * tile, length(rows) * tile}
 
-    grid = grid_rows(atlas, rows, tile, scale, at)
+    {fitted, standing} = fit_to_grid(atlas, rows)
+    grid = grid_rows(atlas, fitted, tile, scale, at)
     labels = Keyword.get(opts, :labels, [])
+    volumes = Volume.list(Keyword.get(opts, :volumes, []))
 
     pixels =
-      case {movers, labels} do
-        {[], []} -> grid
-        _painted -> paint(atlas, grid, movers, labels, width, height, scale, at)
+      case {standing ++ movers, labels, volumes} do
+        {[], [], []} ->
+          grid
+
+        {sprites, _labels, _volumes} ->
+          paint(atlas, grid, sprites, labels, volumes, {width, height, tile}, scale, at)
       end
 
     Raster.from_rgba(width, height, IO.iodata_to_binary(pixels))
+  end
+
+  defp fit_to_grid(atlas, rows) do
+    {fitted, standing} =
+      rows
+      |> Enum.with_index()
+      |> Enum.map_reduce([], fn {row, y}, acc ->
+        {cells, standing} =
+          row
+          |> Enum.with_index()
+          |> Enum.map_reduce([], fn {cell, x}, acc -> split_cell(atlas, cell, {x, y}, acc) end)
+
+        {cells, acc ++ Enum.reverse(standing)}
+      end)
+
+    {fitted, standing}
+  end
+
+  defp split_cell(_atlas, :void, _position, acc), do: {:void, acc}
+
+  defp split_cell(atlas, {base, overlays, tint}, {x, y}, acc) do
+    tile = atlas.tile
+
+    {fitting, standing} =
+      Enum.split_with(overlays, fn art -> Atlas.entry(atlas, art).size == {tile, tile} end)
+
+    placed =
+      for art <- standing do
+        {width, height} = Atlas.entry(atlas, art).size
+        {art, {x * tile + (tile - width) / 2, (y + 1) * tile - height}, tint}
+      end
+
+    {{base, fitting, tint}, Enum.reverse(placed) ++ acc}
   end
 
   defp grid_rows(atlas, rows, tile, scale, at) do
@@ -110,23 +168,45 @@ defmodule Cauldron2D.Surface do
     end)
   end
 
-  defp paint(atlas, grid, movers, labels, width, height, scale, at) do
+  defp paint(atlas, grid, movers, labels, volumes, {width, height, tile}, scale, at) do
     lines =
       grid
       |> Enum.flat_map(fn tile_row -> Enum.map(tile_row, &IO.iodata_to_binary/1) end)
       |> Enum.with_index()
       |> Map.new(fn {line, index} -> {index, line} end)
 
-    lines = Enum.reduce(movers, lines, &blit_mover(atlas, &1, &2, width, height, scale, at))
+    lines = Enum.reduce(movers, lines, &blit_sprite(atlas, &1, &2, width, height, scale, at))
     lines = Enum.reduce(labels, lines, &blit_label(&1, &2, width, height, scale))
+    lines = Enum.reduce(volumes, lines, &blit_volume(&1, &2, {width, height}, tile))
 
     for y <- 0..(height - 1)//1, do: Map.fetch!(lines, y)
   end
 
-  defp blit_mover(atlas, {art, {x, y}}, lines, width, height, scale, at) do
-    sprite = sprite_binary(atlas, art, scale, at)
-    tile = div(atlas.tile, scale)
-    blit_binary({sprite, tile, tile}, {round(x / scale), round(y / scale)}, lines, width, height)
+  defp blit_volume(volume, lines, {width, height}, tile) do
+    box = Volume.box(volume, fn {x, y, _z} -> {x * tile, y * tile} end)
+    plan = Volume.ground_plan(fn {px, py} -> {px / tile, py / tile} end, {0.0, 0.0, 1.0})
+    canvas = %{width: width, height: height, rows: lines}
+
+    Volume.paint(canvas, volume, box, plan).rows
+  end
+
+  defp blit_sprite(atlas, {art, position}, lines, width, height, scale, at),
+    do: blit_sprite(atlas, {art, position, nil, nil, false}, lines, width, height, scale, at)
+
+  defp blit_sprite(atlas, {art, position, tint}, lines, width, height, scale, at),
+    do: blit_sprite(atlas, {art, position, tint, nil, false}, lines, width, height, scale, at)
+
+  defp blit_sprite(atlas, {art, {x, y}, tint, pose, flip}, lines, width, height, scale, at) do
+    {binary, sprite_width, sprite_height} =
+      sprite_binary(atlas, art, tint, {pose, flip}, scale, at)
+
+    blit_binary(
+      {binary, sprite_width, sprite_height},
+      {round(x / scale), round(y / scale)},
+      lines,
+      width,
+      height
+    )
   end
 
   defp blit_label({text, position, colour}, lines, width, height, scale),
@@ -215,7 +295,7 @@ defmodule Cauldron2D.Surface do
           into: %{},
           do: {row, binary_part(raster.rgba, row * width * 4, width * 4)}
 
-    painted = blit_mover(atlas, {art, {x, y}}, lines, width, raster.height, 1, 0)
+    painted = blit_sprite(atlas, {art, {x, y}}, lines, width, raster.height, 1, 0)
 
     Raster.from_rgba(
       width,
@@ -255,19 +335,47 @@ defmodule Cauldron2D.Surface do
       atlas,
       scaled_key(cache_key(atlas, cell, at), scale),
       fn -> blend(atlas, cell, at) end,
+      {atlas.tile, atlas.tile},
       scale
     )
   end
 
-  defp sprite_binary(atlas, art, scale, at) do
-    sprite = Atlas.frame_at(atlas, art, at)
-    cached(atlas, scaled_key({:sprite, sprite.id}, scale), fn -> sprite.raster.rgba end, scale)
+  defp sprite_binary(atlas, art, tint, {pose, flip}, scale, at) do
+    sprite = posed(atlas, art, pose, at)
+    size = {sprite.width, sprite.height}
+
+    binary =
+      cached(
+        atlas,
+        scaled_key({:sprite, sprite.id, tint, flip}, scale),
+        fn -> sprite.raster.rgba |> shade(atlas, tint) |> mirrored(flip, sprite.width) end,
+        size,
+        scale
+      )
+
+    {binary, div(sprite.width, scale), div(sprite.height, scale)}
+  end
+
+  defp posed(atlas, art, nil, at), do: Atlas.frame_at(atlas, art, at)
+  defp posed(atlas, art, pose, at), do: Atlas.pose(atlas, art, pose, at)
+
+  defp mirrored(rgba, false, _width), do: rgba
+
+  defp mirrored(rgba, true, width) do
+    stride = width * 4
+
+    for <<row::binary-size(^stride) <- rgba>>, into: <<>> do
+      row
+      |> then(&for(<<pixel::binary-size(4) <- &1>>, do: pixel))
+      |> Enum.reverse()
+      |> IO.iodata_to_binary()
+    end
   end
 
   defp scaled_key(key, 1), do: key
   defp scaled_key(key, scale), do: {key, {:scale, scale}}
 
-  defp cached(atlas, key, full, scale) do
+  defp cached(atlas, key, full, size, scale) do
     table = Atlas.cache(atlas.name)
 
     case :ets.lookup(table, key) do
@@ -275,7 +383,7 @@ defmodule Cauldron2D.Surface do
         binary
 
       [] ->
-        binary = sample(full.(), atlas.tile, scale)
+        binary = sample(full.(), size, scale)
         :ets.insert(table, {key, binary})
         binary
     end
@@ -283,11 +391,11 @@ defmodule Cauldron2D.Surface do
 
   defp sample(binary, _size, 1), do: binary
 
-  defp sample(binary, size, scale) when rem(size, scale) == 0 do
-    small = div(size, scale)
+  defp sample(binary, {width, height}, scale) do
+    {small_w, small_h} = {div(width, scale), div(height, scale)}
 
-    for py <- 0..(small - 1)//1, px <- 0..(small - 1)//1, into: <<>> do
-      binary_part(binary, (py * scale * size + px * scale) * 4, 4)
+    for py <- 0..(small_h - 1)//1, px <- 0..(small_w - 1)//1, into: <<>> do
+      binary_part(binary, (py * scale * width + px * scale) * 4, 4)
     end
   end
 
@@ -305,10 +413,23 @@ defmodule Cauldron2D.Surface do
 
   defp blend(atlas, {base, overlays, tint}, at) do
     overlays
-    |> Enum.reduce(Atlas.frame_at(atlas, base, at).raster.rgba, fn art, beneath ->
+    |> Enum.reduce(tile_rgba(atlas, base, at), fn art, beneath ->
       over(beneath, Atlas.frame_at(atlas, art, at).raster.rgba, [])
     end)
     |> shade(atlas, tint)
+  end
+
+  defp tile_rgba(atlas, base, at) do
+    case Atlas.frame_at(atlas, base, at) do
+      %{width: width, height: height} = sprite
+      when width == atlas.tile and height == atlas.tile ->
+        sprite.raster.rgba
+
+      %{width: width, height: height} ->
+        raise ArgumentError,
+              "#{inspect(base)} is #{width}x#{height} but a tile's base must be " <>
+                "#{atlas.tile}x#{atlas.tile}; only overlays and movers may be another size"
+    end
   end
 
   defp over(<<>>, <<>>, acc), do: acc |> Enum.reverse() |> IO.iodata_to_binary()

@@ -180,7 +180,7 @@ defmodule Cauldron2D.Net.Audio.Shared do
   end
 
   defp world_cue(%{world: world, game: game, played: played}) do
-    game.cue(played.view(World.snapshot(world), :audio), :arena)
+    game.cue(played.view(World.snapshot(world), :audio), :play)
   rescue
     _cannot_view -> nil
   catch

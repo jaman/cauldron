@@ -18,8 +18,11 @@ defmodule Cistern.GameTest do
     walked = driver() |> World.hold(:alice, [:right]) |> World.tick(15)
     assert World.view(walked, :alice).me.x > start
 
-    pointed = driver() |> World.hold(:alice, [], {1.5, 5.0}) |> World.tick(60)
-    assert_in_delta World.view(pointed, :alice).me.x, 1.0, 0.01
+    at = 4.5
+    pointed = driver() |> World.hold(:alice, [], {at, 5.0}) |> World.tick(60)
+    middle = World.view(pointed, :alice).me.x + Game.bucket_wide() / 2
+
+    assert_in_delta middle, at, 0.01
   end
 
   test "drops fall, and one that lands on a bucket is caught" do
@@ -53,7 +56,7 @@ defmodule Cistern.GameTest do
 
     view = World.view(driver, :alice)
     assert {:out, :alice} in World.events(driver)
-    assert %{title: "The cistern overflows", next: :same_arena} = Game.outcome(view)
+    assert %{title: "The cistern overflows", next: :same_world} = Game.outcome(view)
   end
 
   test "the same seed replays the same rain" do

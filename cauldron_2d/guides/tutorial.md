@@ -17,7 +17,7 @@ By the end you will have used:
 | the art | `.pic` files, `atlas.txt`, `Cauldron2D.Atlas`, a derived picture |
 | on screen | `Cauldron2D.Client.Game`, `Cauldron2D.Drafter.Client` |
 | sound | `Cauldron2D.Audio`, `Cauldron2D.Audio.Music` |
-| more players | `Cauldron2D.Arenas`, `Cauldron2D.Robot`, `Cauldron2D.World` |
+| more players | `Cauldron2D.Worlds`, `Cauldron2D.Robot`, `Cauldron2D.World` |
 | a browser | `Cauldron2D.Net.Socket`, `Cauldron2D.Net.Channel`, `Cauldron2D.Net.Pages` |
 | a window | `Cauldron2D.Wx.Client` |
 | replays and numbers | `Cauldron2D.Replay`, `Cauldron2D.Tuning`, `mix cauldron.report` |
@@ -221,13 +221,13 @@ war sends each player only what they can see, because `view/2` is asked per play
 
 ```elixir
 def outcome(%{me: me, misses_allowed: allowed} = view) when me.misses >= allowed do
-  %{title: "The cistern overflows", lines: ["#{me.score} caught", ...], next: :same_arena}
+  %{title: "The cistern overflows", lines: ["#{me.score} caught", ...], next: :same_world}
 end
 
 def outcome(_view), do: nil
 ```
 
-`next: :same_arena` means the summary screen's *again* starts the same arena over.
+`next: :same_world` means the summary screen's *again* starts the same world over.
 
 ## 2. Testing it without a world
 
@@ -328,7 +328,7 @@ walls are drawn that way.
 
 The game does not know it is being drawn. What a front end needs is a second module,
 `Cauldron2D.Client.Game`, that says how to show the game: its title, its atlas, its
-actions and keys, its arenas, and how a view becomes a scene and a hud.
+actions and keys, its worlds, and how a view becomes a scene and a hud.
 
 ```elixir
 defmodule Cistern.Client do
@@ -419,18 +419,18 @@ Drafter.Widget.Registry.register(Cauldron2D.Drafter.Surface)
 ```
 
 You get a title, a settings screen (key presets and rebinding, pointer steering, sound
-levels, pixels or glyphs, frame rate), the arena with your hud, a summary when
+levels, pixels or glyphs, frame rate), the world with your hud, a summary when
 `outcome/1` says so, and a guide from `guide/0` — all from the client module. Where the
 terminal draws pictures (kitty, iTerm2, sixel) the field is pixels; elsewhere it is the
 glyphs from `atlas.txt`.
 
-Until you register arenas (step 6), `arenas/1` offers one world of the player's own:
+Until you register worlds (step 6), `worlds/1` offers one world of the player's own:
 
 ```elixir
-def arenas(_props) do
-  case Arenas.list() do
+def worlds(_props) do
+  case Worlds.list() do
     [] -> [%{id: :own, name: "A cistern of your own", world: {Game, [hz: 30]}, players: 0, humans: []}]
-    arenas -> arenas
+    worlds -> worlds
   end
 end
 ```
@@ -461,7 +461,7 @@ Music is a piece with sections and layers, and a cue the game gives from its vie
 ```elixir
 def music, do: Cistern.Sound.pieces()
 
-def cue(%{drops: drops}, :arena), do: Cistern.Sound.cue(length(drops))
+def cue(%{drops: drops}, :world), do: Cistern.Sound.cue(length(drops))
 def cue(_view, _screen), do: nil
 ```
 
@@ -475,12 +475,12 @@ the settings — where this game plays nothing.
 
 A world is a process: `Cauldron2D.World` runs the game at a fixed rate, takes input from
 players in their own processes, and sends each their view every tick. The client started
-one for you in step 4. To share worlds, register **arenas**:
+one for you in step 4. To share worlds, register **worlds**:
 
 ```elixir
-Arenas.register(:yard, game: Game, hz: 30, name: "The yard", note: "everyone in one cistern")
+Worlds.register(:yard, game: Game, hz: 30, name: "The yard", note: "everyone in one cistern")
 
-Arenas.register(:contest,
+Worlds.register(:contest,
   game: Game,
   hz: 30,
   name: "Against the machine",
@@ -489,9 +489,9 @@ Arenas.register(:contest,
 )
 ```
 
-An arena is a world that starts when the first player joins its name and stops after a
-while with nobody in it. The lobby lists them — `arenas/1` returns
-`Cauldron2D.Arenas.list/0` — with who is in each, updated as players come and go.
+A world is a world that starts when the first player joins its name and stops after a
+while with nobody in it. The lobby lists them — `worlds/1` returns
+`Cauldron2D.Worlds.list/0` — with who is in each, updated as players come and go.
 `children` are processes started beside the world: here a computer player.
 
 A robot is a brain module the engine drives on a cadence set by its skill:
@@ -521,7 +521,7 @@ end
 It is given the same view a player gets and answers with the same input a player sends.
 Nothing in the game knows which buckets are people.
 
-Arenas live in the VM that registered them, so two players share "The yard" when
+Worlds live in the VM that registered them, so two players share "The yard" when
 they reach the same VM: over ssh, with `Cauldron2D.Drafter.Server` serving the game and
 each player's terminal connecting to it, or in the browser (step 7). A second `mix
 cistern` in another terminal is a second VM with cisterns of its own.
@@ -562,10 +562,10 @@ end
 ```
 
 `mix cistern.serve` starts it on port 4300. `/play` is the title, `/play/lobby` the
-arenas, `/play/arena/yard` the field: the pages ship `cauldron.js`, which joins the
+worlds, `/play/world/yard` the field: the pages ship `cauldron.js`, which joins the
 channel, draws the frames on a canvas from the atlas served as `atlas.png`, sends the
 keys and the pointer as input, and plays the sound the server mixes for this player.
-The same game, the same arenas, the same robots.
+The same game, the same worlds, the same robots.
 
 ## 8. A window
 
@@ -574,7 +574,7 @@ Cauldron2D.Wx.Client.run(game: Cistern.Client, username: "alice")
 ```
 
 That is `mix cistern.desktop`: a wx window with the same screens as the terminal
-client, drawing the sheet at `:scale` pixels a pixel. It joins the arenas on this node,
+client, drawing the sheet at `:scale` pixels a pixel. It joins the worlds on this node,
 or a server's over its socket with the `:link` option.
 
 ## 9. Replays, numbers and traces
@@ -612,7 +612,7 @@ Three games in the repository use everything above in different ways:
   using the ready-made client. Its creatures hunt by sound.
 - **ExPilot** — a multiplayer XPilot. Ships from an outline turned to every heading with
   `Linocut.headings/3`; maps in XPilot's own file format through `Cauldron2D.Map`; a
-  server over ssh with accounts; arenas on other nodes and other servers joined through
+  server over ssh with accounts; worlds on other nodes and other servers joined through
   `Cauldron2D.Net.Remote`; a ledger of results.
 
 The module documentation is the reference for each piece; this guide is the order to

@@ -1,6 +1,6 @@
 defmodule Cauldron2D.Net.Load do
   @moduledoc """
-  A load test against a running server: players and watchers joining its arenas over
+  A load test against a running server: players and watchers joining its worlds over
   the wire, the frames they get measured against the steps the server runs, and the
   server's own numbers (`Cauldron2D.Net.Api`'s `/stats`) alongside.
 
@@ -8,12 +8,12 @@ defmodule Cauldron2D.Net.Load do
       Cauldron2D.Net.Load.run(url: "http://arcade:2280/api", actions: [], players: 10, ramp: 10, every: 5, seconds: 120)
 
   Sessions are accounts `load_1`, `load_2`… (password `load test`), registered on the
-  server if they are not there, and spread over the arenas in turn. A report goes out
+  server if they are not there, and spread over the worlds in turn. A report goes out
   every `:every` seconds: a line with the sessions joined, the frames a second they
   got (mean and least) against the ticks a second the server's worlds are set to, the
   longest gap between frames, and the node (how busy its schedulers were since the
   last report, the run queue, processes, memory); then a line for each of the three
-  arenas with the longest ticks — the mean, the 95th percentile and the longest against
+  worlds with the longest ticks — the mean, the 95th percentile and the longest against
   the tick's budget, and the share of the last ticks that ran more than one step
   (`behind`; a little is timer jitter, more is a world that cannot keep up).
 
@@ -36,7 +36,7 @@ defmodule Cauldron2D.Net.Load do
     * `:actions` — the action names a player holds at random. Required
     * `:topic` — the channel's topic prefix, default `"world"`
     * `:players`, `:watchers` — how many of each to start with, default 10 and 0
-    * `:arenas` — the ids of the arenas to use, default every arena the server lists
+    * `:worlds` — the ids of the worlds to use, default every world the server lists
     * `:seconds` — how long the run lasts, default 30
     * `:every` — seconds between reports (and ramp steps), default 5
     * `:ramp` — sessions to add at every report, default none; they are players and
@@ -51,7 +51,7 @@ defmodule Cauldron2D.Net.Load do
 
   Returns the summary: `sessions`, `joined`, `refused`, `refusals` (reasons with their
   counts), `fps` (`mean`, `min` over the whole run), `gap_ms` (`max`), `join_ms`
-  (`mean`, `max`), `server` (the last `arenas` and `node` stats, `hz` and
+  (`mean`, `max`), `server` (the last `worlds` and `node` stats, `hz` and
   `steps_per_second`), `degraded` (`%{sessions, why}` for the first degraded report,
   else `nil`), `capacity` and `stopped` (`:time`, `:degraded` or `:asked`).
   """
@@ -67,7 +67,7 @@ defmodule Cauldron2D.Net.Load do
           fps: %{mean: float(), min: float()},
           gap_ms: %{max: non_neg_integer()},
           join_ms: %{mean: non_neg_integer(), max: non_neg_integer()},
-          server: %{arenas: [map()], node: map(), hz: number(), steps_per_second: float()},
+          server: %{worlds: [map()], node: map(), hz: number(), steps_per_second: float()},
           degraded: %{sessions: non_neg_integer(), why: [String.t()]} | nil,
           capacity: non_neg_integer() | nil,
           stopped: :time | :degraded | :asked
@@ -91,15 +91,15 @@ defmodule Cauldron2D.Net.Load do
   def run(opts) do
     url = Keyword.get(opts, :url, "http://localhost:2280/api")
     report = Keyword.get(opts, :report, &IO.puts/1)
-    {:ok, listed} = Remote.arenas(url)
-    arenas = Keyword.get(opts, :arenas) || Enum.map(listed, & &1.id)
-    if arenas == [], do: raise(ArgumentError, "the server at #{url} lists no arenas")
+    {:ok, listed} = Remote.worlds(url)
+    worlds = Keyword.get(opts, :worlds) || Enum.map(listed, & &1.id)
+    if worlds == [], do: raise(ArgumentError, "the server at #{url} lists no worlds")
 
     Process.register(self(), __MODULE__)
 
     run = %{
       url: url,
-      arenas: arenas,
+      worlds: worlds,
       actions: Keyword.fetch!(opts, :actions),
       topic: Keyword.get(opts, :topic, "world"),
       password: Keyword.get(opts, :password, "load test"),
@@ -149,14 +149,14 @@ defmodule Cauldron2D.Net.Load do
 
   defp start_session(run, number, kind) do
     name = "load_#{number}"
-    arena = Enum.at(run.arenas, rem(number - 1, length(run.arenas)))
+    world = Enum.at(run.worlds, rem(number - 1, length(run.worlds)))
 
     with {:ok, token} <- token(run.url, name, run.password),
          {:ok, session} <-
            Session.start_link(
              url: base(run.url),
              token: token,
-             arena: arena,
+             world: world,
              kind: kind,
              actions: run.actions,
              topic: run.topic,
@@ -224,18 +224,18 @@ defmodule Cauldron2D.Net.Load do
     budget = if interval.hz > 0, do: 1_000_000 / interval.hz, else: nil
 
     over_budget =
-      for arena <- interval.arenas,
+      for world <- interval.worlds,
           budget != nil,
-          arena.tick_us.p95 > budget,
+          world.tick_us.p95 > budget,
           do:
-            "#{arena.name}'s ticks run #{ms(arena.tick_us.p95)} at the 95th percentile, over the #{ms(budget)} budget"
+            "#{world.name}'s ticks run #{ms(world.tick_us.p95)} at the 95th percentile, over the #{ms(budget)} budget"
 
     behind =
-      for arena <- interval.arenas,
-          arena.ticks > 0,
-          arena.behind / arena.ticks > @behind,
+      for world <- interval.worlds,
+          world.ticks > 0,
+          world.behind / world.ticks > @behind,
           do:
-            "#{arena.name} ran behind on #{round(arena.behind / arena.ticks * 100)}% of its ticks"
+            "#{world.name} ran behind on #{round(world.behind / world.ticks * 100)}% of its ticks"
 
     slow =
       if interval.fps.min < @slowdown * interval.hz,
@@ -285,16 +285,16 @@ defmodule Cauldron2D.Net.Load do
       fps: %{mean: mean(rates), min: Enum.min(rates, fn -> 0.0 end) / 1},
       gap_ms: Enum.map(live, & &1.gap_ms) |> Enum.max(fn -> 0 end),
       steps: steps,
-      hz: stats.arenas |> Enum.map(& &1.hz) |> Enum.max(fn -> 0 end),
+      hz: stats.worlds |> Enum.map(& &1.hz) |> Enum.max(fn -> 0 end),
       steps_per_second: (steps - run.steps) / run.every,
-      arenas: stats.arenas,
+      worlds: stats.worlds,
       node: stats.node
     }
   end
 
   defp lines(interval, why) do
-    busiest = interval.arenas |> Enum.sort_by(& &1.tick_us.p95, :desc) |> Enum.take(3)
-    others = length(interval.arenas) - length(busiest)
+    busiest = interval.worlds |> Enum.sort_by(& &1.tick_us.p95, :desc) |> Enum.take(3)
+    others = length(interval.worlds) - length(busiest)
     budget = if interval.hz > 0, do: 1_000_000 / interval.hz, else: 0
     node = interval.node
 
@@ -302,10 +302,10 @@ defmodule Cauldron2D.Net.Load do
       "sessions #{interval.joined}/#{interval.sessions}  fps #{Float.round(interval.fps.mean, 1)} (min #{Float.round(interval.fps.min, 1)}) of #{interval.hz}  gap #{interval.gap_ms} ms  node #{round(Map.get(node, :busy, 0.0) * 100)}% busy, rq #{Map.get(node, :run_queue, 0)}, #{Map.get(node, :processes, 0)} procs, #{Map.get(node, :memory_mb, 0)} MB"
 
     worlds =
-      for arena <- busiest do
-        share = if arena.ticks > 0, do: round(arena.behind / arena.ticks * 100), else: 0
+      for world <- busiest do
+        share = if world.ticks > 0, do: round(world.behind / world.ticks * 100), else: 0
 
-        "  #{String.pad_trailing(arena.name, 14)} #{String.pad_leading(Integer.to_string(arena.players), 3)} in  tick #{ms(arena.tick_us.mean)}, p95 #{ms(arena.tick_us.p95)}, max #{ms(arena.tick_us.max)} of #{ms(budget)}  behind #{share}%"
+        "  #{String.pad_trailing(world.name, 14)} #{String.pad_leading(Integer.to_string(world.players), 3)} in  tick #{ms(world.tick_us.mean)}, p95 #{ms(world.tick_us.p95)}, max #{ms(world.tick_us.max)} of #{ms(budget)}  behind #{share}%"
       end
 
     more = if others > 0, do: ["  … and #{others} more"], else: []
@@ -320,7 +320,7 @@ defmodule Cauldron2D.Net.Load do
     live = Enum.filter(reports, & &1.joined)
     rates = Enum.map(live, &(&1.frames / max(&1.alive_ms, 1) * 1000))
     joins = Enum.map(live, & &1.join_ms)
-    last = List.first(run.intervals) || %{arenas: [], node: %{}, hz: 0, steps_per_second: 0.0}
+    last = List.first(run.intervals) || %{worlds: [], node: %{}, hz: 0, steps_per_second: 0.0}
 
     failed =
       for {session, _kind, _number} <- run.sessions, not is_pid(session), do: elem(session, 1)
@@ -339,7 +339,7 @@ defmodule Cauldron2D.Net.Load do
       gap_ms: %{max: max(run.gap, Enum.map(live, & &1.gap_ms) |> Enum.max(fn -> 0 end))},
       join_ms: %{mean: round(mean(joins)), max: Enum.max(joins, fn -> 0 end)},
       server: %{
-        arenas: last.arenas,
+        worlds: last.worlds,
         node: last.node,
         hz: last.hz,
         steps_per_second: last.steps_per_second
@@ -354,7 +354,7 @@ defmodule Cauldron2D.Net.Load do
   defp mean(values), do: Enum.sum(values) / length(values)
 
   defp server_steps(url),
-    do: url |> server_stats() |> Map.get(:arenas) |> Enum.map(& &1.steps) |> Enum.max(fn -> 0 end)
+    do: url |> server_stats() |> Map.get(:worlds) |> Enum.map(& &1.steps) |> Enum.max(fn -> 0 end)
 
   defp server_stats(url) do
     case Remote.stats(url) do
@@ -362,7 +362,7 @@ defmodule Cauldron2D.Net.Load do
         stats
 
       {:error, _reason} ->
-        %{arenas: [], node: %{processes: 0, memory_mb: 0, run_queue: 0, schedulers: 0, busy: 0.0}}
+        %{worlds: [], node: %{processes: 0, memory_mb: 0, run_queue: 0, schedulers: 0, busy: 0.0}}
     end
   end
 end

@@ -1,15 +1,15 @@
 defmodule Cauldron2D.Net.Link.World do
   @moduledoc """
-  A server's arena spoken for in this VM: a process a client joins, sends input to and
+  A server's world spoken for in this VM: a process a client joins, sends input to and
   leaves exactly as it would a `Cauldron2D.World` (`Cauldron2D.Player`), which opens a
   WebSocket to the server for each player (`Cauldron2D.Net.Link.Socket`) and turns what
   comes back into frames, and plays the sound that comes with them through this
   machine's speaker.
 
-      {:ok, world} = Cauldron2D.Net.Link.World.start(url: url, token: token, arena: "pit")
+      {:ok, world} = Cauldron2D.Net.Link.World.start(url: url, token: token, world: "pit")
       :ok = Cauldron2D.Player.join(world, "alice", %{username: "alice"})
 
-  The view a player receives is `%{wire: frame, map: map, sheet: sheet, arena: name}`,
+  The view a player receives is `%{wire: frame, map: map, sheet: sheet, world: name}`,
   the frame and map in the shapes `Cauldron2D.Net.Wire` gives and the sheet its index;
   when the connection ends, one last view with `wire: nil` and `closed: reason`. A
   game's `Cauldron2D.Client.Game` draws such views through `scene/2`, `hud/1`,
@@ -24,7 +24,7 @@ defmodule Cauldron2D.Net.Link.World do
   ## Options
 
     * `:url`, `:token` — the server and the token from `Cauldron2D.Net.Remote.login/4`. Required
-    * `:arena` — the arena's id as it writes. Required
+    * `:world` — the world's id as it writes. Required
     * `:topic` — the channel's topic prefix. Default `"world"`
     * `:sound` — `false` for silence. Default `true`
     * `:name` — a GenServer name. Default none
@@ -50,7 +50,7 @@ defmodule Cauldron2D.Net.Link.World do
   @spec start(keyword()) :: DynamicSupervisor.on_start_child()
   def start(opts) do
     DynamicSupervisor.start_child(@supervisor, %{
-      id: {__MODULE__, Keyword.fetch!(opts, :url), Keyword.fetch!(opts, :arena)},
+      id: {__MODULE__, Keyword.fetch!(opts, :url), Keyword.fetch!(opts, :world)},
       start: {__MODULE__, :start_link, [opts]},
       restart: :temporary
     })
@@ -158,7 +158,7 @@ defmodule Cauldron2D.Net.Link.World do
      %{
        url: Keyword.fetch!(opts, :url),
        token: Keyword.fetch!(opts, :token),
-       arena: Keyword.fetch!(opts, :arena),
+       world: Keyword.fetch!(opts, :world),
        topic: Keyword.get(opts, :topic, "world"),
        sound?: Keyword.get(opts, :sound, true),
        players: %{},
@@ -178,7 +178,7 @@ defmodule Cauldron2D.Net.Link.World do
     case Socket.start_link(
            url: state.url,
            token: state.token,
-           topic: "#{state.topic}:#{state.arena}",
+           topic: "#{state.topic}:#{state.world}",
            params: params,
            owner: self()
          ) do
@@ -246,7 +246,7 @@ defmodule Cauldron2D.Net.Link.World do
           {:cauldron_frame,
            %{
              tick: player.tick,
-             view: %{wire: frame, map: state.map, sheet: state.sheet, arena: state.arena},
+             view: %{wire: frame, map: state.map, sheet: state.sheet, world: state.world},
              events: []
            }}
         )
@@ -284,7 +284,7 @@ defmodule Cauldron2D.Net.Link.World do
                wire: nil,
                map: state.map,
                sheet: state.sheet,
-               arena: state.arena,
+               world: state.world,
                closed: reason
              },
              events: []

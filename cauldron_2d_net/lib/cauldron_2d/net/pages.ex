@@ -1,16 +1,18 @@
 defmodule Cauldron2D.Net.Pages do
   @moduledoc """
-  The pages around a game's worlds in a browser: a title, a lobby of arenas, the
-  arena, settings and the guide, from a `Cauldron2D.Client.Game`, as a plug a game
+  The pages around a game's worlds in a browser: a title, a lobby of worlds, the
+  world, settings and the guide, from a `Cauldron2D.Client.Game`, as a plug a game
   forwards a path to.
 
       forward "/play", Cauldron2D.Net.Pages, game: MyGame.Client, username: &MyGame.Web.Auth.username/1, token: &MyGame.Web.Auth.token/1, login: "/login"
 
-  The pages also serve the atlas as `atlas.png`, `cauldron.js` and `phoenix.min.js`,
-  and `arenas.json` for the lobby to refresh from. Links follow the path the pages are
-  mounted at. The arena page mounts `cauldron.js` on the game's channel with the
-  player's settings — the preset and the levels, kept in the browser by the settings
-  page — and shows the round's end over the canvas with a way back to the lobby.
+  The pages also serve the atlas as `atlas.png`, `cauldron.js`, `gamepad.js` (the
+  `gamepad` package's browser reader) and `phoenix.min.js`, and `worlds.json` for the
+  lobby to refresh from. Links follow the path the pages are mounted at. The world page
+  mounts `cauldron.js` on the game's channel with the player's settings — the preset
+  and the levels, kept in the browser by the settings page — and the game's `padmap/1`
+  (`Cauldron2D.Input.Pad.default_map/1` of its actions without one), and shows the
+  round's end over the canvas with a way back to the lobby.
 
   ## Options
 
@@ -29,6 +31,7 @@ defmodule Cauldron2D.Net.Pages do
   use Plug.Router
 
   alias Cauldron2D.Client.Game
+  alias Cauldron2D.Input.Pad
   alias Cauldron2D.Net.{Keys, Sheet}
 
   plug(:match)
@@ -75,42 +78,42 @@ defmodule Cauldron2D.Net.Pages do
     opts = settings(conn)
 
     with_player(conn, opts, fn name ->
-      html(conn, page(opts, "Arenas", lobby_page(opts, name), lobby_script(opts)))
+      html(conn, page(opts, "Worlds", lobby_page(opts, name), lobby_script(opts)))
     end)
   end
 
-  get "/arenas.json" do
+  get "/worlds.json" do
     opts = settings(conn)
 
     with_player(conn, opts, fn name ->
-      arenas =
-        for arena <- opts.game.arenas(%{username: name}),
+      worlds =
+        for world <- opts.game.worlds(%{username: name}),
             do: %{
-              id: to_string(arena.id),
-              name: arena.name,
-              players: Map.get(arena, :players, 0),
-              map: Map.get(arena, :map),
-              note: Map.get(arena, :note),
-              kind: kind_text(arena),
-              teams: Map.get(arena, :teams, [])
+              id: to_string(world.id),
+              name: world.name,
+              players: Map.get(world, :players, 0),
+              map: Map.get(world, :map),
+              note: Map.get(world, :note),
+              kind: kind_text(world),
+              teams: Map.get(world, :teams, [])
             }
 
-      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(arenas))
+      conn |> put_resp_content_type("application/json") |> send_resp(200, Jason.encode!(worlds))
     end)
   end
 
-  get "/arena/:id" do
+  get "/world/:id" do
     opts = settings(conn)
 
     with_player(conn, opts, fn name ->
-      case Game.arena(opts.game, %{username: name}, id) do
+      case Game.world(opts.game, %{username: name}, id) do
         nil ->
-          send_resp(conn, 404, "no such arena")
+          send_resp(conn, 404, "no such world")
 
-        arena ->
+        world ->
           html(
             conn,
-            page(opts, arena.name, arena_page(opts, arena), arena_script(opts, conn, arena, name))
+            page(opts, world.name, world_page(opts, world), world_script(opts, conn, world, name))
           )
       end
     end)
@@ -142,6 +145,12 @@ defmodule Cauldron2D.Net.Pages do
       200,
       File.read!(Application.app_dir(:cauldron_2d_net, "priv/static/cauldron.js"))
     )
+  end
+
+  get "/gamepad.js" do
+    conn
+    |> put_resp_content_type("application/javascript")
+    |> send_resp(200, File.read!(Gamepad.browser_script()))
   end
 
   get "/phoenix.min.js" do
@@ -187,7 +196,7 @@ defmodule Cauldron2D.Net.Pages do
       css(),
       "</style></head><body>",
       ~s|<header><a class="brand" href="#{link(opts, "/")}">#{e(name)}</a><nav>|,
-      ~s|<a href="#{link(opts, "/lobby")}">arenas</a> <a href="#{link(opts, "/settings")}">settings</a> <a href="#{link(opts, "/guide")}">guide</a></nav></header>|,
+      ~s|<a href="#{link(opts, "/lobby")}">worlds</a> <a href="#{link(opts, "/settings")}">settings</a> <a href="#{link(opts, "/guide")}">guide</a></nav></header>|,
       "<main>",
       if(heading == "", do: "", else: "<h1>#{e(heading)}</h1>"),
       body,
@@ -216,30 +225,30 @@ defmodule Cauldron2D.Net.Pages do
   end
 
   defp lobby_page(opts, name) do
-    arenas = opts.game.arenas(%{username: name})
-    [~s|<ul class="arenas" id="arenas">|, Enum.map(arenas, &arena_row(opts, &1)), "</ul>"]
+    worlds = opts.game.worlds(%{username: name})
+    [~s|<ul class="worlds" id="worlds">|, Enum.map(worlds, &world_row(opts, &1)), "</ul>"]
   end
 
-  defp arena_row(opts, arena) do
-    id = to_string(arena.id)
-    teams = Map.get(arena, :teams, [])
+  defp world_row(opts, world) do
+    id = to_string(world.id)
+    teams = Map.get(world, :teams, [])
 
     [
-      ~s|<li class="arena" data-id="#{e(id)}"><a class="name" href="#{link(opts, "/arena/#{id}")}">#{e(arena.name)}</a>|,
-      if(kind_text(arena), do: ~s| <span class="kind">#{e(kind_text(arena))}</span>|, else: ""),
-      ~s| <span class="players">#{Map.get(arena, :players, 0)} playing</span>|,
-      if(Map.get(arena, :map), do: ~s| <span class="map">#{e(arena.map)}</span>|, else: ""),
-      if(Map.get(arena, :note), do: ~s|<p class="note">#{e(arena.note)}</p>|, else: ""),
+      ~s|<li class="world" data-id="#{e(id)}"><a class="name" href="#{link(opts, "/world/#{id}")}">#{e(world.name)}</a>|,
+      if(kind_text(world), do: ~s| <span class="kind">#{e(kind_text(world))}</span>|, else: ""),
+      ~s| <span class="players">#{Map.get(world, :players, 0)} playing</span>|,
+      if(Map.get(world, :map), do: ~s| <span class="map">#{e(world.map)}</span>|, else: ""),
+      if(Map.get(world, :note), do: ~s|<p class="note">#{e(world.note)}</p>|, else: ""),
       ~s|<p class="joins">|,
       Enum.map(teams, fn team ->
-        ~s|<a href="#{link(opts, "/arena/#{id}?team=#{e(team)}")}">team #{e(team)}</a> |
+        ~s|<a href="#{link(opts, "/world/#{id}?team=#{e(team)}")}">team #{e(team)}</a> |
       end),
-      ~s|<a href="#{link(opts, "/arena/#{id}?spectate=1")}">watch</a></p></li>|
+      ~s|<a href="#{link(opts, "/world/#{id}?spectate=1")}">watch</a></p></li>|
     ]
   end
 
-  defp kind_text(arena) do
-    case Map.get(arena, :kind) do
+  defp kind_text(world) do
+    case Map.get(world, :kind) do
       {text, _rgb} -> text
       text when is_binary(text) -> text
       _none -> nil
@@ -250,12 +259,12 @@ defmodule Cauldron2D.Net.Pages do
     """
     <script>
     (function () {
-      var list = document.getElementById("arenas");
+      var list = document.getElementById("worlds");
       setInterval(function () {
-        fetch("#{link(opts, "/arenas.json")}").then(function (r) { return r.json(); }).then(function (arenas) {
-          arenas.forEach(function (arena) {
-            var row = list.querySelector('[data-id="' + arena.id + '"] .players');
-            if (row) row.textContent = arena.players + " playing";
+        fetch("#{link(opts, "/worlds.json")}").then(function (r) { return r.json(); }).then(function (worlds) {
+          worlds.forEach(function (world) {
+            var row = list.querySelector('[data-id="' + world.id + '"] .players');
+            if (row) row.textContent = world.players + " playing";
           });
         });
       }, 3000);
@@ -264,26 +273,38 @@ defmodule Cauldron2D.Net.Pages do
     """
   end
 
-  defp arena_page(_opts, arena) do
+  defp world_page(_opts, world) do
     [
-      ~s|<div class="arena-page" id="arena"><div class="stage"><canvas></canvas><div class="over" id="over" hidden><h2 id="over-title"></h2><div id="over-lines"></div><p><a class="button" id="over-again" href="">again</a> <a class="button" id="over-lobby" href="">lobby</a></p></div></div>|,
+      ~s|<div class="world-page" id="world"><div class="stage"><canvas></canvas><div class="over" id="over" hidden><h2 id="over-title"></h2><div id="over-lines"></div><p><a class="button" id="over-again" href="">again</a> <a class="button" id="over-lobby" href="">lobby</a></p></div></div>|,
       ~s|<aside class="hud" id="hud"></aside></div>|,
-      ~s|<p class="note" id="status">joining #{e(arena.name)}…  <kbd>p</kbd> pauses a world of your own, <kbd>+</kbd><kbd>−</kbd> zoom</p>|
+      ~s|<p class="note" id="status">joining #{e(world.name)}…  <kbd>p</kbd> pauses a world of your own, <kbd>+</kbd><kbd>−</kbd> zoom</p>|
     ]
   end
 
-  defp arena_script(opts, conn, arena, name) do
+  defp world_script(opts, conn, world, name) do
     presets =
       for {preset, keymap} <- opts.game.keymaps(),
           into: %{},
           do: {Atom.to_string(preset), Keys.browser_keymap(keymap)}
 
     steering = opts.game |> Game.optional(:steering, [], []) |> Enum.map(&Atom.to_string/1)
+
+    padmap =
+      Keys.browser_padmap(
+        Game.optional(
+          opts.game,
+          :padmap,
+          [%{username: name}],
+          Pad.default_map(opts.game.actions())
+        )
+      )
+
     params = conn.query_params |> Map.take(["team", "spectate"])
     token = opts.token.(conn)
 
     """
     <script src="#{link(opts, "/phoenix.min.js")}"></script>
+    <script src="#{link(opts, "/gamepad.js")}"></script>
     <script src="#{link(opts, "/cauldron.js")}"></script>
     <script>
     (function () {
@@ -295,18 +316,19 @@ defmodule Cauldron2D.Net.Pages do
       var over = document.getElementById("over");
       document.getElementById("over-lobby").href = #{Jason.encode!(link(opts, "/lobby"))};
       document.getElementById("over-again").href = location.href;
-      var game = Cauldron.mount(document.querySelector("#arena canvas"), {
+      var game = Cauldron.mount(document.querySelector("#world canvas"), {
         socketUrl: #{Jason.encode!(opts.socket)},
         socketParams: #{Jason.encode!(if(token, do: %{token: token, username: name}, else: %{username: name}))},
-        topic: #{Jason.encode!("#{opts.topic}:#{arena.id}")},
+        topic: #{Jason.encode!("#{opts.topic}:#{world.id}")},
         params: #{Jason.encode!(params)},
         hud: document.getElementById("hud"),
         scale: #{opts.scale},
         keymap: presets[preset] || {},
+        padmap: #{Jason.encode!(padmap)},
         steering: #{Jason.encode!(steering)},
         pause: "KeyP",
         zoom: { min: 2, max: 64 },
-        onJoin: function () { status.textContent = "in #{e(arena.name)} as #{e(name)}"; game.levels(settings.sfx == null ? 0.85 : settings.sfx, settings.music == null ? 0.35 : settings.music); },
+        onJoin: function () { status.textContent = "in #{e(world.name)} as #{e(name)}"; game.levels(settings.sfx == null ? 0.85 : settings.sfx, settings.music == null ? 0.35 : settings.music); },
         onError: function (reason) { status.textContent = "could not join: " + reason; },
         onOver: function (outcome) {
           document.getElementById("over-title").textContent = outcome.title;
@@ -420,10 +442,10 @@ defmodule Cauldron2D.Net.Pages do
     main{padding:1rem;max-width:64rem;margin:0 auto}
     .title{text-align:center;padding:4rem 0}.big{font-size:3rem;margin:0}.tagline{color:#a0a0b8}
     .button{display:inline-block;padding:.5rem 1rem;background:#3b5bdb;color:#fff;border-radius:.3rem;text-decoration:none}
-    .note{color:#a0a0b8}.arenas{list-style:none;padding:0}.arena{padding:.6rem 0;border-bottom:1px solid #26263a}
-    .arena .name{font-weight:bold;color:#fff}.kind{color:#7fe07f}.players{color:#a0a0b8;margin-left:.6rem}.map{color:#a0a0b8;margin-left:.6rem}
+    .note{color:#a0a0b8}.worlds{list-style:none;padding:0}.world{padding:.6rem 0;border-bottom:1px solid #26263a}
+    .world .name{font-weight:bold;color:#fff}.kind{color:#7fe07f}.players{color:#a0a0b8;margin-left:.6rem}.map{color:#a0a0b8;margin-left:.6rem}
     .joins a{margin-right:.6rem;color:#8fb2ff}
-    .arena-page{display:flex;gap:1rem}.stage{position:relative;flex:1;min-height:60vh;background:#000}.stage canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+    .world-page{display:flex;gap:1rem}.stage{position:relative;flex:1;min-height:60vh;background:#000}.stage canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
     .hud{width:18rem;font-family:ui-monospace,monospace;white-space:pre;font-size:14px}.hud div{margin:0}
     .over{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.7)}
     .settings label{display:block;margin:.6rem 0}.preset dt{font-weight:bold;display:inline-block;width:10rem}.preset dd{display:inline;margin:0}.preset dd::after{content:"";display:block}

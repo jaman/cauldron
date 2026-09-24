@@ -31,6 +31,7 @@ defmodule Cauldron2D.Net.MixProject do
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       family(:cauldron_2d, "~> 0.1.4", "../cauldron_2d", []),
       family(:french_curve, "~> 0.1.4", "../../french_curve", override: true),
+      family(:gamepad, "~> 0.1.0", "../../gamepad", []),
       family(:tuning_fork, "~> 0.1.11", "../../tuning_fork/tuning_fork", []),
       {:phoenix, "~> 1.8"},
       {:mint, "~> 1.6"},

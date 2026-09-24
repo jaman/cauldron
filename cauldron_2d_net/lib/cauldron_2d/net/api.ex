@@ -2,9 +2,9 @@ defmodule Cauldron2D.Net.Api do
   @moduledoc """
   What a client on another machine asks a server over plain HTTP, as a plug a game
   forwards a path to: a token for a name and password (`POST /token`, with `register:
-  true` to make the account first), the arenas (`GET /arenas`) as a lobby lists them,
+  true` to make the account first), the worlds (`GET /worlds`) as a lobby lists them,
   how the server is keeping up (`GET /stats`), and the boards (`GET /leaders?period=day|
-  week|all&metric=<name>&arena=<name>`) when the game keeps a ledger.
+  week|all&metric=<name>&world=<name>`) when the game keeps a ledger.
 
       forward "/api", Cauldron2D.Net.Api, login: &MyGame.Web.Auth.login/2, register: &MyGame.Web.Auth.register/2, token: &MyGame.Web.Auth.token/1, ledger: MyGame.Ledger
 
@@ -19,7 +19,7 @@ defmodule Cauldron2D.Net.Api do
 
   use Plug.Router
 
-  alias Cauldron2D.{Arenas, Ledger, Stats}
+  alias Cauldron2D.{Ledger, Stats, Worlds}
 
   plug(:match)
   plug(Plug.Parsers, parsers: [:json], json_decoder: Jason)
@@ -62,12 +62,12 @@ defmodule Cauldron2D.Net.Api do
     end
   end
 
-  get "/arenas" do
-    json(conn, 200, Enum.map(Arenas.list(), &arena_json/1))
+  get "/worlds" do
+    json(conn, 200, Enum.map(Worlds.list(), &world_json/1))
   end
 
   get "/stats" do
-    json(conn, 200, %{arenas: Stats.arenas(), node: Stats.node()})
+    json(conn, 200, %{worlds: Stats.worlds(), node: Stats.node()})
   end
 
   get "/leaders" do
@@ -87,7 +87,7 @@ defmodule Cauldron2D.Net.Api do
             &(Atom.to_string(&1) == conn.query_params["metric"])
           )
 
-        board = Ledger.board(ledger, period, metric, arena: conn.query_params["arena"])
+        board = Ledger.board(ledger, period, metric, world: conn.query_params["world"])
 
         json(
           conn,
@@ -101,17 +101,17 @@ defmodule Cauldron2D.Net.Api do
     json(conn, 404, %{error: "not found"})
   end
 
-  @doc "An arena as the API lists it: strings for the id and the kind, no world."
-  @spec arena_json(map()) :: map()
-  def arena_json(arena) do
+  @doc "A world as the API lists it: strings for the id and the kind, no world."
+  @spec world_json(map()) :: map()
+  def world_json(world) do
     %{
-      id: to_string(arena.id),
-      name: arena.name,
-      map: Map.get(arena, :map),
-      note: Map.get(arena, :note),
-      players: Map.get(arena, :players, 0),
-      teams: Map.get(arena, :teams, []),
-      kind: kind(Map.get(arena, :kind))
+      id: to_string(world.id),
+      name: world.name,
+      map: Map.get(world, :map),
+      note: Map.get(world, :note),
+      players: Map.get(world, :players, 0),
+      teams: Map.get(world, :teams, []),
+      kind: kind(Map.get(world, :kind))
     }
   end
 

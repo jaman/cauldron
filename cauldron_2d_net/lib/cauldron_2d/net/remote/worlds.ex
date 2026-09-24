@@ -8,7 +8,7 @@ defmodule Cauldron2D.Net.Remote.Worlds do
 
   A node's world is started on that node when the name is first looked up and is its
   pid from then on; a server's world by URL is a `Cauldron2D.Net.Link.World` in this
-  VM, one per server and arena, started on the first lookup. A URL name may carry a
+  VM, one per server and world, started on the first lookup. A URL name may carry a
   fifth element, options for the link world.
   """
 
@@ -33,16 +33,16 @@ defmodule Cauldron2D.Net.Remote.Worlds do
     end
   end
 
-  def whereis_name({:url, url, token, arena}), do: whereis_name({:url, url, token, arena, []})
+  def whereis_name({:url, url, token, world}), do: whereis_name({:url, url, token, world, []})
 
-  def whereis_name({:url, url, token, arena, opts} = name) do
+  def whereis_name({:url, url, token, world, opts} = name) do
     case Registry.lookup(@registry, name) do
       [{pid, _}] ->
         pid
 
       [] ->
         case Link.World.start(
-               [url: url, token: token, arena: arena, name: {:via, __MODULE__, name}] ++ opts
+               [url: url, token: token, world: world, name: {:via, __MODULE__, name}] ++ opts
              ) do
           {:ok, pid} -> pid
           {:error, {:already_started, pid}} -> pid

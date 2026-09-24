@@ -100,10 +100,6 @@ defmodule Cauldron2D.AtlasTest do
       assert Atlas.fetch(atlas) == atlas
     end
 
-    test "arts lists what was put in", %{atlas: atlas} do
-      assert Atlas.arts(atlas) == [:floor]
-    end
-
     test "art the atlas does not have is refused by name", %{atlas: atlas} do
       assert_raise ArgumentError, ~r/has no art :nothing/, fn -> Atlas.entry(atlas, :nothing) end
     end

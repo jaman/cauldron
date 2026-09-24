@@ -9,7 +9,6 @@ defmodule Cauldron2D.SurfaceTest do
   use ExUnit.Case, async: false
 
   alias Cauldron2D.{Atlas, Camera, Surface}
-  alias FrenchCurve.Backend.Kitty
   alias FrenchCurve.{Draw, Raster}
 
   @tile 8
@@ -26,6 +25,14 @@ defmodule Cauldron2D.SurfaceTest do
     |> Atlas.put(:mist, opaque.({0, 0, 200, 128}), glyph: "~ ", color: {0, 0, 200})
     |> Atlas.put(:veil, opaque.({200, 0, 0, 128}), glyph: "^ ", color: {200, 0, 0})
     |> Atlas.tint(:dim, fn {r, g, b, a} -> {div(r, 3), div(g, 3), div(b, 3), a} end)
+    |> Atlas.install()
+
+    Atlas.new(:tall_test, tile: @tile, void: {6, 7, 11})
+    |> Atlas.put(:floor, opaque.({40, 45, 62, 255}), glyph: "· ", color: {60, 66, 88})
+    |> Atlas.put(:tall, Raster.new(@tile * 2, @tile * 2, background: {9, 8, 7, 255}),
+      glyph: "T ",
+      color: {9, 8, 7}
+    )
     |> Atlas.install()
 
     :ok
@@ -46,14 +53,6 @@ defmodule Cauldron2D.SurfaceTest do
       assert entry.glyph == "· "
       assert entry.color == {60, 66, 88}
       assert byte_size(entry.sprite.raster.rgba) == @tile * @tile * 4
-    end
-
-    test "refuses a tile that is not the atlas's size" do
-      atlas = Atlas.new(:wrong_size, tile: @tile)
-
-      assert_raise ArgumentError, ~r/One tile size per atlas/, fn ->
-        Atlas.put(atlas, :big, Raster.new(@tile * 2, @tile))
-      end
     end
 
     test "gives identical art the same id, which is what makes the cache dedupe" do
@@ -132,6 +131,51 @@ defmodule Cauldron2D.SurfaceTest do
       assert void == :binary.copy(<<6, 7, 11, 255>>, @tile * @tile)
     end
 
+    test "an overlay larger than the tile stands on its tile, feet at the bottom centre" do
+      floor = {:floor, [], nil}
+
+      cells = [
+        [floor, floor, floor],
+        [floor, floor, floor],
+        [{:floor, [:tall], nil}, floor, floor]
+      ]
+
+      raster = Surface.compose(:tall_test, cells)
+      {half, bottom} = {div(@tile, 2), 3 * @tile - 1}
+
+      assert {raster.width, raster.height} == {3 * @tile, 3 * @tile}
+      assert pixel(raster, half, @tile) == <<9, 8, 7, 255>>
+      assert pixel(raster, half, bottom) == <<9, 8, 7, 255>>
+      assert pixel(raster, half + @tile - 1, bottom) == <<9, 8, 7, 255>>
+      assert pixel(raster, half + @tile, bottom) == art_pixel(:floor, half, @tile - 1)
+      assert pixel(raster, half, @tile - 1) == art_pixel(:floor, half, @tile - 1)
+    end
+
+    test "a mover is drawn at its own size" do
+      raster =
+        Surface.compose(:tall_test, [[{:floor, [], nil}, {:floor, [], nil}, {:floor, [], nil}]], [
+          {:tall, {1, 1}}
+        ])
+
+      assert pixel(raster, 1, 1) == <<9, 8, 7, 255>>
+      assert pixel(raster, @tile, @tile - 1) == <<9, 8, 7, 255>>
+      assert pixel(raster, 2 * @tile + 1, 1) == art_pixel(:floor, 1, 1)
+    end
+
+    test "a mover of its own size is sampled at a reduced scale like everything else" do
+      full =
+        Surface.compose(:tall_test, [[{:floor, [], nil}, {:floor, [], nil}]], [{:tall, {2, 0}}])
+
+      half =
+        Surface.compose(:tall_test, [[{:floor, [], nil}, {:floor, [], nil}]], [{:tall, {2, 0}}],
+          scale: 2
+        )
+
+      for y <- 0..(half.height - 1), x <- 0..(half.width - 1) do
+        assert pixel(half, x, y) == pixel(full, x * 2, y * 2), "at #{x},#{y}"
+      end
+    end
+
     test "an empty grid still yields a raster rather than failing, of one tile" do
       raster = Surface.compose(:surface_test, [])
 
@@ -175,13 +219,6 @@ defmodule Cauldron2D.SurfaceTest do
       tile = Surface.tile_binary(:surface_test, {:mist, [:wall], nil})
 
       assert binary_part(tile, 0, 4) == <<88, 96, 124, 255>>
-    end
-
-    test "a composed frame is a raster french_curve can serialise" do
-      raster = Surface.compose(:surface_test, [[{:floor, [:player], nil}, {:wall, [], :dim}]])
-
-      assert byte_size(Kitty.transmit(raster, 1)) > 0
-      assert byte_size(Kitty.transmit(raster, 1, compress: true)) > 0
     end
   end
 

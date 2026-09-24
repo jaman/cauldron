@@ -14,8 +14,8 @@ defmodule Cauldron2D.Application do
         Cauldron2D.Sessions,
         Cauldron2D.World.Events
       ] ++
-        Cauldron2D.Arenas.child_specs() ++
-        [{Cauldron2D.Arenas.Sweeper, Application.get_env(:cauldron_2d, :sweeper, [])}]
+        Cauldron2D.Worlds.child_specs() ++
+        [{Cauldron2D.Worlds.Sweeper, Application.get_env(:cauldron_2d, :sweeper, [])}]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: Cauldron2D.Supervisor)
   end

@@ -14,8 +14,8 @@ defmodule Cauldron2D.Drafter.ServerTest do
     def keymaps, do: [arrows: %{left: [:left]}]
     def toggles, do: []
 
-    def arenas(_props),
-      do: [%{id: :pit, name: "Pit", world: Cauldron2D.Arenas.world_name(:served_pit), players: 0}]
+    def worlds(_props),
+      do: [%{id: :pit, name: "Pit", world: Cauldron2D.Worlds.world_name(:served_pit), players: 0}]
 
     def scene(view),
       do: %{
@@ -35,7 +35,7 @@ defmodule Cauldron2D.Drafter.ServerTest do
   test "the server starts the ssh daemon and the accounts with sound ports, and stops again" do
     dir = Path.join(System.tmp_dir!(), "cauldron_server_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
-    :ok = Cauldron2D.Arenas.register(:served_pit, game: Dots)
+    :ok = Cauldron2D.Worlds.register(:served_pit, game: Dots)
     port = 39_000 + :rand.uniform(900)
 
     assert {:ok, server} =
@@ -60,7 +60,7 @@ defmodule Cauldron2D.Drafter.ServerTest do
 
     assert :ok = Server.stop(server)
     refute Process.alive?(server.accounts)
-    Cauldron2D.Arenas.close(:served_pit)
+    Cauldron2D.Worlds.close(:served_pit)
     File.rm_rf!(dir)
   end
 end

@@ -327,6 +327,7 @@
 
   Input.prototype.hold = function (action, down, strength) {
     if (!action) return;
+    if (down && this.steering.indexOf(action) >= 0) this.aim = null;
     if (down && !this.held[action]) {
       this.held[action] = true;
       if (strength !== undefined) this.strength[action] = strength;
@@ -337,6 +338,8 @@
       this.onChange();
     } else if (down && strength !== undefined && this.strength[action] !== strength) {
       this.strength[action] = strength;
+    } else if (down && strength === undefined && this.strength[action] !== undefined) {
+      delete this.strength[action];
     }
   };
 
@@ -346,13 +349,242 @@
     return state;
   };
 
+  function Pad(input, renderer, padmap, options, onAim) {
+    this.input = input;
+    this.renderer = renderer;
+    this.onAim = onAim;
+    this.buttons = (padmap && padmap.buttons) || {};
+    this.axes = (padmap && padmap.axes) || {};
+    this.aimStick = (padmap && padmap.aim) || null;
+    this.push = (padmap && padmap.push) || null;
+    this.deadzone = (options && options.deadzone) || 0.3;
+    this.distance = (options && options.distance) || 8;
+    this.holding = {};
+    this.sticks = {};
+    this.aiming = false;
+    var self = this;
+    this.reader = global.Gamepad.watch(function (line) { self.line(line); }, options);
+  }
+
+  Pad.prototype.line = function (line) {
+    var words = line.split(" ");
+    if (words[0] === "button") {
+      this.control(words[1] + ":" + words[2], this.buttons[words[2]] || [], words[3] === "1" ? null : undefined);
+    } else if (words[0] === "axis") {
+      var value = parseFloat(words[3]);
+      var directions = this.axes[words[2]] || {};
+      var magnitude = Math.abs(value) >= this.deadzone ? Math.abs(value) : undefined;
+      this.control(words[1] + ":" + words[2] + ":neg", directions.neg || [], value < 0 ? magnitude : undefined);
+      this.control(words[1] + ":" + words[2] + ":pos", directions.pos || [], value > 0 ? magnitude : undefined);
+      if (this.aimStick && (words[2] === this.aimStick + "_x" || words[2] === this.aimStick + "_y")) {
+        var stick = this.sticks[words[1]] || (this.sticks[words[1]] = { x: 0, y: 0 });
+        stick[words[2] === this.aimStick + "_x" ? "x" : "y"] = value;
+        this.aim();
+      }
+    } else if (words[0] === "gone") {
+      this.release(words[1] + ":");
+      delete this.sticks[words[1]];
+      this.aim();
+    }
+  };
+
+  Pad.prototype.aim = function () {
+    var strongest = { x: 0, y: 0 };
+    for (var device in this.sticks) {
+      var stick = this.sticks[device];
+      if (Math.hypot(stick.x, stick.y) > Math.hypot(strongest.x, strongest.y)) strongest = stick;
+    }
+    var length = Math.hypot(strongest.x, strongest.y);
+    var focus = this.renderer.frame && this.renderer.frame.focus;
+    if (this.push) {
+      var beyond = this.push.beyond;
+      var strength = Math.min(1, (length - beyond) / (1 - beyond) * this.push.gain);
+      this.control("push", [this.push.action], length >= beyond ? Math.max(this.push.least, strength) : undefined);
+    }
+    if (length >= this.deadzone && focus) {
+      var aim = [focus[0] + (strongest.x / length) * this.distance, focus[1] + (strongest.y / length) * this.distance];
+      var moved = !this.input.aim || aim[0] !== this.input.aim[0] || aim[1] !== this.input.aim[1];
+      this.input.aim = aim;
+      this.aiming = true;
+      if (moved) this.onAim();
+    } else if (this.aiming) {
+      this.input.aim = null;
+      this.aiming = false;
+      this.onAim();
+    }
+  };
+
+  Pad.prototype.reaim = function () {
+    if (this.aiming) this.aim();
+  };
+
+  Pad.prototype.control = function (control, actions, strength) {
+    for (var i = 0; i < actions.length; i++) {
+      var action = actions[i];
+      var holders = this.holding[action] || (this.holding[action] = {});
+      if (strength === undefined) delete holders[control]; else holders[control] = strength;
+      this.settle(action);
+    }
+  };
+
+  Pad.prototype.release = function (prefix) {
+    for (var action in this.holding) {
+      for (var control in this.holding[action]) {
+        if (control.indexOf(prefix) === 0) delete this.holding[action][control];
+      }
+      this.settle(action);
+    }
+  };
+
+  Pad.prototype.settle = function (action) {
+    var holders = this.holding[action];
+    var down = false;
+    var full = false;
+    var strongest = 0;
+    for (var control in holders) {
+      down = true;
+      if (holders[control] === null) full = true; else strongest = Math.max(strongest, holders[control]);
+    }
+    this.input.hold(action, down, down && !full ? strongest : undefined);
+  };
+
+  Pad.prototype.stop = function () {
+    this.reader.stop();
+  };
+
   function capture(element, pointerId) {
     try { element.setPointerCapture(pointerId); } catch (error) {}
   }
 
-  function Touch(input, renderer, zones, onAim, onDown) {
+  function screenAngle() {
+    var orientation = global.screen && global.screen.orientation;
+    if (orientation && typeof orientation.angle === "number") return orientation.angle;
+    if (typeof global.orientation === "number") return (global.orientation + 360) % 360;
+    return 0;
+  }
+
+  function Tilt(input, renderer, options, onAim) {
     this.input = input;
     this.renderer = renderer;
+    this.onAim = onAim;
+    this.range = options.range || 22;
+    this.deadzone = options.deadzone || 0.12;
+    this.distance = options.distance || 8;
+    this.smoothing = options.smoothing || 0.4;
+    this.invert = !!options.invert;
+    this.rest = null;
+    this.deflection = [0, 0];
+    this.live = false;
+    this.listening = false;
+    this.refused = false;
+    this.yielded = false;
+    var self = this;
+    this.onOrientation = function (event) { self.read(event); };
+    this.onLevel = function () { self.level(); };
+    this.onGesture = function () { self.arm(); };
+    this.onVisible = function () { if (global.document.visibilityState === "visible") self.level(); };
+    global.document.addEventListener("pointerup", this.onGesture);
+    global.document.addEventListener("touchend", this.onGesture);
+    global.document.addEventListener("click", this.onGesture);
+    var Orientation = global.DeviceOrientationEvent;
+    if (!Orientation) this.refused = true;
+    else if (typeof Orientation.requestPermission !== "function") this.listen();
+  }
+
+  Tilt.prototype.arm = function () {
+    if (this.listening || this.refused) return;
+    var self = this;
+    global.DeviceOrientationEvent.requestPermission().then(function (state) {
+      if (state === "granted") self.listen(); else if (state === "denied") self.refused = true;
+    }, function () {});
+  };
+
+  Tilt.prototype.listen = function () {
+    if (this.listening) return;
+    this.listening = true;
+    global.document.removeEventListener("pointerup", this.onGesture);
+    global.document.removeEventListener("touchend", this.onGesture);
+    global.document.removeEventListener("click", this.onGesture);
+    global.addEventListener("deviceorientation", this.onOrientation);
+    global.addEventListener("orientationchange", this.onLevel);
+    if (global.screen && global.screen.orientation) global.screen.orientation.addEventListener("change", this.onLevel);
+    global.document.addEventListener("visibilitychange", this.onVisible);
+  };
+
+  Tilt.prototype.level = function () {
+    this.rest = null;
+    this.deflection = [0, 0];
+  };
+
+  Tilt.prototype.pose = function (beta, gamma) {
+    var b = beta * Math.PI / 180;
+    var g = gamma * Math.PI / 180;
+    var gx = Math.sin(g) * Math.cos(b);
+    var gy = -Math.sin(b);
+    var gz = -Math.cos(g) * Math.cos(b);
+    var roll = Math.atan2(gx, Math.sqrt(gy * gy + gz * gz)) * 180 / Math.PI;
+    var pitch = Math.atan2(-gy, -gz) * 180 / Math.PI;
+    switch (screenAngle()) {
+      case 90: return [pitch, roll];
+      case 180: return [-roll, -pitch];
+      case 270: return [-pitch, -roll];
+      default: return [roll, pitch];
+    }
+  };
+
+  function wrapDegrees(degrees) {
+    return degrees - 360 * Math.round(degrees / 360);
+  }
+
+  Tilt.prototype.read = function (event) {
+    if (typeof event.beta !== "number" || typeof event.gamma !== "number") return;
+    var pose = this.pose(event.beta, event.gamma);
+    if (!this.rest) this.rest = pose;
+    var dx = wrapDegrees(pose[0] - this.rest[0]) / this.range;
+    var dy = wrapDegrees(pose[1] - this.rest[1]) / this.range;
+    if (this.invert) dy = -dy;
+    var length = Math.sqrt(dx * dx + dy * dy);
+    if (length > 1) { dx /= length; dy /= length; }
+    this.deflection = [
+      this.deflection[0] + (dx - this.deflection[0]) * this.smoothing,
+      this.deflection[1] + (dy - this.deflection[1]) * this.smoothing
+    ];
+    this.live = true;
+    if (!this.yielded) this.apply();
+  };
+
+  Tilt.prototype.apply = function () {
+    var dx = this.deflection[0];
+    var dy = this.deflection[1];
+    var length = Math.sqrt(dx * dx + dy * dy);
+    var focus = this.renderer.frame && this.renderer.frame.focus;
+    var aim = length < this.deadzone || !focus ? null : [focus[0] + (dx / length) * this.distance, focus[1] + (dy / length) * this.distance];
+    var before = this.input.aim;
+    if (aim === before || (aim && before && aim[0] === before[0] && aim[1] === before[1])) return;
+    this.input.aim = aim;
+    this.onAim();
+  };
+
+  Tilt.prototype.yield = function (toStick) {
+    this.yielded = toStick;
+    if (!toStick && this.live) this.apply();
+  };
+
+  Tilt.prototype.stop = function () {
+    global.document.removeEventListener("pointerup", this.onGesture);
+    global.document.removeEventListener("touchend", this.onGesture);
+    global.document.removeEventListener("click", this.onGesture);
+    global.removeEventListener("deviceorientation", this.onOrientation);
+    global.removeEventListener("orientationchange", this.onLevel);
+    if (global.screen && global.screen.orientation) global.screen.orientation.removeEventListener("change", this.onLevel);
+    global.document.removeEventListener("visibilitychange", this.onVisible);
+    this.listening = false;
+  };
+
+  function Touch(input, renderer, zones, tilt, onAim, onDown) {
+    this.input = input;
+    this.renderer = renderer;
+    this.tilt = tilt;
     this.onAim = onAim;
     this.onDown = onDown;
     this.pointers = {};
@@ -434,15 +666,18 @@
       if (length > 1) { dx /= length; dy /= length; length = 1; }
       if (zone.knob) zone.knob.style.transform = "translate(" + Math.round(dx * c[2] * 0.6) + "px, " + Math.round(dy * c[2] * 0.6) + "px)";
       var focus = self.renderer.frame && self.renderer.frame.focus;
-      if (length < deadzone || !focus) {
-        self.input.aim = null;
-      } else {
+      var beyond = push ? push.beyond || 0.5 : 1;
+      var tilting = self.tilt && self.tilt.live;
+      var steers = tilting ? length >= beyond : length >= deadzone;
+      if (tilting) self.tilt.yield(length >= beyond);
+      if (steers && focus) {
         self.input.aim = [focus[0] + (dx / length) * distance, focus[1] + (dy / length) * distance];
+      } else if (!tilting) {
+        self.input.aim = null;
       }
       if (push) {
-        var beyond = push.beyond || 0.5;
         var strength = length >= beyond ? Math.min(1, (length - beyond) / (1 - beyond) * (push.gain || 1.6)) : 0;
-        self.input.hold(push.action, length >= beyond, Math.max(push.least || 0.25, strength));
+        self.input.hold(push.action, tilting || length >= beyond, Math.max(push.least || 0.25, strength));
       }
       self.onAim();
     }
@@ -467,6 +702,7 @@
       self.input.aim = null;
       if (push) self.input.hold(push.action, false);
       self.onAim();
+      if (self.tilt) self.tilt.yield(false);
     };
     this.listen(element, "pointerup", release);
     this.listen(element, "pointercancel", release);
@@ -720,7 +956,10 @@
     canvas.addEventListener("pointercancel", onPinchUp);
     canvas.addEventListener("contextmenu", function (event) { event.preventDefault(); });
 
-    var touch = options.touch ? new Touch(input, renderer, options.touch.zones || [], aimed, function () { sound.unlock(); }) : null;
+    var tilt = options.touch && options.touch.tilt ? new Tilt(input, renderer, options.touch.tilt, aimed) : null;
+    var touch = options.touch ? new Touch(input, renderer, options.touch.zones || [], tilt, aimed, function () { sound.unlock(); }) : null;
+    var pad = options.padmap && global.Gamepad && global.Gamepad.available() ? new Pad(input, renderer, options.padmap, options.pad, function () { pointer = null; aimed(); }) : null;
+
     var observer = null;
     if (options.fit && global.ResizeObserver) {
       observer = new global.ResizeObserver(function () { refit(); });
@@ -741,6 +980,7 @@
       renderer.draw();
       counts.draws += 1;
       reaim();
+      if (pad) pad.reaim();
       global.requestAnimationFrame(loop);
     }
     global.requestAnimationFrame(loop);
@@ -749,6 +989,10 @@
       levels: function (sfx, music) { channel.push("levels", { sfx: sfx, music: music }); },
       music: function (on) { channel.push("music", { on: !!on }); },
       stats: function () { return stats; },
+      aim: function (point) { pointer = null; input.aim = point ? [point[0], point[1]] : null; aimed(); },
+      hold: function (action, down, strength) { input.hold(action, !!down, down ? strength : undefined); },
+      focus: function () { var focus = renderer.frame && renderer.frame.focus; return focus ? [focus[0], focus[1]] : null; },
+      input: function () { return input.state(); },
       zoom: function (cssTile) { zoomTo(cssTile); },
       zoomBy: function (factor) { zoomBy(factor); },
       panBy: function (dx, dy) { if (watching) renderer.panBy(dx, dy); },
@@ -761,6 +1005,8 @@
         clearInterval(statsTimer);
         if (aimTimer) clearTimeout(aimTimer);
         if (touch) touch.stop();
+        if (tilt) tilt.stop();
+        if (pad) pad.stop();
         if (observer) observer.disconnect();
         global.removeEventListener("keydown", onKeyDown);
         global.removeEventListener("keyup", onKeyUp);

@@ -1,8 +1,10 @@
 defmodule Cistern.Game do
   @moduledoc """
-  A game of catching drops: every player holds a bucket on the bottom row of a
-  twelve-by-ten field, drops fall from the top, and a bucket under a drop when it lands
-  catches it. A gold drop is worth three. Three misses and that player is out.
+  A game of catching drops: every player holds a bucket two tiles wide on the row above
+  the floor of a twelve-by-ten field, drops fall from the top, and a drop that reaches
+  the bucket's own row over the bucket lands in it. One that is not over a bucket falls
+  the last row and splashes on the floor. A gold drop is worth three. Three misses and
+  that player is out.
 
   This is a `Cauldron2D.Game`: `init/1` builds it, `join/3` seats a bucket, `step/2` moves
   the world by `dt` seconds, `view/2` is what one player sees, and `drain_events/1` is
@@ -22,6 +24,8 @@ defmodule Cistern.Game do
   @width 12
   @height 10
   @bottom @height - 1
+  @caught_at @bottom - 1
+  @bucket_wide 2.0
   @speed 8.0
   @misses_allowed 3
 
@@ -32,7 +36,8 @@ defmodule Cistern.Game do
           score: non_neg_integer(),
           misses: non_neg_integer(),
           held: MapSet.t(atom()),
-          aim: {number(), number()} | nil
+          aim: {number(), number()} | nil,
+          robot?: boolean()
         }
   @type drop :: %{x: non_neg_integer(), y: float(), kind: :drop | :drop_gold}
   @type t :: %__MODULE__{
@@ -71,7 +76,8 @@ defmodule Cistern.Game do
       score: 0,
       misses: 0,
       held: MapSet.new(),
-      aim: nil
+      aim: nil,
+      robot?: Map.get(props, :robot?, false)
     }
 
     {:ok, %{game | buckets: Map.put(game.buckets, id, bucket)}}
@@ -110,7 +116,7 @@ defmodule Cistern.Game do
   defp steered(%{misses: misses} = bucket, _dt) when misses >= @misses_allowed, do: bucket
 
   defp steered(%{aim: {x, _y}} = bucket, dt) when is_number(x) do
-    target = clamp(x - 0.5)
+    target = clamp(x - @bucket_wide / 2)
     step = min(abs(target - bucket.x), @speed * dt)
     %{bucket | x: bucket.x + step * sign(target - bucket.x)}
   end
@@ -126,7 +132,7 @@ defmodule Cistern.Game do
     %{bucket | x: clamp(bucket.x + direction * @speed * dt)}
   end
 
-  defp clamp(x), do: x |> max(0.0) |> min(@width - 2.0)
+  defp clamp(x), do: x |> max(0.0) |> min(@width - @bucket_wide)
 
   defp sign(n) when n < 0, do: -1.0
   defp sign(_n), do: 1.0
@@ -148,22 +154,41 @@ defmodule Cistern.Game do
   end
 
   defp fall(game, dt) do
-    fallen = Enum.map(game.drops, &%{&1 | y: &1.y + Tuning.get(game.tuning, :fall) * dt})
-    {landed, falling} = Enum.split_with(fallen, &(&1.y >= @bottom))
-    Enum.reduce(landed, %{game | drops: falling}, &land(&2, &1))
+    playing = playing(game)
+
+    {settling, falling} =
+      game.drops
+      |> Enum.map(&%{&1 | y: &1.y + Tuning.get(game.tuning, :fall) * dt})
+      |> Enum.split_with(&(&1.y >= @caught_at))
+
+    Enum.reduce(settling, %{game | drops: falling}, &settle(&2, &1, playing))
   end
 
-  defp land(game, drop) do
-    case Enum.find(playing(game), &under?(&1, drop)) do
-      nil -> miss(game, drop)
+  defp settle(game, drop, playing) do
+    case Enum.find(playing, &under?(&1, drop)) do
+      nil -> fell_past(game, drop)
       bucket -> catch_drop(game, bucket, drop)
     end
   end
 
+  defp fell_past(game, %{y: y} = drop) when y >= @bottom, do: miss(game, drop)
+  defp fell_past(game, drop), do: %{game | drops: [drop | game.drops]}
+
   defp playing(game),
     do: game.buckets |> Map.values() |> Enum.filter(&(&1.misses < @misses_allowed))
 
-  defp under?(bucket, drop), do: drop.x >= bucket.x - 0.5 and drop.x <= bucket.x + 1.5
+  defp under?(bucket, drop) do
+    middle = drop.x + 0.5
+    middle >= bucket.x and middle <= bucket.x + @bucket_wide
+  end
+
+  @doc "How wide a bucket is, in tiles."
+  @spec bucket_wide() :: float()
+  def bucket_wide, do: @bucket_wide
+
+  @doc "The row a drop is caught on, which is the row a bucket stands on."
+  @spec caught_at() :: non_neg_integer()
+  def caught_at, do: @caught_at
 
   defp catch_drop(game, bucket, drop) do
     worth = if drop.kind == :drop_gold, do: 3, else: 1
@@ -224,7 +249,7 @@ defmodule Cistern.Game do
         "#{me.score} caught",
         if(me.score >= best, do: "the fullest bucket", else: "best was #{best}")
       ],
-      next: :same_arena
+      next: :same_world
     }
   end
 

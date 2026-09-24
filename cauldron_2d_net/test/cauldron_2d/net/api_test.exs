@@ -3,7 +3,7 @@ defmodule Cauldron2D.Net.ApiTest do
   import Plug.Conn
   import Plug.Test
 
-  alias Cauldron2D.{Arenas, Ledger}
+  alias Cauldron2D.{Ledger, Worlds}
   alias Cauldron2D.Net.Api
 
   defmodule Race do
@@ -48,16 +48,16 @@ defmodule Cauldron2D.Net.ApiTest do
     assert %{status: 400} = post_json("/token", %{})
   end
 
-  test "the arenas and the stats, as a remote lobby reads them" do
+  test "the worlds and the stats, as a remote lobby reads them" do
     :ok =
-      Arenas.register(:api_pit,
+      Worlds.register(:api_pit,
         game: Race,
         name: "The Pit",
         kind: {"race", {0, 200, 0}},
         teams: [1, 2]
       )
 
-    on_exit(fn -> Arenas.close(:api_pit) end)
+    on_exit(fn -> Worlds.close(:api_pit) end)
 
     assert [
              %{
@@ -69,13 +69,13 @@ defmodule Cauldron2D.Net.ApiTest do
              }
            ] =
              :get
-             |> conn("/arenas")
+             |> conn("/worlds")
              |> Api.call(opts())
              |> Map.get(:resp_body)
              |> Jason.decode!()
              |> Enum.filter(&(&1["id"] == "api_pit"))
 
-    assert %{"arenas" => _, "node" => %{"processes" => _}} =
+    assert %{"worlds" => _, "node" => %{"processes" => _}} =
              :get |> conn("/stats") |> Api.call(opts()) |> Map.get(:resp_body) |> Jason.decode!()
   end
 

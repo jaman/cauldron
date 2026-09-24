@@ -4,9 +4,9 @@ defmodule Cistern.WebTest do
 
   alias Cistern.Web.Router
 
-  test "the pages serve the title, the lobby and the arena for a guest" do
+  test "the pages serve the title, the lobby and the world for a guest" do
     Cistern.Art.install()
-    :ok = Cistern.Arenas.register()
+    :ok = Cistern.Worlds.register()
     opts = Router.init([])
 
     title = :get |> conn("/play") |> Router.call(opts)
@@ -16,9 +16,9 @@ defmodule Cistern.WebTest do
     lobby = :get |> conn("/play/lobby") |> Router.call(opts)
     assert lobby.resp_body =~ "The yard"
 
-    arena = :get |> conn("/play/arena/yard") |> Router.call(opts)
-    assert arena.status == 200
-    assert arena.resp_body =~ "cauldron.js"
+    world = :get |> conn("/play/world/yard") |> Router.call(opts)
+    assert world.status == 200
+    assert world.resp_body =~ "cauldron.js"
 
     assert :get |> conn("/") |> Router.call(opts) |> Map.fetch!(:status) == 302
   end

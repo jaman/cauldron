@@ -2,7 +2,7 @@ defmodule Mix.Tasks.Cistern.Serve do
   @shortdoc "Serve Cistern to browsers on port 4300"
 
   @moduledoc """
-  Start the endpoint with the shared arenas registered, and keep it up.
+  Start the endpoint with the shared worlds registered, and keep it up.
 
       mix cistern.serve
   """
@@ -14,7 +14,7 @@ defmodule Mix.Tasks.Cistern.Serve do
   @impl Mix.Task
   def run(_argv) do
     Mix.Task.run("app.start")
-    Cistern.Arenas.register()
+    Cistern.Worlds.register()
     Cistern.Art.install()
     {:ok, _pubsub} = Phoenix.PubSub.Supervisor.start_link(name: Cistern.PubSub)
     {:ok, _endpoint} = Endpoint.start_link(http: [port: 4300], server: true)

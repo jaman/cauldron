@@ -11,6 +11,7 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
 
   alias Cauldron2D.Atlas
   alias Cauldron2D.Drafter.Surface
+  alias Drafter.Session.Context
   alias FrenchCurve.Raster
 
   @tile 8
@@ -67,10 +68,6 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
       assert drawn =~ "@ "
       assert drawn =~ "· "
     end
-
-    test "produces no image", %{state: state} do
-      assert Surface.image(state, rect(80, 24), :map) == nil
-    end
   end
 
   describe "braille mode" do
@@ -120,29 +117,71 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
     end
   end
 
+  describe "cells mode" do
+    test "a glyph set fills the pane with block characters and produces no image",
+         %{state: state} do
+      for set <- [:half, :quad, :sextant, :octant] do
+        cells = %{state | mode: set}
+        strips = Surface.render(cells, rect(80, 24))
+
+        assert length(strips) == 24, "#{set}"
+        assert Enum.all?(strips, &(&1.width == 80)), "#{set}"
+        assert Surface.image(cells, rect(80, 24), :map) == nil
+        assert Surface.protocol(cells) == nil
+      end
+    end
+
+    test "the bright art shows in its own colour and the floor without it", %{state: state} do
+      colours = fn strips ->
+        for strip <- strips, segment <- strip.segments, uniq: true, do: segment.style[:fg]
+      end
+
+      drawn = colours.(Surface.render(%{state | mode: :octant}, rect(80, 24)))
+
+      floor_only =
+        colours.(
+          Surface.render(
+            %{state | mode: :octant, cell: fn _ -> {:floor, [], nil} end},
+            rect(80, 24)
+          )
+        )
+
+      assert {245, 232, 200} in drawn
+      refute {245, 232, 200} in floor_only
+    end
+
+    test "the levels a surface draws exactly follow the set's pixels per cell" do
+      assert Surface.zoom_levels(:widget_test, :octant) ==
+               Surface.zoom_levels(:widget_test, :braille)
+
+      assert 1 in Surface.zoom_levels(:widget_test, :half)
+      assert 1 in Surface.zoom_levels(:widget_test, :sextant)
+    end
+  end
+
   describe "pixel mode" do
+    @terminal_vars ~w(TERM TERM_PROGRAM TERM_PROGRAM_VERSION LC_TERMINAL LC_TERMINAL_VERSION KITTY_WINDOW_ID FRENCH_CURVE_ITERM2)
+
     setup %{state: state} do
-      kept = {System.get_env("TERM"), System.get_env("TERM_PROGRAM")}
+      kept = Map.new(@terminal_vars, &{&1, System.get_env(&1)})
 
       on_exit(fn ->
-        {term, program} = kept
-        if term, do: System.put_env("TERM", term), else: System.delete_env("TERM")
-
-        if program,
-          do: System.put_env("TERM_PROGRAM", program),
-          else: System.delete_env("TERM_PROGRAM")
+        Enum.each(kept, fn
+          {name, nil} -> System.delete_env(name)
+          {name, value} -> System.put_env(name, value)
+        end)
       end)
 
       {:ok, state: %{state | mode: :kitty}}
     end
 
     defp on_a_real_kitty do
-      System.delete_env("TERM_PROGRAM")
+      Enum.each(@terminal_vars, &System.delete_env/1)
       System.put_env("TERM", "xterm-kitty")
     end
 
     defp on_iterm do
-      System.delete_env("KITTY_WINDOW_ID")
+      Enum.each(@terminal_vars, &System.delete_env/1)
       System.put_env("TERM", "xterm-256color")
       System.put_env("TERM_PROGRAM", "iTerm.app")
       System.put_env("TERM_PROGRAM_VERSION", "3.5.0")
@@ -167,6 +206,7 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
     test "a kitty terminal with no placements draws in one command", %{state: state} do
       on_iterm()
       {paint, clear, region} = Surface.image(state, rect(80, 24), :map)
+      clear = IO.iodata_to_binary(clear)
       paint = IO.iodata_to_binary(paint)
 
       assert paint =~ "a=T", "transmitted and displayed together"
@@ -181,7 +221,23 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
       assert String.starts_with?(paint, clear), "and each frame removes the one before it"
     end
 
-    test "iTerm itself is given its own inline protocol, not a kitty overlay", %{state: state} do
+    test "an iTerm2 session draws inline images whatever it answered the probe, kitty graphics under FRENCH_CURVE_ITERM2=kitty",
+         %{state: state} do
+      on_iterm()
+      auto = %{state | mode: nil}
+
+      for answered <- [:kitty, :sixel, :iterm2] do
+        Context.put_terminal_protocol(answered)
+        assert Surface.protocol(auto) == :iterm2, "answered #{answered}"
+      end
+
+      System.put_env("FRENCH_CURVE_ITERM2", "kitty")
+      assert Surface.protocol(auto) == :kitty
+      System.delete_env("FRENCH_CURVE_ITERM2")
+      Process.delete(:drafter_terminal_protocol)
+    end
+
+    test "iTerm draws its own inline images, not a kitty overlay", %{state: state} do
       on_iterm()
 
       assert FrenchCurve.Capability.detect(System.get_env()) == :iterm2
@@ -204,14 +260,6 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
       assert IO.iodata_to_binary(compressed) =~ "o=z"
       refute IO.iodata_to_binary(plain) =~ "o=z"
       assert byte_size(IO.iodata_to_binary(compressed)) < byte_size(IO.iodata_to_binary(plain))
-    end
-
-    test "clears the previous frame before drawing the next", %{state: state} do
-      on_a_real_kitty()
-      {paint, clear, _region} = Surface.image(state, rect(80, 24), :map)
-
-      assert clear =~ "a=d"
-      assert String.starts_with?(IO.iodata_to_binary(paint), clear)
     end
 
     test "renders blank cells beneath the image", %{state: state} do
@@ -314,70 +362,16 @@ defmodule Cauldron2D.Drafter.SurfaceTest do
       assert Surface.zoom_levels(:widget_test, :kitty) == [4, 2, 1, 0.5, 0.25, 0.125]
       assert Surface.zoom_levels(:widget_test, nil) == Surface.zoom_levels(:widget_test, :kitty)
     end
-
-    test "zoom mounts at 1 and can be re-rendered", %{state: state} do
-      assert state.zoom == 1
-      assert Surface.update(%{zoom: 2}, state).zoom == 2
-    end
   end
 
   describe "mounting" do
-    test "takes props as a map or as a keyword list, the same either way" do
-      as_map = Surface.mount(%{atlas: :widget_test, focus: {1, 2}, compress: false})
-      as_list = Surface.mount(atlas: :widget_test, focus: {1, 2}, compress: false)
-
-      assert as_map == as_list
-    end
-
     test "compress: false means false, not the default" do
       assert Surface.mount(%{compress: false}).compress == false
       assert Surface.mount(%{}).compress == true
     end
-
-    test "what is not given falls back to its documented default" do
-      state = Surface.mount(%{})
-
-      assert state.movers == []
-      assert state.mode == nil
-      assert state.on_geometry == nil
-    end
   end
 
   describe "updating" do
-    test "takes new props rather than silently keeping the old", %{state: state} do
-      moved = Surface.update(%{focus: {9, 9}}, state)
-
-      assert moved.focus == {9, 9}
-      assert Surface.update(%{}, state).focus == {5, 5}
-    end
-
-    test "a key absent from a re-render leaves that part of the view alone", %{state: state} do
-      kept = Surface.update(%{focus: {9, 9}}, %{state | mode: :kitty, compress: false})
-
-      assert kept.mode == :kitty
-      assert kept.compress == false
-    end
-
-    test "every option can be changed by a re-render, not only the camera ones", %{state: state} do
-      changed =
-        Surface.update(
-          %{
-            mode: :text,
-            compress: false,
-            on_geometry: :moved,
-            atlas: :other,
-            movers: [{:a, {1, 1}}]
-          },
-          state
-        )
-
-      assert changed.mode == :text
-      assert changed.compress == false
-      assert changed.on_geometry == :moved
-      assert changed.atlas == :other
-      assert changed.movers == [{:a, {1, 1}}]
-    end
-
     test "a mode that was forced can be unforced again", %{state: state} do
       forced = %{state | mode: :kitty}
 

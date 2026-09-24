@@ -24,7 +24,7 @@ defmodule Cauldron2D.Net.PagesTest do
     def toggles, do: []
     def steering, do: [:left, :right]
 
-    def arenas(%{username: "alice"}),
+    def worlds(%{username: "alice"}),
       do: [
         %{
           id: :pit,
@@ -38,7 +38,7 @@ defmodule Cauldron2D.Net.PagesTest do
         }
       ]
 
-    def arenas(_props), do: [%{id: :pit, name: "The Pit", world: :none, players: 0, map: "pit"}]
+    def worlds(_props), do: [%{id: :pit, name: "The Pit", world: :none, players: 0, map: "pit"}]
     def scene(_view), do: %{focus: {0, 0}, bounds: {1, 1}, cell: fn _ -> :void end, movers: []}
     def hud(_view), do: []
     def listener(_view), do: nil
@@ -73,19 +73,19 @@ defmodule Cauldron2D.Net.PagesTest do
     assert conn.resp_body =~ ~s|href="/settings"|
   end
 
-  test "the lobby lists the player's arenas with kind, players, map, note, teams and a way to watch" do
+  test "the lobby lists the player's worlds with kind, players, map, note, teams and a way to watch" do
     conn = get("/lobby")
     assert conn.resp_body =~ "The Pit"
     assert conn.resp_body =~ "race"
     assert conn.resp_body =~ "two racers"
-    assert conn.resp_body =~ ~s|href="/arena/pit"|
-    assert conn.resp_body =~ ~s|href="/arena/pit?team=1"|
-    assert conn.resp_body =~ ~s|href="/arena/pit?spectate=1"|
-    assert get("/arenas.json").resp_body |> Jason.decode!() |> hd() |> Map.get("players") == 1
+    assert conn.resp_body =~ ~s|href="/world/pit"|
+    assert conn.resp_body =~ ~s|href="/world/pit?team=1"|
+    assert conn.resp_body =~ ~s|href="/world/pit?spectate=1"|
+    assert get("/worlds.json").resp_body |> Jason.decode!() |> hd() |> Map.get("players") == 1
   end
 
-  test "the arena page mounts the canvas with the topic, the presets, the steering and the pause key" do
-    conn = get("/arena/pit?team=2")
+  test "the world page mounts the canvas with the topic, the presets, the padmap, the steering and the pause key" do
+    conn = get("/world/pit?team=2")
     assert conn.resp_body =~ "<canvas"
     assert conn.resp_body =~ ~s|"world:pit"|
     assert conn.resp_body =~ "KeyA"
@@ -93,7 +93,10 @@ defmodule Cauldron2D.Net.PagesTest do
     assert conn.resp_body =~ ~s|"team":"2"|
     assert conn.resp_body =~ "KeyP"
     assert conn.resp_body =~ "cauldron.js"
-    assert get("/arena/nope").status == 404
+    assert conn.resp_body =~ "gamepad.js"
+    assert conn.resp_body =~ ~s|"dpad_left":["left"]|
+    assert conn.resp_body =~ ~s|"left_x":{"neg":["left"]|
+    assert get("/world/nope").status == 404
   end
 
   test "settings and guide pages, the sheet and the scripts are served" do
@@ -107,6 +110,7 @@ defmodule Cauldron2D.Net.PagesTest do
     assert png.status == 200
     assert <<137, "PNG", _::binary>> = png.resp_body
     assert get("/cauldron.js").resp_body =~ "Cauldron"
+    assert get("/gamepad.js").resp_body =~ "Gamepad"
     assert get("/phoenix.min.js").status == 200
   end
 
@@ -124,6 +128,6 @@ defmodule Cauldron2D.Net.PagesTest do
       |> assign(:user, "alice")
       |> Pages.call(opts())
 
-    assert conn.resp_body =~ ~s|href="/play/arena/pit"|
+    assert conn.resp_body =~ ~s|href="/play/world/pit"|
   end
 end

@@ -62,17 +62,17 @@ defmodule Cauldron2D.Wx.View do
 
   @hud_line 15
 
-  @doc "The arena panel under `parent`."
+  @doc "The world panel under `parent`."
   @spec new(term(), keyword()) :: term()
   def new(parent, opts \\ []), do: :wx_object.start_link(__MODULE__, {parent, opts}, [])
 
   @doc "Join a world through a link: `{:socket, opts}` or `{:local, opts}`, the options of the link module less `:owner`."
   @spec join(term(), {:socket | :local, keyword()}) :: :ok
-  def join(arena, link), do: :wx_object.call(arena, {:join, link})
+  def join(world, link), do: :wx_object.call(world, {:join, link})
 
   @doc "Leave the world."
   @spec leave(term()) :: :ok
-  def leave(arena), do: :wx_object.call(arena, :leave)
+  def leave(world), do: :wx_object.call(world, :leave)
 
   @doc "Read keys by another keymap from now on, as `new/2`'s `:keymap`; what was held is let go."
   @spec keymap(term(), map()) :: :ok
@@ -80,15 +80,15 @@ defmodule Cauldron2D.Wx.View do
 
   @doc "Pause or resume a world of the player's own, through the link."
   @spec pause(term()) :: :ok
-  def pause(arena), do: :wx_object.cast(arena, :pause)
+  def pause(world), do: :wx_object.cast(world, :pause)
 
   @doc "The effects and music levels, 0.0 to 1.0."
   @spec levels(term(), number(), number()) :: :ok
-  def levels(arena, sfx, music), do: :wx_object.cast(arena, {:levels, sfx, music})
+  def levels(world, sfx, music), do: :wx_object.cast(world, {:levels, sfx, music})
 
   @doc "The panel's wx window."
   @spec window(term()) :: term()
-  def window(arena), do: :wx_object.call(arena, :window)
+  def window(world), do: :wx_object.call(world, :window)
 
   @doc "Draw tiles `pixels` wide from now on, within the zoom's limits."
   @spec zoom(term(), pos_integer()) :: :ok
@@ -104,7 +104,7 @@ defmodule Cauldron2D.Wx.View do
 
   @doc "Give the canvas the keyboard."
   @spec focus(term()) :: :ok
-  def focus(arena), do: :wx_object.cast(arena, :focus)
+  def focus(world), do: :wx_object.cast(world, :focus)
 
   @impl :wx_object
   def init({parent, opts}) do

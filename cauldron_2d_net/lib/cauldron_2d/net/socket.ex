@@ -11,8 +11,9 @@ defmodule Cauldron2D.Net.Socket do
   — a map with the player's `:username` and, when the game keeps them, `:settings`
   (`:sfx` and `:music` levels) — or `:error`. `:topic` is the channel's topic prefix
   (default `"world"`), `:sheet_url` where the sheet is served: a path, or `{module,
-  function}` of no arguments called on every connect, for a path that changes with the
-  sheet (default `"/atlas.png"`).
+  function}` of no arguments called whenever a sheet is sent — at the join and again
+  each time the atlas changes — for a path that changes with the sheet (default
+  `"/atlas.png"`).
   """
 
   defmacro __using__(opts) do
@@ -34,7 +35,7 @@ defmodule Cauldron2D.Net.Socket do
              socket
              |> assign(:username, username)
              |> assign(:settings, Map.get(assigns, :settings, %{}))
-             |> assign(:sheet_url, Cauldron2D.Net.Socket.sheet_url(unquote(sheet_url)))}
+             |> assign(:sheet_url, unquote(sheet_url))}
 
           :error ->
             :error
@@ -45,9 +46,4 @@ defmodule Cauldron2D.Net.Socket do
       def id(socket), do: "player:" <> socket.assigns.username
     end
   end
-
-  @doc false
-  @spec sheet_url(String.t() | {module(), atom()}) :: String.t()
-  def sheet_url({mod, fun}), do: apply(mod, fun, [])
-  def sheet_url(path) when is_binary(path), do: path
 end

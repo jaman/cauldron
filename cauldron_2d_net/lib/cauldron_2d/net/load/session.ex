@@ -1,11 +1,11 @@
 defmodule Cauldron2D.Net.Load.Session do
   @moduledoc """
-  One session of a load test: a player or a watcher on a server's arena over the same
+  One session of a load test: a player or a watcher on a server's world over the same
   WebSocket a browser or the desktop uses (`Cauldron2D.Net.Link.Socket`), counting the
   frames it gets. A player changes what it holds five times a second, at random from
   the actions it was given.
 
-      {:ok, session} = Cauldron2D.Net.Load.Session.start_link(url: url, token: token, arena: "pit", kind: :player, actions: ["left", "right", "fire"])
+      {:ok, session} = Cauldron2D.Net.Load.Session.start_link(url: url, token: token, world: "pit", kind: :player, actions: ["left", "right", "fire"])
       Cauldron2D.Net.Load.Session.report(session)
 
   `report/1` returns `%{joined: true | false | nil, reason: term, frames: n, recent: n,
@@ -13,7 +13,7 @@ defmodule Cauldron2D.Net.Load.Session do
   while pending), the reason of a refusal or a closed connection, the frames received
   altogether and since the last report, the longest wait between two frames since the
   last report in milliseconds, how long the join took, and how long the session has
-  been in the arena.
+  been in the world.
   """
 
   use GenServer
@@ -32,7 +32,7 @@ defmodule Cauldron2D.Net.Load.Session do
           alive_ms: non_neg_integer()
         }
 
-  @doc "Start a session; `:url`, `:token`, `:arena` (its id as it writes), `:kind` (`:player` or `:watcher`) and `:actions` are required, `:topic` is the channel's prefix (default `\"world\"`), `:audio` `:personal` (default) or `:off` to ask the server for no sound."
+  @doc "Start a session; `:url`, `:token`, `:world` (its id as it writes), `:kind` (`:player` or `:watcher`) and `:actions` are required, `:topic` is the channel's prefix (default `\"world\"`), `:audio` `:personal` (default) or `:off` to ask the server for no sound."
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
@@ -40,7 +40,7 @@ defmodule Cauldron2D.Net.Load.Session do
   @spec report(GenServer.server()) :: report()
   def report(session), do: GenServer.call(session, :report)
 
-  @doc "Leave the arena and stop."
+  @doc "Leave the world and stop."
   @spec stop(GenServer.server()) :: :ok
   def stop(session), do: GenServer.stop(session, :normal)
 
@@ -60,7 +60,7 @@ defmodule Cauldron2D.Net.Load.Session do
       Socket.start_link(
         url: Keyword.fetch!(opts, :url),
         token: Keyword.fetch!(opts, :token),
-        topic: "#{topic}:#{Keyword.fetch!(opts, :arena)}",
+        topic: "#{topic}:#{Keyword.fetch!(opts, :world)}",
         params: params,
         owner: self()
       )

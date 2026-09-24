@@ -49,6 +49,17 @@ defmodule Cauldron2D.Renderer do
     end
   end
 
+  @doc """
+  The mode in force before any terminal is asked: `:text`, `:pixel`, or a protocol named
+  outright.
+
+  `override` is a mode name, or `nil` to leave the choice to the environment and
+  configuration. A caller that can ask the session's own terminal resolves `:pixel`
+  itself; `protocol/1` resolves it from the OS environment.
+  """
+  @spec resolved(atom() | nil) :: :text | :pixel | :kitty | :iterm2 | :sixel
+  def resolved(override \\ nil), do: resolve(override)
+
   @doc ~S(The resolved protocol's name, or `"text"`, for a status bar.)
   @spec describe(atom() | nil) :: String.t()
   def describe(override \\ nil) do

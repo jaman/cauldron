@@ -22,7 +22,7 @@ end
     placements
   * `Cauldron2D.Drafter.Chat`: rooms of messages that fan out to sessions
 * **A ready-made client** — `Cauldron2D.Drafter.Client`, a whole drafter application for
-  the shape "title, lobby of arenas, settings, arena". It is boilerplate for that shape and
+  the shape "title, lobby of worlds, settings, world". It is boilerplate for that shape and
   nothing else in the library depends on it; a game with a different shape writes its own
   `Drafter.App` on the facilities.
 
@@ -59,20 +59,20 @@ empty pane. The same goes for `Drafter.run/2`'s `:widget_libraries` option.
 ## The ready-made client
 
 `Cauldron2D.Drafter.Client` runs a game's `Cauldron2D.Client.Game` module through
-a title, a lobby (arenas in columns in a scrolling window — name, the game's kind of
-arena if it gives one, players, map — the chosen one described beside them with its
+a title, a lobby (worlds in columns in a scrolling window — name, the game's kind of
+world if it gives one, players, map — the chosen one described beside them with its
 players, redrawn as players come and go, on `Cauldron2D.World.Presence`; teams, and a
-chat unless the game says `chat?: false`), settings and the arena, holding the
+chat unless the game says `chat?: false`), settings and the world, holding the
 player's `Cauldron2D.Input`, their `Cauldron2D.Audio` and their `Cauldron2D.World`
 connection. The game supplies every name and every element the screens show: its title,
-its actions and key presets, its arenas, how a view becomes a scene, the hud — rows under
+its actions and key presets, its worlds, how a view becomes a scene, the hud — rows under
 the world, or a column beside it with rows under both — its sounds and music, the sink
 its audio plays through, and any pages of its own reachable from the title. The client
 supplies the flow between screens and the keys that drive it (`Esc` back, `q` title, `?`
 hints, `^Q` quit — each replaceable or dropped by the game's `client_keys/0`; an `fps` key,
 bound only by the game, shows the frames a second the world sends). A game with screens
 of its own embeds the client in its own drafter app, started at the lobby (`start:
-:lobby`) and driven through the client's callbacks; its `arenas/1` gets the mount props.
+:lobby`) and driven through the client's callbacks; its `worlds/1` gets the mount props.
 A game with a
 `guide/0` — sections of entries, each an art, a name and a line — gets a guide screen on
 `h` from the title and the lobby: the arts on a surface down the left beside the text,
@@ -87,8 +87,8 @@ Cauldron2D.Drafter.Server.start(game: MyGame.Client, port: 2222, web: {:my_game,
 ```
 
 `Cauldron2D.Drafter.Server` starts the ssh daemon with the game's accounts (a sound
-port each), the game's web endpoint and the beacon; the arenas are the game's, registered
-with `Cauldron2D.Arenas`. `mix cauldron.input` measures drafter's input path from a
+port each), the game's web endpoint and the beacon; the worlds are the game's, registered
+with `Cauldron2D.Worlds`. `mix cauldron.input` measures drafter's input path from a
 `DRAFTER_TRACE` log.
 
 ## Placements

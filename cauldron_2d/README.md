@@ -42,6 +42,9 @@ The pieces, and where they live:
 | `Cauldron2D.Camera` | which part of the world is on screen, and what is in each cell; `Camera.Follow` trails a target and shakes |
 | `Cauldron2D.Loop` | a fixed timestep, so game speed does not follow frame rate |
 | `Cauldron2D.Renderer` | pixels or glyphs, decided by the terminal |
+| `Cauldron2D.Projection.Iso`, `Projection.FirstPerson` | the same world as an isometric picture (blocks from an art's `height` and `faces`, turned and tilted) or seen from inside it along a heading; the terminal surface draws either in place of the top-down view |
+| `Cauldron2D.Projection.Volume` | coloured regions of space — a sphere, a cylinder, a cone, a beam, a set of whole tiles, or a shape of your own — that tint whatever is seen through them, in every projection |
+| `Cauldron2D.Input.Pad` | game-controller buttons and sticks as the actions a player holds, merged into `Cauldron2D.Input` |
 | `Cauldron2D.Rng` | a seeded generator carried in state, so a game is reproducible |
 | `Cauldron2D.Body` | a point mass with a heading: thrust, drag, gravity fields, wrapping |
 | `Cauldron2D.Collision` | swept bodies against a grid of whole and half tiles, and each other |
@@ -53,7 +56,7 @@ The pieces, and where they live:
 | `Cauldron2D.Replay` | a record of joins and input that rebuilds the same game; `Replay.Viewer` plays it back to a watcher |
 | `Cauldron2D.Audio` | effects placed around a listener, and music in sections and layers, per player |
 | `Cauldron2D.Client.Game` | what a game gives every front end — terminal, browser, window — to put its worlds in front of a player; `Client.Hud` is the hud's data |
-| `Cauldron2D.Arenas` | the arenas a game offers: a world each with its children, started on first use and swept when idle; `Stats` says how the node keeps up |
+| `Cauldron2D.Worlds` | the worlds a game offers: a world each with its children, started on first use and swept when idle; `Stats` says how the node keeps up |
 | `Cauldron2D.Robot` | a computer player: a process that joins as `{:robot, n}` and decides through a brain module on a cadence set by its skill |
 | `Cauldron2D.Grid.Path`, `Cauldron2D.Grid.Coarse`, `Cauldron2D.Grid.Fov` | ways across a grid, in blocks, and what can be seen |
 | `Cauldron2D.Minimap` | the whole map in a few rows of braille with marks |
@@ -78,12 +81,13 @@ turn-based game; `pause/1` and `resume/1` hold a clocked one; `state:` starts it
 saved game.
 
 `Cauldron2D.Client.Game` is what the front ends need to show it — its title, atlas,
-actions and keymaps, arenas, how a view becomes a scene and a hud, its sounds and music
+actions and keymaps, worlds, how a view becomes a scene and a hud, its sounds and music
 — and `cauldron_2d_drafter`, `cauldron_2d_net` and `cauldron_2d_wx` each put it in
-front of a player with a title, a lobby, settings, the arena, a summary and the guide.
-An arena whose world is `{module, opts}` is the player's own, started by the client. The
-lobby lists the arenas; a game with only one and `lobby?: false` goes from its title
-straight into it. Neither has anything to do with how a world steps: a turn-based game
+front of a player with a title, a lobby, settings, the world, a summary and the guide.
+A world whose `world` is `{module, opts}` is the player's own, started by the client. The
+lobby lists the worlds, and whether there is one at all — or a title — is the game's
+`start/0`: the lobby flow, the lobby without a title, straight into a world, or a function
+of its own. None of it has anything to do with how a world steps: a turn-based game
 whose players share a world has a lobby like any other, and what a player is in that
 world — a character, a party — is the game's to ask, through its join props or a page of
 its own.

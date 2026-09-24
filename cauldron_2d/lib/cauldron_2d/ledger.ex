@@ -4,7 +4,7 @@ defmodule Cauldron2D.Ledger do
 
       {:ok, ledger} = Cauldron2D.Ledger.start_link(path: Cauldron2D.Paths.data(:my_game, "ledger.dets"), metrics: [kills: {:sum, :kills}, ratio: {:ratio, :kills, :deaths}, wins: {:count, :won?}])
       Cauldron2D.Ledger.record(ledger, "Pit", %{id: "alice", name: "alice", kills: 3, deaths: 1, won?: true})
-      Cauldron2D.Ledger.board(ledger, :week, :kills, arena: "Pit")
+      Cauldron2D.Ledger.board(ledger, :week, :kills, world: "Pit")
 
   A result is a map with the player's account as `:id` (their `:name` when there is no
   id), the name they played under as `:name`, and whatever fields the metrics read. A
@@ -70,13 +70,13 @@ defmodule Cauldron2D.Ledger do
     GenServer.start_link(__MODULE__, opts, if(name, do: [name: name], else: []))
   end
 
-  @doc "Keep a result from `arena`, taken `at` (default now)."
+  @doc "Keep a result from `world`, taken `at` (default now)."
   @spec record(GenServer.server(), String.t(), map(), DateTime.t()) :: :ok | {:error, term()}
-  def record(ledger, arena, row, at \\ DateTime.utc_now())
-  def record(_ledger, _arena, %{id: {:robot, _}}, _at), do: :ok
-  def record(ledger, arena, row, at), do: GenServer.call(ledger, {:record, arena, row, at})
+  def record(ledger, world, row, at \\ DateTime.utc_now())
+  def record(_ledger, _world, %{id: {:robot, _}}, _at), do: :ok
+  def record(ledger, world, row, at), do: GenServer.call(ledger, {:record, world, row, at})
 
-  @doc "Drop every result `keep_out?` is true of — a function of the row as it was recorded, with its `:arena` and `:at` — and say how many went."
+  @doc "Drop every result `keep_out?` is true of — a function of the row as it was recorded, with its `:label` (the world name) and `:at` — and say how many went."
   @spec forget(GenServer.server(), (map() -> boolean())) ::
           {:ok, non_neg_integer()} | {:error, term()}
   def forget(ledger, keep_out?) when is_function(keep_out?, 1),
@@ -86,12 +86,12 @@ defmodule Cauldron2D.Ledger do
   @spec count(GenServer.server()) :: non_neg_integer()
   def count(ledger), do: GenServer.call(ledger, :count)
 
-  @doc "The board of `period` by `metric`: the top #{@top}, or `top: n` of them, or every account with `top: :all`; `arena:` narrows it to one arena."
+  @doc "The board of `period` by `metric`: the top #{@top}, or `top: n` of them, or every account with `top: :all`; `world:` narrows it to one world."
   @spec board(GenServer.server(), period(), metric(), keyword()) :: [entry()]
   def board(ledger, period, metric, opts \\ []) do
     GenServer.call(
       ledger,
-      {:board, period, metric, Keyword.get(opts, :arena), Keyword.get(opts, :top, @top)}
+      {:board, period, metric, Keyword.get(opts, :world), Keyword.get(opts, :top, @top)}
     )
   end
 
@@ -134,9 +134,9 @@ defmodule Cauldron2D.Ledger do
     {:reply, held_reply(request, held), state}
   end
 
-  def handle_call({:record, arena, row, at}, _from, state) do
+  def handle_call({:record, world, row, at}, _from, state) do
     key = {DateTime.to_unix(at, :microsecond), account(row)}
-    entry = {key, Map.merge(row, %{arena: arena, at: DateTime.to_unix(at)})}
+    entry = {key, Map.merge(row, %{label: world, at: DateTime.to_unix(at)})}
 
     with :ok <- :dets.insert(state.table, entry),
          :ok <- :dets.sync(state.table) do
@@ -159,8 +159,8 @@ defmodule Cauldron2D.Ledger do
   def handle_call(:count, _from, state), do: {:reply, :dets.info(state.table, :size), state}
   def handle_call(:access, _from, state), do: {:reply, :read_write, state}
 
-  def handle_call({:board, period, metric, arena, top}, _from, state) do
-    key = {period, metric, arena, top}
+  def handle_call({:board, period, metric, world, top}, _from, state) do
+    key = {period, metric, world, top}
     now = System.monotonic_time(:millisecond)
 
     case Map.get(state.boards, key) do
@@ -168,7 +168,7 @@ defmodule Cauldron2D.Ledger do
         {:reply, board, state}
 
       _stale ->
-        board = compute(state, period, metric, arena, top)
+        board = compute(state, period, metric, world, top)
         {:reply, board, %{state | boards: Map.put(state.boards, key, {board, now})}}
     end
   end
@@ -192,9 +192,9 @@ defmodule Cauldron2D.Ledger do
     end
   end
 
-  defp held_reply({:record, _arena, _row, _at}, held), do: {:error, held}
+  defp held_reply({:record, _world, _row, _at}, held), do: {:error, held}
   defp held_reply({:forget, _keep_out?}, held), do: {:error, held}
-  defp held_reply({:board, _period, _metric, _arena, _top}, _held), do: []
+  defp held_reply({:board, _period, _metric, _world, _top}, _held), do: []
   defp held_reply(:count, _held), do: 0
   defp held_reply(:access, held), do: held
 
@@ -216,11 +216,13 @@ defmodule Cauldron2D.Ledger do
     end)
   end
 
-  defp compute(state, period, metric, arena, top) do
+  defp label_of(row), do: Map.get(row, :label) || Map.get(row, :arena)
+
+  defp compute(state, period, metric, world, top) do
     since = since(period)
 
     fn {_key, row}, acc ->
-      if row.at >= since and (arena == nil or row.arena == arena), do: [row | acc], else: acc
+      if row.at >= since and (world == nil or label_of(row) == world), do: [row | acc], else: acc
     end
     |> :dets.foldl([], state.table)
     |> Enum.group_by(&account/1)

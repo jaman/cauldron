@@ -16,6 +16,7 @@ Mix project in its own directory.
 | [`cauldron_2d_easel_web`](cauldron_2d_easel_web) | The atlas editor in a browser, with LiveView |
 | [`cauldron_2d_easel_kino`](cauldron_2d_easel_kino) | The atlas editor as a Livebook cell; pictures, sheets and animations as images |
 | [`examples/cistern`](examples/cistern) | The tutorial's game: every package above in one small project, with tests |
+| [`examples/town`](examples/town) | A town walked top-down, isometric or in first person: the engine's projections, standing arts with doors, posed villagers, a game controller, all from one map and one art directory |
 
 Start with [Your first game](cauldron_2d/guides/tutorial.md), which builds
 [`examples/cistern`](examples/cistern) step by step — the game as a value, its tests, its
@@ -40,7 +41,7 @@ are path dependencies one level up. `mix test`, `mix credo --strict` and `mix fo
 ## Built with it
 
 * ExPilot — multiplayer XPilot over ssh, in a browser and in a window
-* Carom — real-time Arkanoid, on `Cauldron2D.Drafter.Client` from an arena of the player's own
+* Carom — real-time Arkanoid, on `Cauldron2D.Drafter.Client` from a world of the player's own
 * Scriber — turn-based roguelike, in a `Cauldron2D.World` stepped on input
 
 ## License

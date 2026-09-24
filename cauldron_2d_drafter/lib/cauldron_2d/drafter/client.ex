@@ -3,13 +3,28 @@ defmodule Cauldron2D.Drafter.Client do
   The drafter application that puts a `Cauldron2D.World` in front of one player.
 
   Runs a game's client module — one implementing `Cauldron2D.Client.Game` —
-  through its screens: a title, a lobby listing the arenas, settings, the arena itself,
+  through its screens: a title, a lobby listing the worlds, settings, the world itself,
   and a summary when the game's `outcome/1` says play is over for this player. It holds the player's input, their audio, and their connection to the world.
 
-  An arena whose `world` is `{module, opts}` is this player's alone: the client starts
+  A world whose `world` is `{module, opts}` is this player's alone: the client starts
   a `Cauldron2D.World` for it when the player joins and stops it when they leave, and
-  `p` pauses and resumes it. A game whose `lobby?/0` is false goes from the title
-  straight into its first arena, and back to the title from it.
+  `p` pauses and resumes it.
+
+  ## Flow
+
+  Where the client starts and where leaving a world goes is the game's `start/0`, or
+  the `:start` mount prop over it:
+
+    * `:lobby` — the title, then the lobby, then a world; back retraces it. The default
+    * `{:lobby, title: false}` — the lobby first; back from it stops the client
+    * `{:play, id}` — straight into world `id` of `worlds/1` (`:first` for the first
+      listed); leaving it stops the client
+    * `{:play, id, title: true}` — the title, then that world; back returns to the title
+    * a function of the client's state, called once the client is ready, for a flow of
+      the game's own: `enter/3`, `to_lobby/1`, `to_title/1` and `to_guide/1` are the
+      moves it can make; leaving a world then stops the client
+
+  A game with `lobby?/0` false and no `start/0` is read as `{:play, :first, title: true}`.
 
       Drafter.Server.start_ssh(Cauldron2D.Drafter.Client,
         auth: {:accounts, accounts},
@@ -30,22 +45,22 @@ defmodule Cauldron2D.Drafter.Client do
     * `:accounts` — the `Drafter.Accounts` server settings are saved to. Default: none
     * `:kind` — the kind of client this is, the key its settings are kept under (see
       `Cauldron2D.Drafter.Client.Settings`). Default `:terminal`
-    * `:start` — the first screen, `:title` or `:lobby`. Started at the lobby, the
-      client has no title of its own: going back from the lobby (`Esc` or `q`) stops
-      it, as quitting from the title does. Default `:title`
+    * `:start` — the flow, as the Flow section describes it, over the game's `start/0`.
+      Default: the game's, else `:lobby`
 
-  Every other mount prop is the game's, read by its `sink/1`, `pages/1` and `arenas/1`.
+  Every other mount prop is the game's, read by its `sink/1`, `pages/1` and `worlds/1`.
 
   ## Embedding
 
   A game with screens of its own — its own title, a menu, pages that take input —
   runs its own `Drafter.App` and drives this one from it: it keeps the client's state
-  from `mount/1` (with `start: :lobby`), and hands it its events, messages and timers
+  from `mount/1` (with `start: {:lobby, title: false}`), and hands it its events, messages and timers
   through `handle_event/2`, `handle_event/3`, `on_message/2` and `on_ready/1`, draws
   `render/1`, and calls `unmount/1` when done. A `{:stop, reason}` from the client
   is its wish to end: the game takes its screens back. The game's `use Drafter.App`
   needs the same options this module's has — `key_release: true, cell_size: true,
-  frame_pacing: :always` — and its `refresh_rate/0` should be `refresh_rate/0` here.
+  controller: true, mouse_hover: true, frame_pacing: :always` — and its
+  `refresh_rate/0` should be `refresh_rate/0` here.
 
   ## Tracing
 
@@ -58,14 +73,14 @@ defmodule Cauldron2D.Drafter.Client do
   ## Keys
 
   The client's own keys are `default_keys/0`, each replaceable or dropped by the game's
-  `client_keys/0`; what follows describes the defaults. In the arena `t` opens a line
+  `client_keys/0`; what follows describes the defaults. In the world `t` opens a line
   to talk to everyone in it — `Enter` sends, `Esc` cancels, and no key steers while it
-  is open. `Esc` goes back: settings to where it was opened from, arena to lobby, lobby
-  to title, title out of the program. `q` quits the arena for the lobby too, and goes
-  to the title from the lobby. `^Q` and `^C` quit from anywhere. `?` shows the arena's key hints and hides
+  is open. `Esc` goes back: settings to where it was opened from, world to lobby, lobby
+  to title, title out of the program. `q` quits the world for the lobby too, and goes
+  to the title from the lobby. `^Q` and `^C` quit from anywhere. `?` shows the world's key hints and hides
   them again; held, it shows them until released. The `fps` key, bound only when the
-  game binds it, shows under the arena how many frames a second the world sends and
-  hides it again. `=` (or `+`) and `-` zoom the arena in and out through the levels
+  game binds it, shows under the world how many frames a second the world sends and
+  hides it again. `=` (or `+`) and `-` zoom the world in and out through the levels
   `Cauldron2D.Drafter.Surface.zoom_levels/2` gives for the display in use, the wheel
   too (one step for the events a notch sends within 150 ms), and `0` puts the zoom
   back; the zoom shows under the world while it is not
@@ -74,28 +89,57 @@ defmodule Cauldron2D.Drafter.Client do
   stays on the ship and the wheel zooms about it. A page the game adds (`pages/1`)
   opens from the title on its key; `Esc` or `q` closes it.
 
+  The view: `v` cycles the projection (top-down, oblique, isometric, mode 7, first
+  person, as the game's `look/0` lists them), `[` and `]`
+  turn it — the isometric facing, or the eye by 15° in first person when the scene
+  gives no heading — `'` and `;` tilt the isometric diamond or pitch the eye. Three
+  keys are unbound until a game binds them through `client_keys/0`: `display` toggles
+  pictures against block characters, `glyphs` cycles the glyph sets, `mouse_look` lets
+  the pointer turn and pitch the eye in first person; a drag turns and pitches it there
+  whether or not `mouse_look` is on, and a click still reaches the game. What the view is, and how it is
+  drawn, shows under the world when it is not the top-down default. A game's `look/0`
+  sets the view it starts in.
+
+  A controller: the left stick and d-pad hold the game's directions (`padmap/1`), the
+  right stick nudges the aim a tile at a time top-down and isometric and looks around
+  in first person, the triggers tilt the isometric diamond or pitch the eye — right up,
+  left down, as far as they are pulled — `Start` cycles the projection and the bumpers
+  turn; `client_pad/0` rebinds the client's own actions to buttons, and in the lobby
+  the d-pad chooses and `A` joins. A stick the padmap binds to `:aim` aims instead,
+  eight tiles from the focus in the direction it is pushed (turned with the isometric
+  facing), letting go when it comes back to centre; a stick that aims does not nudge.
+
   Title: `Enter` plays, `s` opens settings, `h` the guide, `q` quits. Lobby: `↑`/`↓`
-  pick an arena, `t` a team where the arena has them, `Enter` joins, `w` watches, `s`
+  pick a world, `t` a team where the world has them, `Enter` joins, `w` watches, `s`
   opens settings, `c` chats and `Enter` on an empty line leaves the chat. Settings: `↑`/`↓` move over
   the items — preset, each action's binding, pointer steering, effects level, music
-  level, display (pixels where the terminal has them, braille, or glyphs), frame rate
+  level, display (pixels where the terminal has them, braille, a block-character glyph
+  set, or glyphs), frame rate
   (auto picks the terminal's best) — `←`/`→` change the item under the cursor, `Enter` on a binding then
   a key or a mouse button adds it to the binding, `Backspace` removes the binding's last
-  key, `Esc` during a rebind cancels it. Arena: the game's bindings; `Tab`
+  key, `Esc` during a rebind cancels it. World: the game's bindings; `Tab`
   opens settings without leaving the ship; the pointer steers only when pointer
   steering is on, and a key bound to one of the game's `steering/0` actions takes over
   from it until the pointer moves again.
   """
 
-  use Drafter.App, key_release: true, cell_size: true, frame_pacing: :always
+  use Drafter.App,
+    key_release: true,
+    cell_size: true,
+    controller: true,
+    mouse_hover: true,
+    frame_pacing: :always
 
   alias Cauldron2D.{Atlas, Audio, Camera, Input, Player, Sessions, Trace, World}
   alias Cauldron2D.Audio.Music
   alias Cauldron2D.Client.Game
   alias Cauldron2D.Drafter.{Chat, Surface}
   alias Cauldron2D.Drafter.Client.{Screens, Settings}
+  alias Cauldron2D.Input.Pad
+  alias Cauldron2D.Projection.Iso
   alias Cauldron2D.World.Presence
   alias Drafter.Session.Context
+  alias FrenchCurve.Backend.Cells
 
   @hold_ms 250
   @default_keys %{
@@ -113,9 +157,43 @@ defmodule Cauldron2D.Drafter.Client do
     pause: :p,
     zoom_in: [:=, :+],
     zoom_out: [:-, :_],
-    zoom_reset: :"0"
+    zoom_reset: :"0",
+    projection: :v,
+    turn_left: :"[",
+    turn_right: :"]",
+    tilt_up: :"'",
+    tilt_down: :";",
+    display: nil,
+    glyphs: nil,
+    mouse_look: nil
   }
+  @default_pad %{
+    projection: :start,
+    turn_left: :left_bumper,
+    turn_right: :right_bumper
+  }
+  @look %{
+    projection: :top,
+    projections: [:top, :iso, :first_person],
+    facings: 4,
+    facing: 0,
+    tilt: 1.0,
+    heading: 0.0,
+    pitch: 0.0,
+    mouse_look?: false
+  }
+  @stick_aim_distance 8.0
+  @mouse_turn 0.02
+  @mouse_pitch 0.05
+  @mouse_tilt 0.01
+  @turn :math.pi() / 12
+  @tilt_step 0.125
+  @pitch_step 0.1
+  @stick_turn 10 * :math.pi() / 18
+  @stick_pitch 0.8
+  @trigger_tilt 0.8
   @pan_step 4
+  @traced {__MODULE__, :traced}
 
   @doc "The client's keys by action — a key, or a list of keys — before the game's `client_keys/0` is applied."
   @spec default_keys() :: %{atom() => atom() | [atom()]}
@@ -143,12 +221,12 @@ defmodule Cauldron2D.Drafter.Client do
       accounts: Map.get(props, :accounts),
       pages: optional(game, :pages, [props], []),
       keys: Map.merge(@default_keys, optional(game, :client_keys, [], %{})),
+      pad_keys: Map.merge(@default_pad, optional(game, :client_pad, [], %{})),
       chat?: optional(game, :chat?, [], true),
-      lobby?: optional(game, :lobby?, [], true),
+      flow: flow(props, game),
       local_world: nil,
       settings: settings,
-      screen: Map.get(props, :start, :title),
-      start: Map.get(props, :start, :title),
+      screen: first_screen(flow(props, game)),
       return: :title,
       help?: false,
       help_pressed_at: nil,
@@ -156,10 +234,16 @@ defmodule Cauldron2D.Drafter.Client do
       fps: %{frames: 0, since: now(), shown: nil},
       audio: start_audio(game, props, settings),
       input: nil,
-      arena: nil,
+      pad: Pad.new(padmap(game, props)),
+      joined: nil,
       view: nil,
       geometry: nil,
       zoom: 1,
+      look: Map.merge(@look, optional(game, :look, [], %{})),
+      pad_aim: nil,
+      stick_aim?: false,
+      looked_at: nil,
+      pointer: nil,
       pan: {0.0, 0.0},
       subject: nil,
       watching?: false,
@@ -172,7 +256,7 @@ defmodule Cauldron2D.Drafter.Client do
       talk: [],
       selected: :preset,
       summary: nil,
-      summary_arena: nil,
+      summary_world: nil,
       rebinding: nil,
       cue: nil,
       last_input: nil,
@@ -192,13 +276,84 @@ defmodule Cauldron2D.Drafter.Client do
     Atlas.subscribe(state.game.atlas())
     apply_frame_rate(state)
     blur_pages(state)
-    if state.start == :lobby, do: Drafter.blur(:chat_input)
-    %{state | lobby: %{state.lobby | messages: Chat.history(:lobby)}}
+    if state.screen == :lobby, do: Drafter.blur(:chat_input)
+    state = %{state | lobby: %{state.lobby | messages: Chat.history(:lobby)}}
+    begin(state.flow, state)
   end
+
+  defp flow(props, game) do
+    case Map.get(props, :start) || optional(game, :start, [], nil) || legacy_flow(game) do
+      :title -> :lobby
+      :lobby -> :lobby
+      {:lobby, opts} -> {:lobby, opts}
+      {:play, id} -> {:play, id, []}
+      {:play, id, opts} -> {:play, id, opts}
+      fun when is_function(fun, 1) -> fun
+    end
+  end
+
+  defp legacy_flow(game) do
+    if optional(game, :lobby?, [], true), do: :lobby, else: {:play, :first, title: true}
+  end
+
+  defp first_screen(:lobby), do: :title
+
+  defp first_screen({:lobby, opts}),
+    do: if(Keyword.get(opts, :title, true), do: :title, else: :lobby)
+
+  defp first_screen({:play, _id, opts}),
+    do: if(Keyword.get(opts, :title, false), do: :title, else: :lobby)
+
+  defp first_screen(fun) when is_function(fun, 1), do: :lobby
+
+  defp begin({:play, id, opts}, state) do
+    if Keyword.get(opts, :title, false), do: state, else: enter(state, id)
+  end
+
+  defp begin(fun, state) when is_function(fun, 1), do: fun.(state)
+  defp begin(_lobby, state), do: state
+
+  @doc """
+  Join world `id` of the game's `worlds/1`, or the first when `id` is `:first`, with
+  `props` merged into the join; the client then shows the world. With no such world the
+  state comes back unchanged.
+  """
+  @spec enter(map(), term(), map()) :: map()
+  def enter(state, id, props \\ %{}) do
+    case pick_world(worlds(state), id) do
+      nil -> state
+      world -> join(%{state | screen: :lobby}, world, props)
+    end
+  end
+
+  defp pick_world([first | _], :first), do: first
+  defp pick_world(worlds, id), do: Enum.find(worlds, &(&1.id == id))
+
+  @doc "Show the guide, returning to the screen the client is on."
+  @spec to_guide(map()) :: map()
+  def to_guide(state), do: guide(state)
+
+  @doc "Show the lobby, leaving any world the player is in."
+  @spec to_lobby(map()) :: map()
+  def to_lobby(state), do: lobby(state)
+
+  @doc "Show the title, leaving any world the player is in."
+  @spec to_title(map()) :: map()
+  def to_title(state), do: title(state)
+
+  @doc "Where leaving the world goes for the flow in force: the lobby, the title, or out."
+  @spec home(map()) :: :lobby | :title | :stop
+  def home(%{flow: :lobby}), do: :lobby
+  def home(%{flow: {:lobby, _opts}}), do: :lobby
+
+  def home(%{flow: {:play, _id, opts}}),
+    do: if(Keyword.get(opts, :title, false), do: :title, else: :stop)
+
+  def home(%{flow: fun}) when is_function(fun, 1), do: :stop
 
   @impl true
   def unmount(state) do
-    leave_arena(state)
+    leave_world(state)
     if state.audio, do: GenServer.stop(state.audio)
     Trace.stop()
     :ok
@@ -210,11 +365,11 @@ defmodule Cauldron2D.Drafter.Client do
   def render(%{screen: :settings} = state), do: Screens.settings(state)
   def render(%{screen: {:page, key}} = state), do: Screens.page(state, key)
   def render(%{screen: :guide} = state), do: Screens.guide(state)
-  def render(%{screen: :arena} = state), do: Screens.arena(state)
+  def render(%{screen: :play} = state), do: Screens.play(state)
   def render(%{screen: :summary} = state), do: Screens.summary(state)
 
   @impl true
-  def handle_event(:arena_geometry, geometry, state),
+  def handle_event(:play_geometry, geometry, state),
     do: {:noreply, %{state | geometry: geometry}}
 
   def handle_event(:guide_geometry, %{size: {_columns, rows}}, state) when rows > 0,
@@ -225,7 +380,7 @@ defmodule Cauldron2D.Drafter.Client do
   def handle_event(:talk_submit, _text, state) do
     case String.trim(state.talk_text) do
       "" -> :ok
-      text -> Chat.say({:arena, state.arena.id}, said_as(state), text)
+      text -> Chat.say({:world, state.joined.id}, said_as(state), text)
     end
 
     Drafter.blur(:talk_input)
@@ -258,6 +413,11 @@ defmodule Cauldron2D.Drafter.Client do
        }}
 
   def handle_event({:cell_size, _}, state), do: {:noreply, state}
+
+  def handle_event({:controller, event}, %{rebinding: nil, talking?: false} = state),
+    do: pad_event(event, state)
+
+  def handle_event({:controller, _event}, state), do: {:noreply, state}
 
   def handle_event({:key, key} = event, %{rebinding: nil} = state) when is_atom(key) do
     if key == state.keys.hints and key != nil,
@@ -292,13 +452,13 @@ defmodule Cauldron2D.Drafter.Client do
   defp screen_key(event, %{screen: :guide} = state), do: guide_key(event, state)
   defp screen_key(event, %{screen: :lobby} = state), do: lobby_key(event, state)
   defp screen_key(event, %{screen: :settings} = state), do: settings_key(event, state)
-  defp screen_key(event, %{screen: :arena} = state), do: arena_event(event, state)
-  defp screen_key({:key, :enter}, %{screen: :summary} = state), do: {:ok, after_summary(state)}
+  defp screen_key(event, %{screen: :play} = state), do: play_event(event, state)
+  defp screen_key({:key, :enter}, %{screen: :summary} = state), do: after_summary(state)
 
   defp screen_key({:key, key}, %{screen: :summary} = state) do
     cond do
-      key == state.keys.back -> {:ok, to_lobby(state)}
-      key == state.keys.title -> {:ok, to_title(state)}
+      key == state.keys.back -> leave(state)
+      key == state.keys.title -> leave(state)
       true -> {:noreply, state}
     end
   end
@@ -315,7 +475,7 @@ defmodule Cauldron2D.Drafter.Client do
   defp said_as(%{game: game, username: username}), do: Screens.player_label(game, username)
 
   @impl true
-  def on_message({:cauldron_frame, frame}, %{arena: arena} = state) when arena != nil do
+  def on_message({:cauldron_frame, frame}, %{joined: joined} = state) when joined != nil do
     Trace.write(:frame, tick: frame.tick)
 
     state =
@@ -326,6 +486,8 @@ defmodule Cauldron2D.Drafter.Client do
           fps: counted(state.fps, now())
       }
       |> followed()
+      |> looked(now())
+      |> stick_aimed(Pad.aim(state.pad))
 
     Audio.listener(state.audio, state.game.listener(frame.view))
     Audio.play(state.audio, frame.events)
@@ -336,14 +498,14 @@ defmodule Cauldron2D.Drafter.Client do
 
       summary ->
         state
-        |> Map.put(:summary_arena, state.arena)
-        |> leave_arena()
+        |> Map.put(:summary_world, state.joined)
+        |> leave_world()
         |> Map.merge(%{screen: :summary, summary: summary, view: frame.view})
         |> cue_music()
     end
   end
 
-  def on_message({:chat, {:arena, _id}, message}, state) do
+  def on_message({:chat, {:world, _id}, message}, state) do
     %{state | talk: Enum.take(state.talk ++ [message], -20)}
   end
 
@@ -373,32 +535,32 @@ defmodule Cauldron2D.Drafter.Client do
       else: %{state | help_pressed_at: nil}
   end
 
-  defp play(%{lobby?: false} = state) do
-    case arenas(state) do
-      [arena | _] -> join(%{state | screen: :lobby}, arena, %{})
-      [] -> to_lobby(state)
+  defp play(%{flow: {:play, id, _opts}} = state), do: enter(state, id)
+  defp play(state), do: lobby(state)
+
+  defp lobby(state) do
+    Drafter.blur(:chat_input)
+    state |> leave_world() |> Map.put(:screen, :lobby) |> cue_music()
+  end
+
+  defp title(state) do
+    blur_pages(state)
+    state |> leave_world() |> Map.put(:screen, :title) |> cue_music()
+  end
+
+  defp leave(state) do
+    case home(state) do
+      :lobby -> {:ok, lobby(state)}
+      :title -> {:ok, title(state)}
+      :stop -> {:stop, :normal}
     end
   end
 
-  defp play(state), do: to_lobby(state)
+  @doc "The game's worlds, from its `worlds/1` given the mount props."
+  @spec worlds(map()) :: [Game.world()]
+  def worlds(%{game: game} = state), do: game.worlds(Map.get(state, :props, %{}))
 
-  defp to_lobby(%{lobby?: false} = state), do: to_title(state)
-
-  defp to_lobby(state) do
-    Drafter.blur(:chat_input)
-    state |> leave_arena() |> Map.put(:screen, :lobby) |> cue_music()
-  end
-
-  defp to_title(state) do
-    blur_pages(state)
-    state |> leave_arena() |> Map.put(:screen, state.start) |> cue_music()
-  end
-
-  @doc "The game's arenas, from its `arenas/1` given the mount props."
-  @spec arenas(map()) :: [Game.arena()]
-  def arenas(%{game: game} = state), do: game.arenas(Map.get(state, :props, %{}))
-
-  defp to_guide(%{screen: from} = state) do
+  defp guide(%{screen: from} = state) do
     Drafter.blur(:chat_input)
     blur_pages(state)
 
@@ -445,11 +607,11 @@ defmodule Cauldron2D.Drafter.Client do
     |> cue_music()
   end
 
-  defp leave_settings(%{return: :arena, arena: arena} = state) when arena != nil do
-    %{state | screen: :arena, input: new_input(state)}
+  defp leave_settings(%{return: :play, joined: joined} = state) when joined != nil do
+    %{state | screen: :play, input: new_input(state)}
   end
 
-  defp leave_settings(%{return: :arena} = state), do: %{state | screen: :lobby}
+  defp leave_settings(%{return: :play} = state), do: %{state | screen: :lobby}
   defp leave_settings(%{return: screen} = state), do: %{state | screen: screen}
 
   defp release_keys(%{input: nil} = state), do: state
@@ -468,7 +630,7 @@ defmodule Cauldron2D.Drafter.Client do
   defp lobby_key({:mouse, %{type: :scroll, direction: :up}}, state), do: {:ok, select(state, -1)}
 
   defp lobby_key({:mouse, %{type: :mouse_down, button: :left, y: y}}, state) do
-    case Screens.arena_at(arenas(state), state.lobby.selected, y) do
+    case Screens.world_at(worlds(state), state.lobby.selected, y) do
       nil -> {:noreply, state}
       index when index == state.lobby.selected -> {:ok, join_selected(state, team_props(state))}
       index -> {:ok, %{state | lobby: %{state.lobby | selected: index}}}
@@ -484,7 +646,7 @@ defmodule Cauldron2D.Drafter.Client do
   defp lobby_key({:key, :home}, state), do: {:ok, select(state, -state.lobby.selected)}
 
   defp lobby_key({:key, :end}, state),
-    do: {:ok, select(state, length(arenas(state)) - 1 - state.lobby.selected)}
+    do: {:ok, select(state, length(worlds(state)) - 1 - state.lobby.selected)}
 
   defp lobby_key({:key, :enter}, state), do: {:ok, join_selected(state, team_props(state))}
 
@@ -500,9 +662,17 @@ defmodule Cauldron2D.Drafter.Client do
   defp lobby_action(:settings_menu, state), do: {:ok, to_settings(state)}
   defp lobby_action(:guide, state), do: {:ok, to_guide(state)}
   defp lobby_action(:chat, %{chat?: true} = state), do: focus_chat(state)
-  defp lobby_action(leave, %{start: :lobby}) when leave in [:back, :title], do: {:stop, :normal}
-  defp lobby_action(leave, state) when leave in [:back, :title], do: {:ok, to_title(state)}
+
+  defp lobby_action(leave, %{flow: :lobby} = state) when leave in [:back, :title],
+    do: {:ok, title(state)}
+
+  defp lobby_action(leave, %{flow: {:lobby, opts}} = state) when leave in [:back, :title],
+    do: if(Keyword.get(opts, :title, true), do: {:ok, title(state)}, else: {:stop, :normal})
+
+  defp lobby_action(leave, _state) when leave in [:back, :title], do: {:stop, :normal}
   defp lobby_action(_action, state), do: {:noreply, state}
+
+  defp look_actions(%{keys: keys}), do: for({:look, _key} = action <- Map.keys(keys), do: action)
 
   defp client_action(_keys, nil, _order), do: nil
 
@@ -518,14 +688,14 @@ defmodule Cauldron2D.Drafter.Client do
   defp team_props(%{lobby: %{team: team}}), do: %{team: team}
 
   defp cycle_team(state) do
-    teams = arenas(state) |> Enum.at(state.lobby.selected, %{}) |> Map.get(:teams, [])
+    teams = worlds(state) |> Enum.at(state.lobby.selected, %{}) |> Map.get(:teams, [])
     choices = [nil | teams]
     index = Enum.find_index(choices, &(&1 == state.lobby.team)) || 0
     %{state | lobby: %{state.lobby | team: Enum.at(choices, rem(index + 1, length(choices)))}}
   end
 
   defp select(state, delta) do
-    count = max(1, length(arenas(state)))
+    count = max(1, length(worlds(state)))
 
     selected =
       if abs(delta) > 1,
@@ -536,13 +706,13 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp join_selected(state, extra) do
-    case Enum.at(arenas(state), state.lobby.selected) do
+    case Enum.at(worlds(state), state.lobby.selected) do
       nil -> state
-      arena -> join(state, arena, extra)
+      world -> join(state, world, extra)
     end
   end
 
-  defp join(state, arena, extra) do
+  defp join(state, entry, extra) do
     game_props =
       optional(
         state.game,
@@ -552,20 +722,20 @@ defmodule Cauldron2D.Drafter.Client do
       )
 
     props = %{username: state.username} |> Map.merge(game_props) |> Map.merge(extra)
-    {arena, local} = local_world(arena)
+    {entry, local} = local_world(entry)
 
-    case Player.join(arena.world, state.username, props) do
+    case Player.join(entry.world, state.username, props) do
       :ok ->
-        Chat.join({:arena, arena.id})
+        Chat.join({:world, entry.id})
 
         state = %{
           state
-          | arena: arena,
+          | joined: entry,
             local_world: local,
-            screen: :arena,
+            screen: :play,
             view: nil,
             last_input: nil,
-            talk: Chat.history({:arena, arena.id}),
+            talk: Chat.history({:world, entry.id}),
             talking?: false,
             zoom: 1,
             pan: {0.0, 0.0},
@@ -580,7 +750,7 @@ defmodule Cauldron2D.Drafter.Client do
         if local, do: GenServer.stop(local)
 
         notice = %{
-          from: arena.name,
+          from: entry.name,
           text: "could not join: " <> Game.refusal_text(state.game, reason)
         }
 
@@ -591,19 +761,19 @@ defmodule Cauldron2D.Drafter.Client do
     end
   end
 
-  defp local_world(%{world: {module, opts}} = arena) do
-    {:ok, world} = World.start_link([game: module] ++ Keyword.drop(opts, [:name]))
-    {%{arena | world: world}, world}
+  defp local_world(%{world: {module, opts}} = entry) do
+    {:ok, pid} = World.start_link([game: module] ++ Keyword.drop(opts, [:name]))
+    {%{entry | world: pid}, pid}
   end
 
-  defp local_world(arena), do: {arena, nil}
+  defp local_world(entry), do: {entry, nil}
 
-  defp leave_arena(%{arena: nil} = state), do: state
+  defp leave_world(%{joined: nil} = state), do: state
 
-  defp leave_arena(state) do
+  defp leave_world(state) do
     try do
-      Player.leave(state.arena.world, state.username)
-      Chat.leave({:arena, state.arena.id})
+      Player.leave(state.joined.world, state.username)
+      Chat.leave({:world, state.joined.id})
     catch
       :exit, _gone -> :ok
     end
@@ -613,7 +783,7 @@ defmodule Cauldron2D.Drafter.Client do
 
     %{
       state
-      | arena: nil,
+      | joined: nil,
         local_world: nil,
         view: nil,
         input: nil,
@@ -692,15 +862,11 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp apply_frame_rate(state) do
-    protocol =
-      case Context.terminal_protocol() do
-        {:ok, protocol} -> protocol
-        :unprobed -> nil
-      end
+    protocol = Surface.protocol(%Surface{mode: Settings.surface_mode(state.settings)})
 
-    Drafter.set_refresh_rate(
-      Integer.to_string(Settings.frame_rate(state.settings, protocol)) <> "fps"
-    )
+    placements? = FrenchCurve.Capability.placements?(Context.terminal_env())
+    rate = Settings.frame_rate(state.settings, protocol, placements?)
+    Drafter.set_refresh_rate(Integer.to_string(rate) <> "fps")
   end
 
   defp put_settings(state, settings) do
@@ -732,27 +898,50 @@ defmodule Cauldron2D.Drafter.Client do
     state
   end
 
-  defp arena_event({:key, :escape}, %{talking?: true} = state) do
+  defp play_event({:key, :escape}, %{talking?: true} = state) do
     Drafter.blur(:talk_input)
     {:ok, %{state | talking?: false, talk_text: ""}}
   end
 
-  defp arena_event(_event, %{talking?: true} = state), do: {:noreply, state}
+  defp play_event(_event, %{talking?: true} = state), do: {:noreply, state}
 
-  @arena_actions [:back, :title, :settings, :fps, :pause, :talk, :zoom_in, :zoom_out, :zoom_reset]
+  @play_actions [
+    :back,
+    :title,
+    :settings,
+    :fps,
+    :pause,
+    :talk,
+    :zoom_in,
+    :zoom_out,
+    :zoom_reset,
+    :projection,
+    :turn_left,
+    :turn_right,
+    :tilt_up,
+    :tilt_down,
+    :display,
+    :glyphs,
+    :mouse_look
+  ]
   @pans %{left: {-1, 0}, right: {1, 0}, up: {0, -1}, down: {0, 1}}
 
-  defp arena_event({:key, key}, %{watching?: true} = state) when is_map_key(@pans, key) do
+  defp play_event({:key, key}, %{watching?: true} = state) when is_map_key(@pans, key) do
     {dx, dy} = Map.fetch!(@pans, key)
     {:ok, pan_by(state, {dx * @pan_step / state.zoom, dy * @pan_step / state.zoom})}
   end
 
-  defp arena_event({:key, key} = event, state),
-    do: arena_action(client_action(state.keys, key, @arena_actions), event, state)
+  defp play_event({:key, key} = event, state),
+    do:
+      play_action(
+        client_action(state.keys, key, @play_actions ++ look_actions(state)),
+        event,
+        state
+      )
 
   @wheel_ms 150
 
-  defp arena_event({:mouse, %{type: :scroll, direction: direction} = mouse}, state)
+  defp play_event({:mouse, %{type: :scroll, direction: direction} = mouse}, state)
        when direction in [:up, :down] do
     at = now()
 
@@ -766,13 +955,13 @@ defmodule Cauldron2D.Drafter.Client do
     end
   end
 
-  defp arena_event(
+  defp play_event(
          {:mouse, %{type: :mouse_down, button: :left, x: x, y: y}},
          %{watching?: true} = state
        ),
        do: {:ok, %{state | drag: {x, y}}}
 
-  defp arena_event(
+  defp play_event(
          {:mouse, %{type: :drag, x: x, y: y}},
          %{watching?: true, drag: {fx, fy}} = state
        ),
@@ -780,11 +969,88 @@ defmodule Cauldron2D.Drafter.Client do
          {:ok,
           pan_by(%{state | drag: {x, y}}, {(fx - x) / (2 * state.zoom), (fy - y) / state.zoom})}
 
-  defp arena_event({:mouse, %{type: :mouse_up}}, %{watching?: true, drag: drag} = state)
+  defp play_event({:mouse, %{type: :mouse_up}}, %{watching?: true, drag: drag} = state)
        when drag != nil,
        do: {:ok, %{state | drag: nil}}
 
-  defp arena_event(event, state), do: arena_input(event, state)
+  defp play_event({:mouse, %{type: :mouse_down, x: x, y: y}} = event, %{look: look} = state) do
+    if turns_with_pointer?(look),
+      do: play_input(event, %{state | pointer: {x, y}}),
+      else: play_input(event, state)
+  end
+
+  defp play_event(
+         {:mouse, %{type: :drag, button: :left, x: x, y: y}} = event,
+         %{look: look} = state
+       ) do
+    if turns_with_pointer?(look),
+      do: turn_eye(event, state, {x, y}),
+      else: play_input(event, state)
+  end
+
+  defp play_event({:mouse, %{type: :drag, x: x, y: y}} = event, state),
+    do: play_input(event, %{state | pointer: {x, y}})
+
+  defp play_event({:mouse, %{type: :move, x: x, y: y}} = event, %{look: look} = state) do
+    if turns_with_pointer?(look) and look.mouse_look?,
+      do: turn_eye(event, state, {x, y}),
+      else: play_input(event, %{state | pointer: {x, y}, pad_aim: nil})
+  end
+
+  defp play_event(event, state), do: play_input(event, state)
+
+  @doc """
+  Whether a drag with the left button turns the view the look describes: it does in first
+  person and mode 7, and in the isometric view when the game offers more than four
+  facings. At four facings the view steps in quarters and there is nothing to drag to.
+
+  Only the left button. A drag with any other belongs to the game, which may have bound it
+  to an action whose aim must stay where the player put it: turning the view under a held
+  button moves the world out from under the pointer, so the release lands somewhere the
+  player never pointed at.
+  """
+  @spec turns_with_pointer?(map()) :: boolean()
+  def turns_with_pointer?(%{projection: projection}) when projection in [:first_person, :mode7],
+    do: true
+
+  def turns_with_pointer?(%{projection: :iso, facings: facings}), do: facings > 4
+  def turns_with_pointer?(_look), do: false
+
+  defp turn_eye(event, %{pointer: {px, py}} = state, {x, y}),
+    do:
+      play_input(event, %{
+        state
+        | look: dragged(state.look, {x - px, y - py}),
+          pointer: {x, y},
+          pad_aim: nil
+      })
+
+  defp turn_eye(event, state, {x, y}),
+    do: play_input(event, %{state | pointer: {x, y}, pad_aim: nil})
+
+  defp dragged(%{projection: :iso, facings: facings} = look, {dx, dy}) do
+    steps = dx * @mouse_turn * facings / (2 * :math.pi())
+
+    %{
+      look
+      | facing: :math.fmod(:math.fmod(look.facing + steps, facings) + facings, facings),
+        tilt: (look.tilt - dy * @mouse_tilt) |> min(1.5) |> max(0.5)
+    }
+  end
+
+  defp dragged(%{projection: :mode7} = look, {dx, dy}),
+    do: %{
+      look
+      | heading: look.heading + dx * @mouse_turn,
+        pitch: (look.pitch - dy * @mouse_pitch) |> min(0.8) |> max(-0.8)
+    }
+
+  defp dragged(look, {dx, dy}),
+    do: %{
+      look
+      | heading: look.heading + dx * @mouse_turn,
+        pitch: (look.pitch - dy * @mouse_pitch) |> min(1.0) |> max(-1.0)
+    }
 
   defp pane_cell(%{geometry: nil}, _mouse), do: nil
   defp pane_cell(%{geometry: %{rect: rect}}, %{x: x, y: y}), do: {x - rect.x, y - rect.y}
@@ -792,14 +1058,21 @@ defmodule Cauldron2D.Drafter.Client do
   defp pan_by(%{pan: {px, py}} = state, {dx, dy}),
     do: %{followed(state) | pan: {px + dx, py + dy}}
 
-  defp followed(%{pan: {px, py}, view: view, game: game} = state)
+  defp followed(%{pan: {px, py}, view: view} = state)
        when view != nil and px == 0 and py == 0,
-       do: %{state | subject: Map.get(game.scene(view), :subject)}
+       do: %{state | subject: Map.get(scene(state), :subject)}
 
-  defp followed(%{view: view, game: game} = state) when view != nil,
-    do: follow(state, game.scene(view))
+  defp followed(%{view: view} = state) when view != nil, do: follow(state, scene(state))
 
   defp followed(state), do: state
+
+  @doc "The game's scene for the client's view and look: `scene/2` where the game defines it, else `scene/1`."
+  @spec scene(map()) :: Game.scene()
+  def scene(%{game: game, view: view} = state) do
+    if function_exported?(game, :scene, 2),
+      do: game.scene(view, look(state)),
+      else: game.scene(view)
+  end
 
   @doc "The state with its pan dropped when the scene's `:subject` is not the one the pan was taken on; a scene with no subject keeps the pan."
   @spec follow(map(), Game.scene()) :: map()
@@ -807,10 +1080,10 @@ defmodule Cauldron2D.Drafter.Client do
   def follow(state, %{subject: subject}), do: %{state | pan: {0.0, 0.0}, subject: subject}
   def follow(state, _scene), do: state
 
-  @doc "The zoom levels this client steps through: `Cauldron2D.Drafter.Surface.zoom_levels/2` for the game's atlas and the display in use."
+  @doc "The zoom levels this client steps through: `Cauldron2D.Drafter.Surface.zoom_levels/3` for the game's atlas, the display in use and the projection in view."
   @spec zoom_levels(map()) :: [number()]
-  def zoom_levels(%{game: game, settings: settings}),
-    do: Surface.zoom_levels(game.atlas(), Settings.surface_mode(settings))
+  def zoom_levels(%{game: game, settings: settings} = state),
+    do: Surface.zoom_levels(game.atlas(), Settings.surface_mode(settings), look(state).projection)
 
   defp zoom_step(state, step, anchor) do
     levels = zoom_levels(state)
@@ -821,12 +1094,12 @@ defmodule Cauldron2D.Drafter.Client do
   defp zoom_to(%{zoom: zoom} = state, zoom, _anchor), do: state
 
   defp zoom_to(
-         %{geometry: %{size: size}, view: view, game: game, zoom: from} = state,
+         %{geometry: %{size: size}, view: view, zoom: from} = state,
          to,
          {_, _} = cell
        )
        when view != nil do
-    scene = game.scene(view)
+    scene = scene(state)
     {fx, fy} = scene.focus
     {px, py} = state.pan
     {nx, ny} = Camera.zoom_about({fx + px, fy + py}, cell, size, from, to)
@@ -835,39 +1108,289 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp zoom_to(state, to, _anchor), do: %{state | zoom: to}
 
-  @doc "The point the arena is drawn around: the scene's focus moved by the pan."
+  @doc "The point the world is drawn around: the scene's focus moved by the pan."
   @spec focus(map(), Game.scene()) :: {number(), number()}
   def focus(%{pan: {px, py}}, %{focus: {fx, fy}}), do: {fx + px, fy + py}
   def focus(_state, %{focus: focus}), do: focus
 
-  defp arena_action(leave, _event, state) when leave in [:back, :title],
-    do: {:ok, to_lobby(state)}
+  @doc """
+  How far above the ground the camera sits for a scene, in tiles, or `nil` to leave the
+  projection its own.
 
-  defp arena_action(:settings, _event, state), do: {:ok, to_settings(state)}
-  defp arena_action(:fps, _event, state), do: {:ok, %{state | fps?: not state.fps?}}
-  defp arena_action(:zoom_in, _event, state), do: {:ok, zoom_step(state, 1, nil)}
-  defp arena_action(:zoom_out, _event, state), do: {:ok, zoom_step(state, -1, nil)}
-  defp arena_action(:zoom_reset, _event, state), do: {:ok, %{state | zoom: 1, pan: {0.0, 0.0}}}
+  The scene's `:eye` says it: a height in tiles, or the art whose eyes they are, whose
+  own `Cauldron2D.Atlas.eye_height/2` is then used. A game that draws figures of
+  different heights gives the art, so each player sees the world from their own height.
+  """
+  @spec eye_height(module(), Game.scene()) :: number() | nil
+  def eye_height(game, scene) do
+    case Map.get(scene, :eye) do
+      nil -> nil
+      tiles when is_number(tiles) -> tiles
+      art -> Atlas.eye_height(Atlas.fetch(game.atlas()), art)
+    end
+  end
 
-  defp arena_action(:pause, _event, %{local_world: world} = state) when world != nil,
+  defp play_action(leave, _event, state) when leave in [:back, :title], do: leave(state)
+
+  defp play_action(:settings, _event, state), do: {:ok, to_settings(state)}
+  defp play_action(:fps, _event, state), do: {:ok, %{state | fps?: not state.fps?}}
+  defp play_action(:zoom_in, _event, state), do: {:ok, zoom_step(state, 1, nil)}
+  defp play_action(:zoom_out, _event, state), do: {:ok, zoom_step(state, -1, nil)}
+  defp play_action(:zoom_reset, _event, state), do: {:ok, %{state | zoom: 1, pan: {0.0, 0.0}}}
+  defp play_action(:projection, _event, state), do: {:ok, cycle_projection(state)}
+  defp play_action(:turn_left, _event, state), do: {:ok, turn(state, -1)}
+  defp play_action(:turn_right, _event, state), do: {:ok, turn(state, 1)}
+  defp play_action(:tilt_up, _event, state), do: {:ok, tilt(state, 1)}
+  defp play_action(:tilt_down, _event, state), do: {:ok, tilt(state, -1)}
+
+  defp play_action({:look, key}, _event, %{look: look} = state),
+    do: {:ok, %{state | look: Map.update(look, key, true, &(not &1))}}
+
+  defp play_action(:display, _event, state), do: {:ok, toggle_display(state)}
+  defp play_action(:glyphs, _event, state), do: {:ok, next_glyphs(state)}
+
+  defp play_action(:mouse_look, _event, state), do: {:ok, toggle_mouse_look(state)}
+
+  defp play_action(:pause, _event, %{local_world: world} = state) when world != nil,
     do: {:ok, toggle_pause(state)}
 
-  defp arena_action(:talk, _event, %{chat?: true, arena: arena} = state) when arena != nil,
+  defp play_action(:talk, _event, %{chat?: true, joined: joined} = state) when joined != nil,
     do: talk(state)
 
-  defp arena_action(_action, event, state), do: arena_input(event, state)
+  defp play_action(_action, event, state), do: play_input(event, state)
+
+  @doc "The client's projection settings for the world: projection, facing, tilt, heading and pitch, as `Cauldron2D.Drafter.Surface` takes them."
+  @spec look(map()) :: map()
+  def look(%{look: look}), do: look
+  def look(_state), do: @look
+
+  defp cycle_projection(%{look: %{projections: projections} = look} = state) do
+    index = Enum.find_index(projections, &(&1 == look.projection)) || 0
+    next = Enum.at(projections, rem(index + 1, length(projections)))
+    %{state | look: %{look | projection: next}}
+  end
+
+  defp looked(%{looked_at: since} = state, now) when is_integer(since) do
+    seconds = (now - since) / 1000
+
+    state
+    |> stick_looked(seconds)
+    |> trigger_tilted(seconds)
+    |> Map.put(:looked_at, now)
+  end
+
+  defp looked(state, now), do: %{state | looked_at: now}
+
+  defp stick_looked(%{look: %{projection: :first_person} = look} = state, seconds) do
+    {x, y} = {Pad.axis(state.pad, :right_x), Pad.axis(state.pad, :right_y)}
+
+    look = %{
+      look
+      | heading: look.heading + x * @stick_turn * seconds,
+        pitch: (look.pitch - y * @stick_pitch * seconds) |> min(1.0) |> max(-1.0)
+    }
+
+    %{state | look: look}
+  end
+
+  defp stick_looked(state, _seconds), do: state
+
+  defp trigger_tilted(state, seconds) do
+    pull = Pad.axis(state.pad, :right_trigger) - Pad.axis(state.pad, :left_trigger)
+
+    if pull == 0.0,
+      do: state,
+      else: tilted_by(state, pull * @trigger_tilt * seconds)
+  end
+
+  defp tilted_by(%{look: %{projection: :iso} = look} = state, amount),
+    do: %{state | look: %{look | tilt: (look.tilt + amount) |> min(1.5) |> max(0.5)}}
+
+  defp tilted_by(%{look: %{projection: :first_person} = look} = state, amount),
+    do: %{state | look: %{look | pitch: (look.pitch + amount) |> min(1.0) |> max(-1.0)}}
+
+  defp tilted_by(state, _amount), do: state
+
+  defp turn(%{look: %{projection: :iso} = look} = state, steps) do
+    facings = Map.get(look, :facings, 4)
+    turned = look.facing + steps
+
+    wrapped =
+      if is_integer(turned),
+        do: Integer.mod(turned, facings),
+        else: :math.fmod(:math.fmod(turned, facings) + facings, facings)
+
+    %{state | look: %{look | facing: wrapped}}
+  end
+
+  defp turn(%{look: %{projection: :mode7} = look} = state, amount),
+    do: %{state | look: %{look | heading: look.heading + amount * @turn}}
+
+  defp turn(%{look: %{projection: :first_person} = look} = state, amount),
+    do: %{state | look: %{look | heading: look.heading + amount * @turn}}
+
+  defp turn(state, _amount), do: state
+
+  defp tilt(%{look: %{projection: :iso} = look} = state, amount),
+    do: %{state | look: %{look | tilt: (look.tilt + amount * @tilt_step) |> min(1.5) |> max(0.5)}}
+
+  defp tilt(%{look: %{projection: :mode7} = look} = state, amount),
+    do: %{
+      state
+      | look: %{look | pitch: (look.pitch + amount * @pitch_step) |> min(0.8) |> max(-0.8)}
+    }
+
+  defp tilt(%{look: %{projection: :first_person} = look} = state, amount),
+    do: %{
+      state
+      | look: %{look | pitch: (look.pitch + amount * @pitch_step) |> min(1.0) |> max(-1.0)}
+    }
+
+  defp tilt(state, _amount), do: state
 
   defp talk(state) do
     Drafter.focus(:talk_input)
     {:ok, %{state | talking?: true, input: new_input(state)} |> push_input()}
   end
 
-  defp arena_input(event, %{input: input} = state) when input != nil do
+  defp play_input(event, %{input: input} = state) when input != nil do
     trace_event(event)
     {:ok, %{state | input: Input.handle(input, event, now())} |> push_input()}
   end
 
-  defp arena_input(_event, state), do: {:noreply, state}
+  defp play_input(_event, state), do: {:noreply, state}
+
+  defp padmap(game, props),
+    do: optional(game, :padmap, [props], Pad.default_map(game.actions()))
+
+  defp pad_event(event, state) do
+    pad = Pad.handle(state.pad, event)
+    pad_screen(event, %{state | pad: pad})
+  end
+
+  defp pad_screen(
+         %{type: :button, pressed: true, button: button} = event,
+         %{screen: :play} = state
+       ) do
+    case pad_action(state.pad_keys, button) do
+      nil -> pad_input(event, state)
+      action -> play_action(action, event, state)
+    end
+  end
+
+  defp pad_screen(
+         %{type: :axis, axis: axis} = event,
+         %{screen: :play, look: %{projection: :first_person}} = state
+       )
+       when axis in [:right_x, :right_y],
+       do: pad_input(event, state)
+
+  defp pad_screen(%{type: :axis, axis: axis, value: value} = event, %{screen: :play} = state)
+       when axis in [:right_x, :right_y] do
+    cond do
+      Pad.aim_stick(state.pad) == :right -> pad_input(event, state)
+      abs(value) >= 0.5 -> nudge_aim(state, axis, value)
+      true -> pad_input(event, state)
+    end
+  end
+
+  defp pad_screen(event, %{screen: :play} = state), do: pad_input(event, state)
+
+  defp pad_screen(%{type: :button, pressed: true, button: button}, %{screen: :lobby} = state) do
+    case button do
+      :dpad_down -> {:ok, select(state, 1)}
+      :dpad_up -> {:ok, select(state, -1)}
+      :a -> {:ok, join_selected(state, team_props(state))}
+      :start -> {:ok, join_selected(state, team_props(state))}
+      _other -> {:noreply, state}
+    end
+  end
+
+  defp pad_screen(%{type: :button, pressed: true, button: button}, %{screen: :title} = state)
+       when button in [:a, :start],
+       do: {:ok, play(state)}
+
+  defp pad_screen(%{type: :button, pressed: true, button: button}, %{screen: :summary} = state)
+       when button in [:a, :start],
+       do: after_summary(state)
+
+  defp pad_screen(_event, state), do: {:noreply, state}
+
+  defp pad_input(_event, %{input: input} = state) when input != nil do
+    input = Input.merge(input, Pad.held(state.pad), Pad.strength(state.pad))
+    {:ok, %{state | input: input} |> stick_aimed(Pad.aim(state.pad)) |> push_input()}
+  end
+
+  defp pad_input(_event, state), do: {:noreply, state}
+
+  defp pad_action(pad_keys, button) do
+    Enum.find_value(pad_keys, fn {action, bound} -> if button in List.wrap(bound), do: action end)
+  end
+
+  defp stick_aimed(%{stick_aim?: true} = state, nil),
+    do: %{state | pad_aim: nil, stick_aim?: false}
+
+  defp stick_aimed(state, nil), do: state
+  defp stick_aimed(%{view: nil} = state, _direction), do: state
+
+  defp stick_aimed(state, {dx, dy}) do
+    {tx, ty} = turned({dx, dy}, rem(4 - facing_of(state.look), 4))
+    {fx, fy} = focus(state, scene(state))
+
+    %{
+      state
+      | pad_aim: {fx + tx * @stick_aim_distance, fy + ty * @stick_aim_distance},
+        stick_aim?: true,
+        input: %{state.input | aim: nil}
+    }
+  end
+
+  defp nudge_aim(%{view: nil} = state, _axis, _value), do: {:noreply, state}
+
+  defp nudge_aim(state, axis, value) do
+    scene = scene(state)
+    step = if value > 0, do: 1, else: -1
+    screen = if axis == :right_x, do: {step, 0}, else: {0, step}
+    {dx, dy} = turned(screen, rem(4 - facing_of(state.look), 4))
+    {ax, ay} = state.pad_aim || focus(state, scene)
+    {:ok, %{state | pad_aim: {ax + dx, ay + dy}} |> push_input()}
+  end
+
+  defp facing_of(%{projection: :iso, facing: facing, facings: 4}), do: facing
+  defp facing_of(_look), do: 0
+
+  defp toggle_mouse_look(%{look: look} = state),
+    do: %{state | look: %{look | mouse_look?: not look.mouse_look?}}
+
+  defp toggle_display(%{settings: settings} = state) do
+    display =
+      case settings.display do
+        :auto -> Map.get(state, :last_glyphs) || Cells.default_set(Context.terminal_env())
+        _cells -> :auto
+      end
+
+    state
+    |> Map.put(:last_glyphs, settings.display)
+    |> put_settings(%{settings | display: display})
+    |> repaced()
+  end
+
+  defp next_glyphs(%{settings: settings} = state) do
+    sets = Cells.sets() -- [:braille]
+
+    display =
+      case Enum.find_index(sets, &(&1 == settings.display)) do
+        nil -> hd(sets)
+        index -> Enum.at(sets, rem(index + 1, length(sets)))
+      end
+
+    state |> put_settings(%{settings | display: display}) |> repaced()
+  end
+
+  defp repaced(state) do
+    apply_frame_rate(state)
+    state
+  end
 
   defp trace_event({:mouse, %{type: type, x: x, y: y}}),
     do: Trace.write(:mouse, type: type, x: x, y: y)
@@ -877,19 +1400,83 @@ defmodule Cauldron2D.Drafter.Client do
   defp trace_event({:key_down, key, _modifiers}), do: Trace.write(:key, key: key)
   defp trace_event(_event), do: :ok
 
+  @directions %{left: {-1, 0}, right: {1, 0}, up: {0, -1}, down: {0, 1}}
+
+  @doc """
+  The player's input as the world should see it for the projection in use. Top-down and
+  oblique send it as held, since neither turns. The isometric view at one of four facings
+  turns the four direction actions with it, and of the directions a stick holds keeps only
+  the one pushed hardest.
+
+  On a finer `facings` a quarter turn is no longer the step, so the directions go as held
+  and the input carries `:heading` instead, as it does in first person and mode 7: a
+  heading in radians with `0` along `+x`, along which the game walks `:up`, against which
+  it walks `:down`, and across which it walks `:left` and `:right`. A game offering more
+  than four facings must read `:heading`; pressing up then moves the same way across the
+  picture however far the view has turned. Turning the view is the client's `turn_left`
+  and `turn_right`, not a game action.
+  """
+  @spec steered(Input.state(), map()) :: map()
+  def steered(read, %{projection: projection}) when projection in [:top, :oblique], do: read
+
+  def steered(read, %{projection: :iso, facing: facing, facings: 4}) do
+    held =
+      MapSet.new(snapped(read), fn action ->
+        case Map.fetch(@directions, action) do
+          {:ok, screen} -> screen |> turned(rem(4 - facing, 4)) |> direction_action()
+          :error -> action
+        end
+      end)
+
+    %{read | held: held}
+  end
+
+  def steered(read, %{projection: projection, heading: heading})
+      when projection in [:first_person, :mode7],
+      do: Map.put(read, :heading, heading)
+
+  def steered(read, %{projection: :iso, facing: facing, facings: facings}),
+    do: Map.put(read, :heading, Iso.up(facing: facing, facings: facings))
+
+  defp snapped(%{held: held, strength: strength}) do
+    pushed = Map.take(strength, Map.keys(@directions))
+
+    case Enum.max_by(pushed, &elem(&1, 1), fn -> nil end) do
+      nil ->
+        held
+
+      {hardest, _} ->
+        held |> MapSet.difference(MapSet.new(Map.keys(pushed))) |> MapSet.put(hardest)
+    end
+  end
+
+  defp snapped(%{held: held}), do: held
+
+  defp turned({dx, dy}, 0), do: {dx, dy}
+  defp turned({dx, dy}, 1), do: {dy, -dx}
+  defp turned({dx, dy}, 2), do: {-dx, -dy}
+  defp turned({dx, dy}, 3), do: {-dy, dx}
+
+  defp direction_action({dx, dy}) do
+    {action, _} = Enum.find(@directions, fn {_, {sx, sy}} -> {sx, sy} == {dx, dy} end)
+    action
+  end
+
   defp push_input(%{input: nil} = state), do: state
 
   defp push_input(state) do
     read = Input.state(state.input)
 
     sent = %{
-      read
-      | aim: if(state.settings.pointer and read.aim != nil, do: aim_in_world(state, read.aim))
+      steered(read, look(state))
+      | aim:
+          state.pad_aim ||
+            if(state.settings.pointer and read.aim != nil, do: aim_in_world(state, read.aim))
     }
 
     if sent != state.last_input do
       Trace.write(:input, held: Enum.join(sent.held, ","), aim: aim_text(sent.aim))
-      Player.input(state.arena.world, state.username, sent)
+      Player.input(state.joined.world, state.username, sent)
       %{state | last_input: sent}
     else
       state
@@ -897,26 +1484,26 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp after_summary(state) do
-    case next_arena(state) do
-      nil -> to_lobby(state)
-      arena -> state |> Map.put(:screen, :lobby) |> join(arena, team_props(state))
+    case next_world(state) do
+      nil -> leave(state)
+      world -> {:ok, state |> Map.put(:screen, :lobby) |> join(world, team_props(state))}
     end
   end
 
   @doc false
-  @spec next_arena(map()) :: map() | nil
-  def next_arena(%{summary: %{next: :same_arena}, summary_arena: arena}), do: arena
+  @spec next_world(map()) :: map() | nil
+  def next_world(%{summary: %{next: :same_world}, summary_world: world}), do: world
 
-  def next_arena(%{summary: %{next: :next_arena}, summary_arena: arena} = state) do
-    arenas = arenas(state)
+  def next_world(%{summary: %{next: :next_world}, summary_world: world} = state) do
+    worlds = worlds(state)
 
-    case Enum.find_index(arenas, &(&1.id == arena.id)) do
-      nil -> List.first(arenas)
-      index -> Enum.at(arenas, rem(index + 1, length(arenas)))
+    case Enum.find_index(worlds, &(&1.id == world.id)) do
+      nil -> List.first(worlds)
+      index -> Enum.at(worlds, rem(index + 1, length(worlds)))
     end
   end
 
-  def next_arena(_state), do: nil
+  def next_world(_state), do: nil
 
   defp outcome(%{game: game}, view) do
     Game.outcome(game, view)
@@ -937,16 +1524,70 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp aim_in_world(%{geometry: geometry, view: view, game: game, zoom: zoom} = state, {x, y})
        when view != nil do
-    scene = game.scene(view)
+    scene = scene(state)
     rect = geometry.rect
+    look = look(state)
 
-    origin =
-      Camera.exact_origin(focus(state, scene), Camera.zoomed(geometry.size, zoom))
+    surface = %Surface{
+      atlas: game.atlas(),
+      focus: focus(state, scene),
+      zoom: zoom,
+      mode: Settings.surface_mode(state.settings),
+      projection: look.projection,
+      facing: look.facing,
+      facings: Map.get(look, :facings, 4),
+      tilt: look.tilt,
+      heading: Map.get(scene, :heading) || look.heading,
+      pitch: look.pitch,
+      density: Map.get(look, :density),
+      eye: eye_height(game, scene)
+    }
 
-    Camera.tile_at(origin, {x - rect.x, y - rect.y}, zoom)
+    cell = {x - rect.x, y - rect.y}
+    world = Surface.world_at(surface, rect, cell)
+    traced(surface, rect, cell, world, scene, state)
+    world
   end
 
   defp aim_in_world(_state, _cell), do: nil
+
+  defp traced(_surface, _rect, _cell, nil, _scene, _state), do: :ok
+
+  defp traced(surface, rect, cell, world, scene, state) do
+    if Process.put(@traced, {cell, world, scene.focus}) != {cell, world, scene.focus},
+      do: trace_click(surface, rect, cell, world, scene, state)
+  end
+
+  defp trace_click(surface, rect, {cx, cy}, {wx, wy}, scene, state) do
+    {hx, hy} = scene.focus
+    {fx, fy} = surface.focus
+    {px, py} = Map.get(state, :pan) || {0.0, 0.0}
+    hero = Surface.cell_at(surface, rect, scene.focus)
+
+    Trace.write(:click,
+      cell_x: cx,
+      cell_y: cy,
+      pane_x: rect.x,
+      pane_y: rect.y,
+      pane_w: rect.width,
+      pane_h: rect.height,
+      projection: surface.projection,
+      facing: surface.facing,
+      facings: surface.facings,
+      tilt: surface.tilt,
+      zoom: surface.zoom,
+      world_x: wx,
+      world_y: wy,
+      camera_x: fx,
+      camera_y: fy,
+      pan_x: px,
+      pan_y: py,
+      hero_x: hx,
+      hero_y: hy,
+      hero_cell_x: hero && elem(hero, 0),
+      hero_cell_y: hero && elem(hero, 1)
+    )
+  end
 
   defp start_audio(game, props, settings) do
     sink = Map.get(props, :sink) || optional(game, :sink, [props], default_sink())
@@ -973,7 +1614,7 @@ defmodule Cauldron2D.Drafter.Client do
         else: TuningFork.Sink.Silent
       )
 
-  defp cue_music(%{screen: :arena, view: nil} = state), do: state
+  defp cue_music(%{screen: :play, view: nil} = state), do: state
 
   defp cue_music(state) do
     cue = state.game.cue(state.view, state.screen)

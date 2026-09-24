@@ -41,7 +41,8 @@ defmodule Cauldron2D.Input do
   held from its `:mouse_down` to its `:mouse_up`, through any drag, whichever way keys
   are being held; the pointer position of every mouse event becomes the aim.
 
-  `merge/2` adds actions held by another source, such as a controller.
+  `merge/3` adds actions held by another source, such as a `Cauldron2D.Input.Pad`,
+  with how hard each is held.
   """
 
   @type action :: atom()
@@ -64,6 +65,7 @@ defmodule Cauldron2D.Input do
           expiries: %{action() => integer()},
           toggled: MapSet.t(action()),
           external: MapSet.t(action()),
+          strength: %{action() => float()},
           aim: {number(), number()} | nil
         }
 
@@ -78,6 +80,7 @@ defmodule Cauldron2D.Input do
             expiries: %{},
             toggled: MapSet.new(),
             external: MapSet.new(),
+            strength: %{},
             aim: nil
 
   @doc """
@@ -169,15 +172,27 @@ defmodule Cauldron2D.Input do
     %{input | expiries: Map.new(kept), held: held}
   end
 
-  @doc "Replace the actions held by an outside source."
-  @spec merge(t(), MapSet.t(action())) :: t()
-  def merge(%__MODULE__{} = input, external), do: %{input | external: external}
+  @doc """
+  Replace the actions held by an outside source, and how hard each is held.
+
+  `strength` maps an action in `external` to `0.0..1.0`; an action without an entry is
+  held in full.
+  """
+  @spec merge(t(), MapSet.t(action()), %{action() => float()}) :: t()
+  def merge(%__MODULE__{} = input, external, strength \\ %{}),
+    do: %{input | external: external, strength: strength}
 
   @doc "What the player is doing now."
   @spec state(t()) :: state()
   def state(%__MODULE__{} = input) do
     held = input.held |> MapSet.union(input.toggled) |> MapSet.union(input.external)
-    %{held: held, aim: input.aim}
+
+    strength =
+      Map.reject(input.strength, fn {action, _} -> MapSet.member?(input.held, action) end)
+
+    read = %{held: held, aim: input.aim}
+
+    if strength == %{}, do: read, else: Map.put(read, :strength, strength)
   end
 
   @doc "Whether pressing a key for any of `actions` drops the aim."

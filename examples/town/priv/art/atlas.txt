@@ -1,0 +1,102 @@
+plaster_ground_n	##				1	top=roof_tile side=plaster north=plaster_door	
+plaster_ground_e	##				1	top=roof_tile side=plaster east=plaster_door	
+plaster_ground_s	##				1	top=roof_tile side=plaster south=plaster_door	
+plaster_ground_w	##				1	top=roof_tile side=plaster west=plaster_door	
+brick_ground_n	##				1	top=roof_slate side=brick north=brick_door	
+brick_ground_e	##				1	top=roof_slate side=brick east=brick_door	
+brick_ground_s	##				1	top=roof_slate side=brick south=brick_door	
+brick_ground_w	##				1	top=roof_slate side=brick west=brick_door	
+shop_ground_n	##				1	top=roof_slate side=plaster north=shop_front	
+shop_ground_e	##				1	top=roof_slate side=plaster east=shop_front	
+shop_ground_s	##				1	top=roof_slate side=plaster south=shop_front	
+shop_ground_w	##				1	top=roof_slate side=plaster west=shop_front	
+stone_ground_n	##				1	top=stone_top side=stone north=stone_gate	
+stone_ground_e	##				1	top=stone_top side=stone east=stone_gate	
+stone_ground_s	##				1	top=stone_top side=stone south=stone_gate	
+stone_ground_w	##				1	top=stone_top side=stone west=stone_gate	
+plaster_ground	##				1	top=roof_tile side=plaster	
+brick_ground	##				1	top=roof_slate side=brick	
+shop_ground	##				1	top=roof_slate side=plaster	
+stone_ground	##				1	top=stone_top side=stone	
+plaster_upper	##				1	top=roof_tile side=plaster_window	
+brick_upper	##				1	top=roof_slate side=brick_window	
+shop_upper	##				1	top=roof_slate side=plaster_window	
+stone_upper	##				1	top=stone_top side=stone	
+stone_wall	##				1	top=stone_top side=stone	
+villager_front_green				from villager_front; colour T #2e9e4a; colour t #237d3a
+villager_front_walk_green				from villager_front_walk; colour T #2e9e4a; colour t #237d3a
+villager_front_red				from villager_front; colour T #d0453a; colour t #a8352d
+villager_front_walk_red				from villager_front_walk; colour T #d0453a; colour t #a8352d
+villager_front_purple				from villager_front; colour T #8a4fd0; colour t #6f3cab
+villager_front_walk_purple				from villager_front_walk; colour T #8a4fd0; colour t #6f3cab
+villager_front_gold				from villager_front; colour T #d9a52a; colour t #b3871f
+villager_front_walk_gold				from villager_front_walk; colour T #d9a52a; colour t #b3871f
+villager_back_green				from villager_back; colour T #2e9e4a; colour t #237d3a
+villager_back_walk_green				from villager_back_walk; colour T #2e9e4a; colour t #237d3a
+villager_back_red				from villager_back; colour T #d0453a; colour t #a8352d
+villager_back_walk_red				from villager_back_walk; colour T #d0453a; colour t #a8352d
+villager_back_purple				from villager_back; colour T #8a4fd0; colour t #6f3cab
+villager_back_walk_purple				from villager_back_walk; colour T #8a4fd0; colour t #6f3cab
+villager_back_gold				from villager_back; colour T #d9a52a; colour t #b3871f
+villager_back_walk_gold				from villager_back_walk; colour T #d9a52a; colour t #b3871f
+villager_side_green				from villager_side; colour T #2e9e4a; colour t #237d3a
+villager_side_walk_green				from villager_side_walk; colour T #2e9e4a; colour t #237d3a
+villager_side_red				from villager_side; colour T #d0453a; colour t #a8352d
+villager_side_walk_red				from villager_side_walk; colour T #d0453a; colour t #a8352d
+villager_side_purple				from villager_side; colour T #8a4fd0; colour t #6f3cab
+villager_side_walk_purple				from villager_side_walk; colour T #8a4fd0; colour t #6f3cab
+villager_side_gold				from villager_side; colour T #d9a52a; colour t #b3871f
+villager_side_walk_gold				from villager_side_walk; colour T #d9a52a; colour t #b3871f
+villager_blue	@ 		8				front=villager_front back=villager_back side=villager_side	0.75
+villager_blue_walk	@ 		8				front=villager_front_walk back=villager_back_walk side=villager_side_walk	0.75
+villager_green	@ 		8				front=villager_front_green back=villager_back_green side=villager_side_green	0.75
+villager_green_walk	@ 		8				front=villager_front_walk_green back=villager_back_walk_green side=villager_side_walk_green	0.75
+villager_red	@ 		8				front=villager_front_red back=villager_back_red side=villager_side_red	0.75
+villager_red_walk	@ 		8				front=villager_front_walk_red back=villager_back_walk_red side=villager_side_walk_red	0.75
+villager_purple	@ 		8				front=villager_front_purple back=villager_back_purple side=villager_side_purple	0.75
+villager_purple_walk	@ 		8				front=villager_front_walk_purple back=villager_back_walk_purple side=villager_side_walk_purple	0.75
+villager_gold	@ 		8				front=villager_front_gold back=villager_back_gold side=villager_side_gold	0.75
+villager_gold_walk	@ 		8				front=villager_front_walk_gold back=villager_back_walk_gold side=villager_side_walk_gold	0.75
+hero_front_green				from hero_front; colour T #2e9e4a; colour t #237d3a; colour u #73be86
+hero_front_red				from hero_front; colour T #d0453a; colour t #a8352d; colour u #df837b
+hero_front_purple				from hero_front; colour T #8a4fd0; colour t #6f3cab; colour u #b189df
+hero_front_gold				from hero_front; colour T #d9a52a; colour t #b3871f; colour u #e5c371
+hero_front_walk_green				from hero_front_walk; colour T #2e9e4a; colour t #237d3a; colour u #73be86
+hero_front_walk_red				from hero_front_walk; colour T #d0453a; colour t #a8352d; colour u #df837b
+hero_front_walk_purple				from hero_front_walk; colour T #8a4fd0; colour t #6f3cab; colour u #b189df
+hero_front_walk_gold				from hero_front_walk; colour T #d9a52a; colour t #b3871f; colour u #e5c371
+hero_back_green				from hero_back; colour T #2e9e4a; colour t #237d3a; colour u #73be86
+hero_back_red				from hero_back; colour T #d0453a; colour t #a8352d; colour u #df837b
+hero_back_purple				from hero_back; colour T #8a4fd0; colour t #6f3cab; colour u #b189df
+hero_back_gold				from hero_back; colour T #d9a52a; colour t #b3871f; colour u #e5c371
+hero_back_walk_green				from hero_back_walk; colour T #2e9e4a; colour t #237d3a; colour u #73be86
+hero_back_walk_red				from hero_back_walk; colour T #d0453a; colour t #a8352d; colour u #df837b
+hero_back_walk_purple				from hero_back_walk; colour T #8a4fd0; colour t #6f3cab; colour u #b189df
+hero_back_walk_gold				from hero_back_walk; colour T #d9a52a; colour t #b3871f; colour u #e5c371
+hero_side_green				from hero_side; colour T #2e9e4a; colour t #237d3a; colour u #73be86
+hero_side_red				from hero_side; colour T #d0453a; colour t #a8352d; colour u #df837b
+hero_side_purple				from hero_side; colour T #8a4fd0; colour t #6f3cab; colour u #b189df
+hero_side_gold				from hero_side; colour T #d9a52a; colour t #b3871f; colour u #e5c371
+hero_side_walk_green				from hero_side_walk; colour T #2e9e4a; colour t #237d3a; colour u #73be86
+hero_side_walk_red				from hero_side_walk; colour T #d0453a; colour t #a8352d; colour u #df837b
+hero_side_walk_purple				from hero_side_walk; colour T #8a4fd0; colour t #6f3cab; colour u #b189df
+hero_side_walk_gold				from hero_side_walk; colour T #d9a52a; colour t #b3871f; colour u #e5c371
+hero_blue	@ 		8				front=hero_front back=hero_back side=hero_side	0.75
+hero_blue_walk	@ 		8				front=hero_front_walk back=hero_back_walk side=hero_side_walk	0.75
+hero_green	@ 		8				front=hero_front_green back=hero_back_green side=hero_side_green	0.75
+hero_green_walk	@ 		8				front=hero_front_walk_green back=hero_back_walk_green side=hero_side_walk_green	0.75
+hero_red	@ 		8				front=hero_front_red back=hero_back_red side=hero_side_red	0.75
+hero_red_walk	@ 		8				front=hero_front_walk_red back=hero_back_walk_red side=hero_side_walk_red	0.75
+hero_purple	@ 		8				front=hero_front_purple back=hero_back_purple side=hero_side_purple	0.75
+hero_purple_walk	@ 		8				front=hero_front_walk_purple back=hero_back_walk_purple side=hero_side_walk_purple	0.75
+hero_gold	@ 		8				front=hero_front_gold back=hero_back_gold side=hero_side_gold	0.75
+hero_gold_walk	@ 		8				front=hero_front_walk_gold back=hero_back_walk_gold side=hero_side_walk_gold	0.75
+grass	. 	
+road	= 	
+cobble	, 	
+water	~ 	
+dirt	: 	
+tree	T 			from tree_small; scale 2
+pine	P 			from pine_small; scale 2
+lamp	i 	
+barrel	o 	

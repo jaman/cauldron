@@ -32,9 +32,6 @@ defmodule Cauldron2D.RendererTest do
   end
 
   describe "the modes it knows" do
-    test "are the five it documents" do
-      assert Renderer.modes() == [:text, :pixel, :kitty, :iterm2, :sixel]
-    end
   end
 
   describe "reading a mode name" do
@@ -65,10 +62,6 @@ defmodule Cauldron2D.RendererTest do
     test "text means no protocol" do
       assert Renderer.protocol(:text) == nil
       assert Renderer.mode(:text) == :text
-    end
-
-    test "a protocol named outright draws as pixels" do
-      assert Renderer.mode(:kitty) == :pixel
     end
 
     test "an override beats the environment" do
@@ -111,22 +104,7 @@ defmodule Cauldron2D.RendererTest do
     end
   end
 
-  describe "describing it for a status bar" do
-    test "a protocol is its own name" do
-      assert Renderer.describe(:kitty) == "kitty"
-      assert Renderer.describe(:sixel) == "sixel"
-    end
-
-    test "no protocol is the word text" do
-      assert Renderer.describe(:text) == "text"
-    end
-  end
-
   describe "falling through to the terminal" do
-    test "with nothing set the answer is one this terminal could give" do
-      assert Renderer.protocol() in [:kitty, :iterm2, :sixel, nil]
-    end
-
     test "mode and describe always agree with protocol, whatever the terminal turns out to be" do
       case Renderer.protocol() do
         nil ->

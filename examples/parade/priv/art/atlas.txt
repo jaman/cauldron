@@ -1,0 +1,48 @@
+knight_front_crimson				from knight_front; colour M #6b1f2d; colour R #a02a3a; colour r #c0394b; colour h #5a3a22; colour f #8a664e
+knight_front_walk_crimson				from knight_front_walk; colour M #6b1f2d; colour R #a02a3a; colour r #c0394b; colour h #5a3a22; colour f #8a664e
+knight_back_crimson				from knight_back; colour M #6b1f2d; colour R #a02a3a; colour r #c0394b; colour h #5a3a22; colour f #8a664e
+knight_back_walk_crimson				from knight_back_walk; colour M #6b1f2d; colour R #a02a3a; colour r #c0394b; colour h #5a3a22; colour f #8a664e
+knight_side_crimson				from knight_side; colour M #6b1f2d; colour R #a02a3a; colour r #c0394b; colour h #5a3a22; colour f #8a664e
+knight_side_walk_crimson				from knight_side_walk; colour M #6b1f2d; colour R #a02a3a; colour r #c0394b; colour h #5a3a22; colour f #8a664e
+knight_front_forest				from knight_front; colour M #1f4b2a; colour R #2e7a3f; colour r #3f9c52; colour h #2f2a1c; colour f #57503a
+knight_front_walk_forest				from knight_front_walk; colour M #1f4b2a; colour R #2e7a3f; colour r #3f9c52; colour h #2f2a1c; colour f #57503a
+knight_back_forest				from knight_back; colour M #1f4b2a; colour R #2e7a3f; colour r #3f9c52; colour h #2f2a1c; colour f #57503a
+knight_back_walk_forest				from knight_back_walk; colour M #1f4b2a; colour R #2e7a3f; colour r #3f9c52; colour h #2f2a1c; colour f #57503a
+knight_side_forest				from knight_side; colour M #1f4b2a; colour R #2e7a3f; colour r #3f9c52; colour h #2f2a1c; colour f #57503a
+knight_side_walk_forest				from knight_side_walk; colour M #1f4b2a; colour R #2e7a3f; colour r #3f9c52; colour h #2f2a1c; colour f #57503a
+knight_front_royal				from knight_front; colour M #23306b; colour R #31479c; colour r #4460c6; colour h #1e1e26; colour f #474756
+knight_front_walk_royal				from knight_front_walk; colour M #23306b; colour R #31479c; colour r #4460c6; colour h #1e1e26; colour f #474756
+knight_back_royal				from knight_back; colour M #23306b; colour R #31479c; colour r #4460c6; colour h #1e1e26; colour f #474756
+knight_back_walk_royal				from knight_back_walk; colour M #23306b; colour R #31479c; colour r #4460c6; colour h #1e1e26; colour f #474756
+knight_side_royal				from knight_side; colour M #23306b; colour R #31479c; colour r #4460c6; colour h #1e1e26; colour f #474756
+knight_side_walk_royal				from knight_side_walk; colour M #23306b; colour R #31479c; colour r #4460c6; colour h #1e1e26; colour f #474756
+knight_front_amber				from knight_front; colour M #6b4a15; colour R #a8781f; colour r #d19b2a; colour h #8a5a1c; colour f #c08e42
+knight_front_walk_amber				from knight_front_walk; colour M #6b4a15; colour R #a8781f; colour r #d19b2a; colour h #8a5a1c; colour f #c08e42
+knight_back_amber				from knight_back; colour M #6b4a15; colour R #a8781f; colour r #d19b2a; colour h #8a5a1c; colour f #c08e42
+knight_back_walk_amber				from knight_back_walk; colour M #6b4a15; colour R #a8781f; colour r #d19b2a; colour h #8a5a1c; colour f #c08e42
+knight_side_amber				from knight_side; colour M #6b4a15; colour R #a8781f; colour r #d19b2a; colour h #8a5a1c; colour f #c08e42
+knight_side_walk_amber				from knight_side_walk; colour M #6b4a15; colour R #a8781f; colour r #d19b2a; colour h #8a5a1c; colour f #c08e42
+knight_front_plum				from knight_front; colour M #4a1f55; colour R #6f3480; colour r #8f4aa3; colour h #4a2438; colour f #7d4c66
+knight_front_walk_plum				from knight_front_walk; colour M #4a1f55; colour R #6f3480; colour r #8f4aa3; colour h #4a2438; colour f #7d4c66
+knight_back_plum				from knight_back; colour M #4a1f55; colour R #6f3480; colour r #8f4aa3; colour h #4a2438; colour f #7d4c66
+knight_back_walk_plum				from knight_back_walk; colour M #4a1f55; colour R #6f3480; colour r #8f4aa3; colour h #4a2438; colour f #7d4c66
+knight_side_plum				from knight_side; colour M #4a1f55; colour R #6f3480; colour r #8f4aa3; colour h #4a2438; colour f #7d4c66
+knight_side_walk_plum				from knight_side_walk; colour M #4a1f55; colour R #6f3480; colour r #8f4aa3; colour h #4a2438; colour f #7d4c66
+walker_crimson	@ 		8				front=knight_front_crimson back=knight_back_crimson side=knight_side_crimson	1.5
+walker_crimson_walk	@ 		8				front=knight_front_walk_crimson back=knight_back_walk_crimson side=knight_side_walk_crimson	1.5
+walker_forest	@ 		8				front=knight_front_forest back=knight_back_forest side=knight_side_forest	1.5
+walker_forest_walk	@ 		8				front=knight_front_walk_forest back=knight_back_walk_forest side=knight_side_walk_forest	1.5
+walker_royal	@ 		8				front=knight_front_royal back=knight_back_royal side=knight_side_royal	1.5
+walker_royal_walk	@ 		8				front=knight_front_walk_royal back=knight_back_walk_royal side=knight_side_walk_royal	1.5
+walker_amber	@ 		8				front=knight_front_amber back=knight_back_amber side=knight_side_amber	1.5
+walker_amber_walk	@ 		8				front=knight_front_walk_amber back=knight_back_walk_amber side=knight_side_walk_amber	1.5
+walker_plum	@ 		8				front=knight_front_plum back=knight_back_plum side=knight_side_plum	1.5
+walker_plum_walk	@ 		8				front=knight_front_walk_plum back=knight_back_walk_plum side=knight_side_walk_plum	1.5
+stone	. 							
+grass	, 							
+dirt	: 							
+moss	" 							
+wall_top	##							
+wall_side	##							
+wall	##				1	top=wall_top side=wall_side		
+pillar	||				2	top=wall_top side=wall_side		

@@ -1,14 +1,14 @@
 defmodule Cauldron2D.Wx.Client do
   @moduledoc """
   The window that puts a game's worlds in front of one player: a title, a lobby of
-  arenas, settings, the arena, a summary, the guide and the game's own pages, from a
+  worlds, settings, the world, a summary, the guide and the game's own pages, from a
   `Cauldron2D.Client.Game` — the desktop's twin of the terminal's
   `Cauldron2D.Drafter.Client`.
 
       Cauldron2D.Wx.Client.run(game: MyGame.Client, username: "alice")
 
-  The arena is a `Cauldron2D.Wx.View` joined through a link the `:link` function gives
-  for the chosen arena: without one, a local link to the arena's world — a name on this
+  The world is a `Cauldron2D.Wx.View` joined through a link the `:link` function gives
+  for the chosen world: without one, a local link to the world's process — a name on this
   node, or `{module, opts}` for a world of the player's own, started for them and
   stopped when they leave. Settings — the key preset, the effects and music levels,
   whether the pointer aims — are kept per player under
@@ -16,11 +16,11 @@ defmodule Cauldron2D.Wx.Client do
 
   ## Keys
 
-  Title: `Enter` play (into the lobby, or straight into the first arena for a game
+  Title: `Enter` play (into the lobby, or straight into the first world for a game
   whose `lobby?/0` is false), `s` settings, `h` guide, a page's key, `q` or `Esc` quit.
   Lobby: `↑`/`↓`, `PgUp`/`PgDn`, `Home`/`End`, `Enter` join, `w` watch, `t` team, `s`
   settings, `h` guide, `Esc` title. Settings: `↑`/`↓` choose, `←`/`→` change, `Esc`
-  back. Arena: the game's keys, `p` pauses a world of the player's own, `Tab` settings
+  back. World: the game's keys, `p` pauses a world of the player's own, `Tab` settings
   with the world left where it is, `Esc` or `q` leaves. Summary: `Enter` again or on,
   as the outcome's `:next` says, `Esc` lobby. Guide and pages: `↑`/`↓`, `Esc` back.
   Every item on a screen can be clicked instead.
@@ -29,12 +29,12 @@ defmodule Cauldron2D.Wx.Client do
 
     * `:game` — the module. Required
     * `:username` — the player's name. Default `"player"`
-    * `:props` — the props the game's `arenas/1`, `pages/1` and `sink/1` are given.
+    * `:props` — the props the game's `worlds/1`, `pages/1` and `sink/1` are given.
       Default `%{}`
-    * `:link` — a function from an arena to the link the view joins with, `{:local,
-      opts}` or `{:socket, opts}`. Default: a local link to the arena's world
+    * `:link` — a function from a world to the link the view joins with, `{:local,
+      opts}` or `{:socket, opts}`. Default: a local link to the world's process
     * `:size` — the window. Default `{1320, 800}`
-    * `:scale` — pixels a sheet pixel in the arena. Default `2`
+    * `:scale` — pixels a sheet pixel in the world. Default `2`
     * `:backdrop` — drawn behind the screens, as `Cauldron2D.Wx.Text` takes it
   """
 
@@ -90,7 +90,7 @@ defmodule Cauldron2D.Wx.Client do
     me = self()
     settings = load_settings(game, username)
 
-    arena =
+    world =
       View.new(frame,
         keymap: keymap(game, settings),
         steering: Game.optional(game, :steering, [], []),
@@ -100,15 +100,15 @@ defmodule Cauldron2D.Wx.Client do
         hud_size: 300,
         zoom: true,
         pointer: settings.pointer,
-        on_over: fn over -> send(me, {:arena, :over, over}) end,
-        on_closed: fn reason -> send(me, {:arena, :closed, reason}) end,
-        on_refused: fn reason -> send(me, {:arena, :refused, reason}) end,
-        on_key: fn code -> send(me, {:arena, :key, code}) end
+        on_over: fn over -> send(me, {:play, :over, over}) end,
+        on_closed: fn reason -> send(me, {:play, :closed, reason}) end,
+        on_refused: fn reason -> send(me, {:play, :refused, reason}) end,
+        on_key: fn code -> send(me, {:play, :key, code}) end
       )
 
     :wxSizer.add(sizer, Text.window(text), proportion: 1, flag: Const.expand())
-    :wxSizer.add(sizer, View.window(arena), proportion: 1, flag: Const.expand())
-    :wxWindow.hide(View.window(arena))
+    :wxSizer.add(sizer, View.window(world), proportion: 1, flag: Const.expand())
+    :wxWindow.hide(View.window(world))
     :wxFrame.setSizer(frame, sizer)
     :wxFrame.connect(frame, :close_window)
     :wxFrame.show(frame)
@@ -118,14 +118,14 @@ defmodule Cauldron2D.Wx.Client do
       frame: frame,
       sizer: sizer,
       text: text,
-      arena: arena,
+      play: world,
       game: game,
       username: username,
       props: props,
       link:
-        Keyword.get(opts, :link, fn arena ->
+        Keyword.get(opts, :link, fn world ->
           {:local,
-           game: game, world: arena.world, name: username, props: Map.drop(props, [:username])}
+           game: game, world: world.world, name: username, props: Map.drop(props, [:username])}
         end),
       lobby?: Game.optional(game, :lobby?, [], true),
       pages: Game.optional(game, :pages, [props], []),
@@ -133,7 +133,7 @@ defmodule Cauldron2D.Wx.Client do
       setting: 0,
       screen: :title,
       from: :title,
-      arenas: [],
+      worlds: [],
       selected: 0,
       team: nil,
       chosen: nil,
@@ -198,17 +198,17 @@ defmodule Cauldron2D.Wx.Client do
     do: {:noreply, action(action, state)}
 
   def handle_info({:cauldron_wx_text, :char, _char}, state), do: {:noreply, state}
-  def handle_info({:arena, :key, code}, state), do: {:noreply, arena_key(code, state)}
-  def handle_info({:arena, :over, over}, state), do: {:noreply, to_summary(state, over)}
+  def handle_info({:play, :key, code}, state), do: {:noreply, play_key(code, state)}
+  def handle_info({:play, :over, over}, state), do: {:noreply, to_summary(state, over)}
 
-  def handle_info({:arena, :refused, reason}, state),
+  def handle_info({:play, :refused, reason}, state),
     do:
       {:noreply,
        state
        |> Map.put(:status, "could not join: " <> Game.refusal_text(state.game, reason))
        |> to_lobby()}
 
-  def handle_info({:arena, :closed, _reason}, %{screen: :arena} = state),
+  def handle_info({:play, :closed, _reason}, %{screen: :play} = state),
     do: {:noreply, to_lobby(state)}
 
   def handle_info(_message, state), do: {:noreply, state}
@@ -239,7 +239,7 @@ defmodule Cauldron2D.Wx.Client do
   defp lobby_key(@page_down, state), do: select(state, Screens.window())
   defp lobby_key(@page_up, state), do: select(state, -Screens.window())
   defp lobby_key(@home, state), do: select(state, -state.selected)
-  defp lobby_key(@end_key, state), do: select(state, length(state.arenas) - 1 - state.selected)
+  defp lobby_key(@end_key, state), do: select(state, length(state.worlds) - 1 - state.selected)
   defp lobby_key(@enter, state), do: join_selected(state, team_props(state))
   defp lobby_key(?W, state), do: join_selected(state, %{spectate: true})
   defp lobby_key(?T, state), do: cycle_team(state)
@@ -308,18 +308,18 @@ defmodule Cauldron2D.Wx.Client do
   defp action(:again, state), do: after_summary(state)
   defp action(_other, state), do: state
 
-  defp arena_key(code, state) do
+  defp play_key(code, state) do
     case code do
       @escape -> to_lobby(state)
       ?Q -> to_lobby(state)
-      @tab -> to_settings(state, :arena)
+      @tab -> to_settings(state, :play)
       ?P -> pause(state)
       _other -> state
     end
   end
 
   defp pause(state) do
-    View.pause(state.arena)
+    View.pause(state.play)
     state
   end
 
@@ -329,40 +329,40 @@ defmodule Cauldron2D.Wx.Client do
   end
 
   defp play(%{lobby?: false} = state) do
-    case arenas(state) do
-      [arena | _] -> join(%{state | arenas: [arena], selected: 0}, arena, %{})
+    case worlds(state) do
+      [world | _] -> join(%{state | worlds: [world], selected: 0}, world, %{})
       [] -> to_lobby(state)
     end
   end
 
   defp play(state), do: to_lobby(state)
 
-  defp arenas(state), do: state.game.arenas(state.props)
+  defp worlds(state), do: state.game.worlds(state.props)
 
   defp to_title(state),
     do:
-      state |> leave_arena() |> Map.merge(%{screen: :title, status: ""}) |> show_text() |> draw()
+      state |> leave_world() |> Map.merge(%{screen: :title, status: ""}) |> show_text() |> draw()
 
   defp to_lobby(%{lobby?: false} = state), do: to_title(state)
 
   defp to_lobby(state),
     do:
       state
-      |> leave_arena()
+      |> leave_world()
       |> Map.put(:screen, :lobby)
-      |> Map.put(:arenas, arenas(state))
+      |> Map.put(:worlds, worlds(state))
       |> show_text()
       |> draw()
 
   defp to_settings(state, from), do: draw(%{state | screen: :settings, from: from, setting: 0})
   defp to_guide(state, from), do: draw(%{state | screen: :guide, from: from, guide_offset: 0})
 
-  defp back(%{from: :arena} = state), do: show_arena(state)
+  defp back(%{from: :play} = state), do: show_play(state)
   defp back(%{from: :lobby} = state), do: to_lobby(state)
   defp back(state), do: to_title(state)
 
   defp select(state, delta) do
-    count = max(1, length(state.arenas))
+    count = max(1, length(state.worlds))
 
     selected =
       if abs(delta) > 1,
@@ -376,21 +376,21 @@ defmodule Cauldron2D.Wx.Client do
   defp team_props(%{team: team}), do: %{team: team}
 
   defp cycle_team(state) do
-    teams = state.arenas |> Enum.at(state.selected, %{}) |> Map.get(:teams, [])
+    teams = state.worlds |> Enum.at(state.selected, %{}) |> Map.get(:teams, [])
     choices = [nil | teams]
     index = Enum.find_index(choices, &(&1 == state.team)) || 0
     draw(%{state | team: Enum.at(choices, rem(index + 1, length(choices)))})
   end
 
   defp join_selected(state, extra) do
-    case Enum.at(state.arenas, state.selected) do
+    case Enum.at(state.worlds, state.selected) do
       nil -> state
-      arena -> join(state, arena, extra)
+      world -> join(state, world, extra)
     end
   end
 
-  defp join(state, arena, extra) do
-    {kind, opts} = state.link.(arena)
+  defp join(state, world, extra) do
+    {kind, opts} = state.link.(world)
 
     props =
       Keyword.get(opts, :props, %{})
@@ -409,55 +409,55 @@ defmodule Cauldron2D.Wx.Client do
       |> Map.merge(Map.new(extra, fn {key, value} -> {Atom.to_string(key), value} end))
 
     link = {kind, opts |> Keyword.put(:props, props) |> Keyword.put(:params, params)}
-    :ok = View.join(state.arena, link)
-    View.levels(state.arena, state.settings.sfx, state.settings.music)
-    %{state | chosen: arena, status: ""} |> show_arena()
+    :ok = View.join(state.play, link)
+    View.levels(state.play, state.settings.sfx, state.settings.music)
+    %{state | chosen: world, status: ""} |> show_play()
   end
 
-  defp show_arena(state) do
+  defp show_play(state) do
     :wxWindow.hide(Text.window(state.text))
-    :wxWindow.show(View.window(state.arena))
+    :wxWindow.show(View.window(state.play))
     :wxSizer.layout(state.sizer)
-    View.focus(state.arena)
-    %{state | screen: :arena}
+    View.focus(state.play)
+    %{state | screen: :play}
   end
 
   defp show_text(state) do
-    :wxWindow.hide(View.window(state.arena))
+    :wxWindow.hide(View.window(state.play))
     :wxWindow.show(Text.window(state.text))
     :wxSizer.layout(state.sizer)
     Text.focus(state.text)
     state
   end
 
-  defp leave_arena(%{screen: screen} = state)
-       when screen in [:arena, :summary] or
-              (screen == :settings and :erlang.map_get(:from, state) == :arena) do
-    View.leave(state.arena)
+  defp leave_world(%{screen: screen} = state)
+       when screen in [:play, :summary] or
+              (screen == :settings and :erlang.map_get(:from, state) == :play) do
+    View.leave(state.play)
     state
   end
 
-  defp leave_arena(state), do: state
+  defp leave_world(state), do: state
 
   defp to_summary(state, over) do
-    View.leave(state.arena)
+    View.leave(state.play)
     state |> Map.merge(%{screen: :summary, summary: over}) |> show_text() |> draw()
   end
 
-  defp after_summary(%{summary: %{next: :same_arena}, chosen: arena} = state) when arena != nil,
-    do: join(%{state | screen: :lobby}, arena, team_props(state))
+  defp after_summary(%{summary: %{next: :same_world}, chosen: world} = state) when world != nil,
+    do: join(%{state | screen: :lobby}, world, team_props(state))
 
-  defp after_summary(%{summary: %{next: :next_arena}, chosen: arena} = state) when arena != nil do
-    arenas = arenas(state)
+  defp after_summary(%{summary: %{next: :next_world}, chosen: world} = state) when world != nil do
+    worlds = worlds(state)
 
-    case Enum.find_index(arenas, &(&1.id == arena.id)) do
+    case Enum.find_index(worlds, &(&1.id == world.id)) do
       nil ->
         to_lobby(state)
 
       index ->
         join(
-          %{state | screen: :lobby, arenas: arenas},
-          Enum.at(arenas, rem(index + 1, length(arenas))),
+          %{state | screen: :lobby, worlds: worlds},
+          Enum.at(worlds, rem(index + 1, length(worlds))),
           team_props(state)
         )
     end
@@ -487,16 +487,16 @@ defmodule Cauldron2D.Wx.Client do
   defp clamp(value), do: value |> max(0.0) |> min(1.0) |> Float.round(2)
 
   defp apply_settings(state) do
-    View.levels(state.arena, state.settings.sfx, state.settings.music)
-    View.pointer(state.arena, state.settings.pointer)
-    View.keymap(state.arena, keymap(state.game, state.settings))
+    View.levels(state.play, state.settings.sfx, state.settings.music)
+    View.pointer(state.play, state.settings.pointer)
+    View.keymap(state.play, keymap(state.game, state.settings))
     state
   end
 
   defp closing(state) do
-    state = leave_arena(state)
+    state = leave_world(state)
     :wx_object.stop(state.text)
-    :wx_object.stop(state.arena)
+    :wx_object.stop(state.play)
     :wxFrame.destroy(state.frame)
     for from <- state.waiting, do: :wx_object.reply(from, :ok)
     %{state | waiting: []}

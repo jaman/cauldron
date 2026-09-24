@@ -8,8 +8,8 @@ defmodule Cauldron2D.Net.Channel do
       end
 
   `:game` implements `Cauldron2D.Client.Game`. The topic is `"world:<id>"` (`:topic`
-  names another prefix); `id` is the arena, as its id writes, among the game's
-  `arenas/1` given the socket's assigns. The socket's assigns must carry `:username`; `:settings` (a map with `:sfx`
+  names another prefix); `id` is the world, as its id writes, among the game's
+  `worlds/1` given the socket's assigns. The socket's assigns must carry `:username`; `:settings` (a map with `:sfx`
   and `:music`) and `:sheet_url` are read when present. The join params reach the game's
   `join_props/1` as `:params`, and whatever it returns joins the world as props; a
   join param `"audio"` of `%{"rate" => hertz, "channels" => 1 | 2}` (8 000 to 48 000
@@ -42,7 +42,7 @@ defmodule Cauldron2D.Net.Channel do
 
       @impl true
       def join(unquote(prefix) <> ":" <> id, params, socket) do
-        case Cauldron2D.Net.Channel.arena(unquote(game), socket.assigns, id) do
+        case Cauldron2D.Net.Channel.world(unquote(game), socket.assigns, id) do
           nil ->
             {:error, %{reason: "no such world"}}
 
@@ -170,5 +170,5 @@ defmodule Cauldron2D.Net.Channel do
   def reason(game, reason), do: Game.refusal_text(game, reason)
 
   @doc false
-  def arena(game, assigns, id), do: Game.arena(game, assigns, id)
+  def world(game, assigns, id), do: Game.world(game, assigns, id)
 end
