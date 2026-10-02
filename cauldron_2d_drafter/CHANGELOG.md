@@ -14,7 +14,7 @@
   `'`/`;` tilt or pitch, and the controller's `Start` and bumpers. A game using any of
   them for its own actions rebinds or drops them through `client_keys/0` and
   `client_pad/0`.
-* `Cauldron2D.Drafter.Client.arenas/1` is now `worlds/1`, calling the game's
+* `arenas/1` in `Cauldron2D.Drafter.Client` is now `worlds/1`, calling the game's
   `worlds/1`.
 * `next_arena/1` in `Cauldron2D.Drafter.Client` is now `next_world/1`, reading `:next_world`
   and `:same_world` from the outcome.

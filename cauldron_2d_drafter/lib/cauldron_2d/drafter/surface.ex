@@ -383,7 +383,7 @@ defmodule Cauldron2D.Drafter.Surface do
 
   With `:on_geometry` set and a drafter application running, the application is sent
   `%{rect: rect, size: {columns, rows}}`, where `size` is the viewport in tiles. Those two,
-  with `Cauldron2D.Camera.origin/3` and `Cauldron2D.Camera.tile_at/2`, are what maps a screen
+  with `Cauldron2D.Camera.origin/2` and `Cauldron2D.Camera.tile_at/2`, are what maps a screen
   position back to a world tile.
 
   Returns the state carrying the new rect.

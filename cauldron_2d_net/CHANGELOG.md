@@ -15,7 +15,7 @@
   `arenas/1`) and cue music with `cue(view, :play)` and `cue(view, {:static, :play})`
   (was `:arena`).
 * `Cauldron2D.Net.Audio` music policy `:world` (was `:arena`).
-* `Cauldron2D.Net.Remote.arenas/1` is now `worlds/1`, `node_arenas/1` is now
+* `arenas/1` in `Cauldron2D.Net.Remote` is now `worlds/1`, `node_arenas/1` is now
   `node_worlds/1`, and the `arena()` type is `world()`. `stats/1` answers `worlds:`, and
   `leaders/4` takes `world:` (was `arena:`).
 * `Cauldron2D.Net.Link.World` takes `:world` (was `:arena`), and the view it hands a
