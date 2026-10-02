@@ -13,6 +13,7 @@ defmodule Cauldron2D.Easel.Kino do
   """
 
   alias Cauldron2D.{Atlas, Easel, Sheet}
+  alias Cauldron2D.Parallax.Preview
   alias FrenchCurve.{Png, Raster}
 
   @type picture :: Easel.t() | Raster.t() | Path.t()
@@ -40,19 +41,36 @@ defmodule Cauldron2D.Easel.Kino do
     scale = Keyword.get(opts, :scale, 4)
     images = easel |> Easel.rasters() |> Enum.map(&to_image(&1, scale))
 
-    case images do
-      [only] ->
-        only
+    loop(images, Keyword.get(opts, :fps, easel.fps))
+  end
 
-      many ->
-        frame = Kino.Frame.new()
+  defp loop([only], _fps), do: only
 
-        Kino.listen(div(1000, Keyword.get(opts, :fps, easel.fps)), fn index ->
-          Kino.Frame.render(frame, Enum.at(many, rem(index, length(many))))
-        end)
+  defp loop(images, fps) do
+    frame = Kino.Frame.new()
 
-        frame
-    end
+    Kino.listen(div(1000, fps), fn index ->
+      Kino.Frame.render(frame, Enum.at(images, rem(index, length(images))))
+    end)
+
+    frame
+  end
+
+  @doc """
+  A camera moved across parallax layers, shown in turn in a `Kino.Frame`.
+
+  Takes `Cauldron2D.Parallax.Preview.frames/3`'s options, with `:zoom` (default `2`)
+  enlarging every pixel and `:fps` (default `20`) setting the rate.
+  """
+  @spec parallax(Atlas.name() | Atlas.t(), [Cauldron2D.Parallax.Layer.t()], keyword()) ::
+          Kino.Frame.t() | Kino.Image.t()
+  def parallax(atlas, layers, opts \\ []) do
+    zoom = Keyword.get(opts, :zoom, 2)
+
+    atlas
+    |> Preview.frames(layers, opts)
+    |> Enum.map(&to_image(&1, zoom))
+    |> loop(Keyword.get(opts, :fps, 20))
   end
 
   @doc "The PNG bytes of a picture at a scale, for anything that takes bytes."

@@ -497,6 +497,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
          movers: scene.movers,
          labels: Map.get(scene, :labels, []),
          volumes: Map.get(scene, :volumes, []),
+         layers: Map.get(scene, :layers, []),
          mode: Settings.surface_mode(settings),
          projection: look.projection,
          facing: look.facing,

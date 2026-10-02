@@ -26,7 +26,9 @@ defmodule Cauldron2D.Client.Game do
   asked before a world's first frame has arrived. The hud is data in
   the shapes `Cauldron2D.Client.Hud` describes. `scene/1`'s `:volumes` are coloured
   regions of space, as `Cauldron2D.Projection.Volume` describes them, that tint what is
-  seen through them in every projection. `scene/1`'s `:labels` are text drawn over
+  seen through them in every projection. `scene/1`'s `:layers` are
+  `Cauldron2D.Parallax` layers drawn behind the world, and in front of it where a layer
+  has `front: true`, in the top-down view. `scene/1`'s `:labels` are text drawn over
   the world as `Cauldron2D.Surface.compose/4` takes them, in tiles; default none. Its
   `:subject` names what the focus follows — the player's own ship, the ship they watch,
   a free camera — as a string, atom or number; a client that has panned the view drops
@@ -93,7 +95,8 @@ defmodule Cauldron2D.Client.Game do
     * `look/0` — the view a client starts in: a map over `%{projection: :top | :oblique |
       :iso | :mode7 | :first_person, projections: [projection], facing: step,
       facings: steps in a turn, tilt: 0.5..1.5, heading: radians, pitch: -1.0..1.0,
-      mouse_look?: boolean}`, any key omitted.
+      zoom: how many times native a tile is drawn when a world opens, mouse_look?:
+      boolean}`, any key omitted.
       `projections` lists the views the projection key cycles through, in order;
       `density` is `Cauldron2D.Drafter.Surface`'s, the pixels a cell is drawn with.
       Default top-down, cycling all three. Any other key is the game's own, kept on
@@ -136,6 +139,7 @@ defmodule Cauldron2D.Client.Game do
           required(:movers) => [{term(), {number(), number()}}],
           optional(:labels) => list(),
           optional(:volumes) => list(),
+          optional(:layers) => [Cauldron2D.Parallax.Layer.t()],
           optional(:subject) => String.t() | atom() | number(),
           optional(:heading) => number()
         }

@@ -109,12 +109,30 @@ defmodule Cauldron2D.Drafter.PlacementsTest do
       paint = IO.iodata_to_binary(paint)
 
       ship = Sprites.image_id(:placement_test, :ship)
-      assert paint =~ "a=d,d=z,z=1"
       assert paint =~ "a=p,i=#{ship}"
       assert paint =~ "z=1"
       assert paint =~ "c=2,r=1"
       assert paint =~ "X=5,Y=10"
       assert region.place =~ "a=p,i=#{ship}"
+    end
+
+    test "a mover that only moved is placed again, never deleted first", %{state: state} do
+      Surface.image(state, rect(), :world)
+      nudged = %{state | movers: [{:ship, {5.45, 5.5}}, {:shot, {6.0, 5.0}}]}
+      {moved, _clear, _region} = Surface.image(nudged, rect(), :world)
+      moved = IO.iodata_to_binary(moved)
+
+      refute moved =~ "a=d,d=z", "the whole sprite layer was wiped to move one sprite"
+      refute moved =~ "a=d,d=i", "a sprite was deleted rather than re-placed where it moved to"
+      assert moved =~ "a=p,i=#{Sprites.image_id(:placement_test, :ship)}"
+    end
+
+    test "a mover that is gone takes its placement with it", %{state: state} do
+      Surface.image(state, rect(), :world)
+      {fewer, _clear, _region} = Surface.image(%{state | movers: []}, rect(), :world)
+
+      assert IO.iodata_to_binary(fewer) =~ "a=d",
+             "the placement of a mover that left was never taken off the screen"
     end
 
     test "the sprites are stored at the size of the cells they occupy, once", %{state: state} do

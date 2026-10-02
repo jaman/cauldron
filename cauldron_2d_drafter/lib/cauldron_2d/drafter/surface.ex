@@ -61,13 +61,15 @@ defmodule Cauldron2D.Drafter.Surface do
       `:octant`: the frame composed at twice the set's pixels per cell across a tile,
       drawn as block characters in two colours per cell. Default `nil`
     * `:compress` — zlib the kitty transmit. Default `true`
-    * `:placements` — `:auto` (default), `true` or `false`. Whether movers are drawn as
-      stored sprites placed at pixel offsets rather than composited into the frame; see
-      below
+    * `:placements` — `:auto` (default), `true` or `false`. Whether the pane is drawn
+      from images the terminal stores between frames rather than one image composited
+      every  frame; see below
     * `:projection` — `:top` (default), `:iso` or `:first_person`; see below
     * `:facing` — which step of a turn the isometric view is at, `0` to `facings - 1`.
       A fraction is allowed and turns the view by part of a step. Default `0`
-    * `:facings` — how many steps make a full turn of the isometric view, at least `4`.
+    * `:facings` — how many steps make a full turn, as a number for the isometric view or
+      a map per projection, `%{iso: 8, oblique: 4}`. The oblique view is fixed at its
+      default of one step, and takes `1` or `4`. For the isometric view, at least `4`.
       At `4` the view is drawn by blitting one stamp per art, which is the cheapest
       path; any other number, or a fractional `:facing`, draws the ground and the
       standing arts by sampling, which costs several times as much and is seamless at
@@ -130,6 +132,14 @@ defmodule Cauldron2D.Drafter.Surface do
   pixel wherever it is placed. Elsewhere the movers are composited into one image per
   frame.
 
+  The isometric and oblique panes are placed the same way while no volume is up: the pane
+  is stored once at a quarter again its size, and a frame that only moved the camera
+  shows that same image through a shifted source rectangle. Everything that moves is a
+  patch — a small picture of the pane's own pixels around each mover, composed the way the
+  whole frame is, so a mover behind a pillar is behind it in the patch too. Patches that
+  touch are sent as one, and a frame whose moving parts cover too much of the pane is
+  composited whole instead.
+
   The protocol is `protocol/1`'s; whether the terminal places is
   `FrenchCurve.Capability.placements?/1` asked of the session's environment, so an iTerm2
   drawing with kitty graphics, which stores but never places, is composited every frame.
@@ -139,9 +149,10 @@ defmodule Cauldron2D.Drafter.Surface do
 
   require Logger
 
-  alias Cauldron2D.{Atlas, Camera, Renderer, Surface}
+  alias Cauldron2D.{Atlas, Camera, Parallax, Renderer, Surface}
   alias Cauldron2D.Drafter.Sprites
-  alias Cauldron2D.Projection.{FirstPerson, Iso, Mode7, Oblique, Volume}
+  alias Cauldron2D.Drafter.Surface.Patch
+  alias Cauldron2D.Projection.{FirstPerson, Glyphs, Iso, Mode7, Oblique, Volume}
   alias Drafter.Draw.{Segment, Strip}
   alias Drafter.Session.Context
   alias Drafter.Terminal.ANSI
@@ -160,6 +171,7 @@ defmodule Cauldron2D.Drafter.Surface do
     movers: [],
     labels: [],
     volumes: [],
+    layers: [],
     mode: nil,
     zoom: 1,
     compress: true,
@@ -182,6 +194,7 @@ defmodule Cauldron2D.Drafter.Surface do
   @fitted [:kitty, :iterm2]
   @sampled [:first_person, :mode7]
   @sampled_density 4
+  @panned [:iso, :oblique]
   @zoom_in [4, 2]
   @zoom_out [2, 4, 8, 16]
 
@@ -203,6 +216,10 @@ defmodule Cauldron2D.Drafter.Surface do
   @spec zoom_levels(Atlas.name(), atom() | nil, atom()) :: [number()]
   def zoom_levels(_atlas, _mode, :iso), do: [2, 1, 0.5, 0.25]
   def zoom_levels(_atlas, _mode, :oblique), do: [2, 1, 0.5]
+
+  def zoom_levels(atlas, :text, projection) when projection in [:first_person, :mode7],
+    do: zoom_levels(atlas, :text, :top)
+
   def zoom_levels(_atlas, _mode, projection) when projection in [:first_person, :mode7], do: [1]
 
   def zoom_levels(atlas, mode, :top) do
@@ -251,6 +268,7 @@ defmodule Cauldron2D.Drafter.Surface do
       :zoom,
       :compress,
       :placements,
+      :layers,
       :on_geometry,
       :projection,
       :facing,
@@ -287,6 +305,7 @@ defmodule Cauldron2D.Drafter.Surface do
       zoom: Map.get(props, :zoom) || 1,
       compress: Map.get(props, :compress, true),
       placements: Map.get(props, :placements, :auto),
+      layers: Map.get(props, :layers, []),
       on_geometry: Map.get(props, :on_geometry),
       widget_id: Map.get(props, :id)
     }
@@ -332,6 +351,7 @@ defmodule Cauldron2D.Drafter.Surface do
         zoom: fold(props, :zoom, state.zoom) || 1,
         compress: fold(props, :compress, state.compress),
         placements: fold(props, :placements, state.placements),
+        layers: fold(props, :layers, state.layers),
         on_geometry: fold(props, :on_geometry, state.on_geometry),
         density: fold(props, :density, state.density)
     }
@@ -431,9 +451,23 @@ defmodule Cauldron2D.Drafter.Surface do
     List.duplicate(strip, max(rect.height, 1))
   end
 
+  defp glyphs(%__MODULE__{projection: projection} = state, rect) when projection in @panned do
+    atlas = Atlas.fetch(state.atlas)
+    columns = Camera.columns_for(rect.width)
+    rows = Camera.rows_for(rect.height)
+    zoom = nearest(state.zoom, zoom_levels(state.atlas, :text, projection))
+    span = max(2, round(glyph_step(state, projection) / zoom))
+    upright = %{state | zoom: 1}
+
+    upright
+    |> pane_opts({columns * span, rows * span})
+    |> Keyword.put(:step, {span, span})
+    |> then(&Glyphs.compose(state.atlas, projection_module(projection), &1))
+    |> Enum.map(&lettered(&1, atlas.void, rect))
+  end
+
   defp glyphs(%__MODULE__{} = state, rect) do
     atlas = Atlas.fetch(state.atlas)
-    background = atlas.void
     zoom = nearest(state.zoom, zoom_levels(state.atlas, :text))
     columns = Camera.columns_for(rect.width)
     rows = Camera.rows_for(rect.height)
@@ -445,13 +479,29 @@ defmodule Cauldron2D.Drafter.Surface do
     |> overlay_movers(atlas, camera, zoom, flat_movers(state))
     |> overlay_labels(camera, zoom, state.labels)
     |> overlay_volumes(camera, zoom, Volume.list(state.volumes))
-    |> Enum.map(fn row ->
-      row
-      |> Enum.map(fn {glyph, color} -> Segment.new(glyph, %{fg: color, bg: background}) end)
-      |> Strip.new()
-      |> Strip.fit_to_width(max(rect.width, 1))
-    end)
+    |> Enum.map(&lettered(&1, atlas.void, rect))
   end
+
+  defp lettered(row, background, rect) do
+    row
+    |> Enum.map(fn {glyph, color} -> Segment.new(glyph, %{fg: color, bg: background}) end)
+    |> Strip.new()
+    |> Strip.fit_to_width(max(rect.width, 1))
+  end
+
+  defp glyph_step(state, projection) do
+    module = projection_module(projection)
+    probe = pane_opts(%{state | zoom: 1}, {64, 64})
+    {fx, fy} = state.focus
+    {_ox, oy} = module.project(state.atlas, {fx, fy}, probe)
+    {_ax, ay} = module.project(state.atlas, {fx + 1, fy}, probe)
+    {_bx, by} = module.project(state.atlas, {fx, fy + 1}, probe)
+
+    max(2, round(abs(ay - oy) + abs(by - oy)))
+  end
+
+  defp projection_module(:iso), do: Iso
+  defp projection_module(:oblique), do: Oblique
 
   defp glyph_camera(state, size, zoom) when zoom >= 1 do
     Camera.view(
@@ -543,19 +593,50 @@ defmodule Cauldron2D.Drafter.Surface do
          {scroll_x, scroll_y},
          scale
        ) do
+    target = {columns * dots, rows * dots}
+    behind = parallax(state, target, scale, false)
+    front = parallax(state, target, scale, true)
+
     atlas
     |> Surface.compose(camera.cells, pixel_movers(state, camera),
       scale: scale,
       at: now(),
       labels: pixel_labels(state, camera),
-      volumes: grid_volumes(state, camera)
+      volumes: grid_volumes(state, camera),
+      void: void_mode(behind)
     )
-    |> Raster.crop({div(scroll_x, scale), div(scroll_y, scale)}, {columns * dots, rows * dots})
+    |> Raster.crop({div(scroll_x, scale), div(scroll_y, scale)}, target)
+    |> under(behind)
+    |> over_front(front)
     |> squash_rows(dots, sy)
   end
 
   defp cells_raster(state, _atlas, _camera, {columns, rows}, {dots, sy}, _scroll, _scale),
     do: projected(state, {columns * dots, rows * sy}, sy / dots)
+
+  defp parallax(%__MODULE__{layers: []}, _target, _scale, _front), do: nil
+
+  defp parallax(%__MODULE__{} = state, {width, height}, scale, front) do
+    tile = max(1, div(tile(state), scale))
+
+    Parallax.compose(state.atlas, state.layers,
+      focus: state.focus,
+      size: {width / tile, height / tile},
+      pixels: {width, height},
+      at: now(),
+      scale: scale,
+      front: front
+    )
+  end
+
+  defp void_mode(nil), do: :opaque
+  defp void_mode(_behind), do: :transparent
+
+  defp under(raster, nil), do: raster
+  defp under(raster, behind), do: Surface.stack(behind, raster)
+
+  defp over_front(raster, nil), do: raster
+  defp over_front(raster, front), do: Surface.stack(raster, front)
 
   defp squash_rows(raster, from, from), do: raster
 
@@ -581,17 +662,21 @@ defmodule Cauldron2D.Drafter.Surface do
          {sx, sy},
          scale
        ) do
+    target = {columns * @braille_dots, cells * @braille_dots}
+    behind = parallax(state, target, scale, false)
+    front = parallax(state, target, scale, true)
+
     atlas
     |> Surface.compose(camera.cells, pixel_movers(state, camera),
       scale: scale,
       at: now(),
       labels: pixel_labels(state, camera),
-      volumes: grid_volumes(state, camera)
+      volumes: grid_volumes(state, camera),
+      void: void_mode(behind)
     )
-    |> Raster.crop(
-      {div(sx, scale), div(sy, scale)},
-      {columns * @braille_dots, cells * @braille_dots}
-    )
+    |> Raster.crop({div(sx, scale), div(sy, scale)}, target)
+    |> under(behind)
+    |> over_front(front)
   end
 
   defp braille_raster(state, _atlas, _camera, {columns, cells}, _scroll, _scale),
@@ -776,13 +861,10 @@ defmodule Cauldron2D.Drafter.Surface do
     cells = max(1, rect.height)
     density = pixel_density(state, protocol)
 
-    raster =
-      if protocol in @fitted,
-        do: drawn(fitted(state), {columns * density, cells * density}, 1.0),
-        else: projected(state, {columns * density, cells * density}, 1.0)
-
-    {paint, clear, place} = serialize(raster, protocol, {columns * 2, cells}, id, state.compress)
-    {paint, clear, %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: place}}
+    case patched(state, rect, id, protocol, columns, cells, density) do
+      {:ok, frame} -> frame
+      :whole -> whole_picture(state, id, protocol, columns, cells, density)
+    end
   end
 
   defp encode(state, rect, id, protocol) do
@@ -802,21 +884,38 @@ defmodule Cauldron2D.Drafter.Surface do
     end
   end
 
+  defp whole_picture(state, id, protocol, columns, cells, density) do
+    raster =
+      if protocol in @fitted,
+        do: drawn(fitted(state), {columns * density, cells * density}, 1.0),
+        else: projected(state, {columns * density, cells * density}, 1.0)
+
+    {paint, clear, place} = serialize(raster, protocol, {columns * 2, cells}, id, state.compress)
+    forget = forgotten(state, id)
+
+    {[forget, paint], [forget, clear],
+     %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: place}}
+  end
+
   defp composed(state, rect, zoom, protocol, columns, cells) when zoom >= 1 do
     tile = tile(state)
     camera = view(state, rect, true, zoom)
+
+    target = {round(columns * tile / zoom), round(cells * tile / zoom)}
+    behind = parallax(state, target, 1, false)
+    front = parallax(state, target, 1, true)
 
     raster =
       state.atlas
       |> Surface.compose(camera.cells, pixel_movers(state, camera),
         at: now(),
         labels: pixel_labels(state, camera),
-        volumes: grid_volumes(state, camera)
+        volumes: grid_volumes(state, camera),
+        void: void_mode(behind)
       )
-      |> Raster.crop(
-        scroll_pixels(camera, tile),
-        {round(columns * tile / zoom), round(cells * tile / zoom)}
-      )
+      |> Raster.crop(scroll_pixels(camera, tile), target)
+      |> under(behind)
+      |> over_front(front)
 
     if protocol == :sixel and zoom > 1, do: Surface.magnify(raster, round(zoom)), else: raster
   end
@@ -827,14 +926,21 @@ defmodule Cauldron2D.Drafter.Surface do
     camera = view(state, rect, true, zoom)
     {sx, sy} = scroll_pixels(camera, tile)
 
+    target = {columns * tile, cells * tile}
+    behind = parallax(state, target, scale, false)
+    front = parallax(state, target, scale, true)
+
     state.atlas
     |> Surface.compose(camera.cells, pixel_movers(state, camera),
       scale: scale,
       at: now(),
       labels: pixel_labels(state, camera),
-      volumes: grid_volumes(state, camera)
+      volumes: grid_volumes(state, camera),
+      void: void_mode(behind)
     )
-    |> Raster.crop({div(sx, scale), div(sy, scale)}, {columns * tile, cells * tile})
+    |> Raster.crop({div(sx, scale), div(sy, scale)}, target)
+    |> under(behind)
+    |> over_front(front)
   end
 
   defp tile(state), do: Atlas.fetch(state.atlas).tile
@@ -1087,7 +1193,7 @@ defmodule Cauldron2D.Drafter.Surface do
       cell: state.cell,
       size: size,
       facing: state.facing,
-      facings: state.facings,
+      facings: facings_for(state, :iso),
       tilt: state.tilt * aspect,
       shrink: iso_shrink(projection_zoom(state)),
       movers: state.movers,
@@ -1103,6 +1209,8 @@ defmodule Cauldron2D.Drafter.Surface do
       cell: state.cell,
       size: size,
       squash: 0.5 * aspect,
+      facing: state.facing,
+      facings: facings_for(state, :oblique),
       movers: state.movers,
       labels: state.labels,
       volumes: state.volumes,
@@ -1124,6 +1232,15 @@ defmodule Cauldron2D.Drafter.Surface do
     ] ++ from_eye(state)
   end
 
+  defp facings_for(%__MODULE__{facings: facings}, projection) when is_map(facings),
+    do: Map.get(facings, projection, default_facings(projection))
+
+  defp facings_for(%__MODULE__{}, :oblique), do: default_facings(:oblique)
+  defp facings_for(%__MODULE__{facings: facings}, _projection), do: facings
+
+  defp default_facings(:oblique), do: 1
+  defp default_facings(_projection), do: 4
+
   defp iso_shrink(zoom) when zoom >= 1, do: 1
   defp iso_shrink(zoom), do: min(4, max(1, round(1 / zoom)))
 
@@ -1134,6 +1251,7 @@ defmodule Cauldron2D.Drafter.Surface do
     end)
   end
 
+  defp placements?(%__MODULE__{layers: [_ | _]}, _protocol), do: false
   defp placements?(%__MODULE__{placements: false}, _protocol), do: false
   defp placements?(%__MODULE__{placements: true}, :kitty), do: Context.cell_size() != nil
 
@@ -1156,7 +1274,6 @@ defmodule Cauldron2D.Drafter.Surface do
     atlas = Atlas.fetch(state.atlas)
     at = now()
     volumes = grid_volumes(state, camera)
-    grid = Surface.compose(atlas, camera.cells, [], at: at, volumes: volumes)
     image = FrenchCurve.image_id(id)
     {sx, sy} = scroll_pixels(camera, atlas.tile)
 
@@ -1168,22 +1285,22 @@ defmodule Cauldron2D.Drafter.Surface do
       )
 
     clear = Kitty.delete(id: image, placement: 1)
-    paint = [clear, Kitty.transmit(grid, image, compress: state.compress), place]
 
     background =
       background_bytes(
         atlas,
         id,
         {camera.cells, animation_frames(atlas, at), volumes},
-        paint,
-        place
+        place,
+        fn ->
+          grid = Surface.compose(atlas, camera.cells, [], at: at, volumes: volumes)
+          [clear, Kitty.transmit(grid, image, compress: state.compress), place]
+        end
       )
 
-    layer = [
-      Kitty.delete(z: @sprite_layer)
-      | sprite_placements(state, atlas, camera, rect, columns, cells, at) ++
-          label_placements(state, atlas, camera, rect, columns, cells)
-    ]
+    layer =
+      sprite_placements(state, atlas, camera, rect, columns, cells, at) ++
+        label_placements(state, atlas, camera, rect, columns, cells)
 
     {[sprites_stored(state, atlas), background, layer], [clear, Kitty.delete(z: @sprite_layer)],
      %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: IO.iodata_to_binary([place, layer])}}
@@ -1202,18 +1319,18 @@ defmodule Cauldron2D.Drafter.Surface do
     end
   end
 
-  defp background_bytes(atlas, id, cells, paint, place) do
+  defp background_bytes(atlas, id, cells, place, paint) do
     table = Atlas.cache(atlas.name)
     key = {:background, id}
     digest = :erlang.phash2(cells)
 
     case :ets.lookup(table, key) do
-      [{^key, ^digest, ^atlas}] when place != nil ->
+      [{^key, ^digest}] when place != nil ->
         place
 
       _changed ->
-        :ets.insert(table, {key, digest, atlas})
-        paint
+        :ets.insert(table, {key, digest})
+        paint.()
     end
   end
 
@@ -1223,37 +1340,70 @@ defmodule Cauldron2D.Drafter.Surface do
         do: {art, Atlas.frame_index(atlas, art, at)}
   end
 
-  defp sprite_placements(%__MODULE__{movers: []}, _atlas, _camera, _rect, _columns, _cells, _at),
-    do: []
+  defp sprite_placements(
+         %__MODULE__{movers: []} = state,
+         atlas,
+         _camera,
+         _rect,
+         _cols,
+         _rows,
+         _at
+       ),
+       do: retired(atlas, state.widget_id, [])
 
   defp sprite_placements(%__MODULE__{} = state, atlas, camera, rect, columns, cells, at) do
     {cell_width, cell_height} = Context.cell_size()
     {ox, oy} = exact_origin(camera)
 
-    state
-    |> flat_movers()
-    |> Enum.with_index(1)
-    |> Enum.flat_map(fn {{art, {x, y}}, index} ->
-      across = (x - ox) * 2
-      down = y - oy
-      column = floor(across)
-      row = floor(down)
+    shown =
+      state
+      |> flat_movers()
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {{art, {x, y}}, index} ->
+        across = (x - ox) * 2
+        down = y - oy
+        column = floor(across)
+        row = floor(down)
 
-      if column >= 0 and column < columns * 2 and row >= 0 and row < cells do
-        [
-          ANSI.cursor_to(rect.x + column + 1, rect.y + row + 1),
-          Kitty.place(Sprites.image_id(atlas, art, at),
-            fit: {2, 1},
-            z: @sprite_layer,
-            placement: index,
-            x_offset: round((across - column) * cell_width),
-            y_offset: round((down - row) * cell_height)
-          )
-        ]
-      else
-        []
+        if column >= 0 and column < columns * 2 and row >= 0 and row < cells do
+          image = Sprites.image_id(atlas, art, at)
+
+          [
+            {{image, index},
+             [
+               ANSI.cursor_to(rect.x + column + 1, rect.y + row + 1),
+               Kitty.place(image,
+                 fit: {2, 1},
+                 z: @sprite_layer,
+                 placement: index,
+                 x_offset: round((across - column) * cell_width),
+                 y_offset: round((down - row) * cell_height)
+               )
+             ]}
+          ]
+        else
+          []
+        end
+      end)
+
+    retired(atlas, state.widget_id, Enum.map(shown, &elem(&1, 0))) ++
+      Enum.map(shown, &elem(&1, 1))
+  end
+
+  defp retired(atlas, id, placed) do
+    table = Atlas.cache(atlas.name)
+    key = {:sprites, id}
+    now = MapSet.new(placed)
+
+    gone =
+      case :ets.lookup(table, key) do
+        [{^key, before}] -> MapSet.difference(before, now)
+        [] -> MapSet.new()
       end
-    end)
+
+    :ets.insert(table, {key, now})
+
+    for {image, placement} <- gone, do: Kitty.delete(id: image, placement: placement)
   end
 
   @label_placement_base 10_000
@@ -1360,6 +1510,312 @@ defmodule Cauldron2D.Drafter.Surface do
       down < -0.5 -> {:back, false}
       true -> {:side, across < 0}
     end
+  end
+
+  @patch_layer 2
+  @patch_base 20_000
+  @patch_room 0.45
+  @patch_limit 10
+  @scene_placement 1
+  @churn_limit 3
+  @churn_rest 1_000
+  @pan_margin 0.25
+
+  defp patched(
+         %__MODULE__{projection: projection, volumes: []} = state,
+         rect,
+         id,
+         :kitty,
+         columns,
+         cells,
+         density
+       )
+       when projection in @panned do
+    if placements?(state, :kitty) and rem(density, 2) == 0 do
+      drawing(fitted(state), rect, id, columns, cells, density)
+    else
+      :whole
+    end
+  end
+
+  defp patched(_state, _rect, _id, _protocol, _columns, _cells, _density), do: :whole
+
+  defp drawing(state, rect, id, columns, cells, density) do
+    pane = {columns * density, cells * density}
+    grid = {div(density, 2), density}
+    opts = pane_opts(state, pane)
+
+    case Patch.plan(moving_spots(state, opts), pane, grid, @patch_room) do
+      {:patches, rects} when length(rects) <= @patch_limit ->
+        layered(state, rect, id, opts, pane, grid, rects, columns, cells)
+
+      _too_much ->
+        :whole
+    end
+  end
+
+  defp layered(state, rect, id, opts, {pane_w, pane_h} = pane, grid, rects, columns, cells) do
+    atlas = Atlas.fetch(state.atlas)
+    image = FrenchCurve.image_id({id, :scene})
+    size = {pane_w + 2 * round(pane_w * @pan_margin), pane_h + 2 * round(pane_h * @pan_margin)}
+
+    case scene(state, atlas, id, image, opts, size, pane) do
+      :churning ->
+        :whole
+
+      {sent, {sx, sy}} ->
+        place =
+          Kitty.place(image,
+            placement: @scene_placement,
+            fit: {columns * 2, cells},
+            source: {sx, sy, pane_w, pane_h}
+          )
+
+        {paint, places} = patches(state, rect, atlas, id, opts, grid, rects)
+
+        {:ok,
+         {[retired(atlas, state.widget_id, []), sent, place, paint],
+          [Kitty.delete(id: image), Kitty.delete(z: @patch_layer), unplace_sprites()],
+          %{
+            dx: 0,
+            dy: 0,
+            cols: columns * 2,
+            rows: cells,
+            place: IO.iodata_to_binary([place, places])
+          }}}
+    end
+  end
+
+  defp scene(state, atlas, id, image, opts, {wide, tall} = size, {pane_w, pane_h} = pane) do
+    table = Atlas.cache(atlas.name)
+    key = {:scene, id}
+
+    kept =
+      case :ets.lookup(table, key) do
+        [{^key, ^image, digest, focus}] ->
+          stored = scene_opts(opts, focus, size)
+          {sx, sy} = source = source_of(state, stored, pane)
+
+          if sx >= 0 and sy >= 0 and sx + pane_w <= wide and sy + pane_h <= tall and
+               digest == scene_digest(state, atlas, stored, size),
+             do: source,
+             else: nil
+
+        _gone ->
+          nil
+      end
+
+    case kept do
+      nil ->
+        recomposed(state, atlas, table, key, image, opts, size, pane)
+
+      source ->
+        {settled(table, key), source}
+    end
+  end
+
+  defp recomposed(state, atlas, table, key, image, opts, {wide, tall} = size, {pane_w, pane_h}) do
+    case churned(table, key) do
+      :rest ->
+        :churning
+
+      :compose ->
+        fresh = scene_opts(opts, Keyword.fetch!(opts, :focus), size)
+        raster = pane_compose(state, fresh)
+
+        :ets.insert(
+          table,
+          {key, image, scene_digest(state, atlas, fresh, size), Keyword.fetch!(fresh, :focus)}
+        )
+
+        {[Kitty.delete(id: image), Kitty.transmit(raster, image, compress: state.compress)],
+         {div(wide - pane_w, 2), div(tall - pane_h, 2)}}
+    end
+  end
+
+  defp settled(table, key) do
+    :ets.delete(table, churn_key(key))
+    []
+  end
+
+  defp churned(table, key) do
+    churn = churn_key(key)
+
+    case :ets.lookup(table, churn) do
+      [{^churn, _count, until}] when until > 0 ->
+        if now() < until, do: :rest, else: started(table, churn)
+
+      [{^churn, count, _until}] when count + 1 >= @churn_limit ->
+        :ets.insert(table, {churn, 0, now() + @churn_rest})
+        :rest
+
+      [{^churn, count, _until}] ->
+        :ets.insert(table, {churn, count + 1, 0})
+        :compose
+
+      [] ->
+        started(table, churn)
+    end
+  end
+
+  defp started(table, churn) do
+    :ets.insert(table, {churn, 1, 0})
+    :compose
+  end
+
+  defp churn_key({:scene, id}), do: {:scene_churn, id}
+
+  defp scene_digest(state, atlas, opts, size) do
+    cells = pane_cells(state, opts)
+
+    :erlang.phash2({
+      cells,
+      scenery_frames(atlas, cells, Keyword.get(opts, :at, 0)),
+      Keyword.get(opts, :facing),
+      Keyword.get(opts, :facings),
+      Keyword.get(opts, :tilt),
+      Keyword.get(opts, :squash),
+      Keyword.get(opts, :shrink),
+      size,
+      state.compress
+    })
+  end
+
+  defp scenery_frames(atlas, cells, at) do
+    cells
+    |> Enum.reduce(MapSet.new(), fn {_position, {base, overlays, _tint}}, arts ->
+      Enum.reduce([base | overlays], arts, &MapSet.put(&2, &1))
+    end)
+    |> Enum.filter(&Atlas.animated?(atlas, &1))
+    |> Enum.map(&{&1, Atlas.frame_index(atlas, &1, at)})
+  end
+
+  defp pane_cells(%__MODULE__{projection: :iso} = state, opts), do: Iso.cells(state.atlas, opts)
+
+  defp pane_cells(%__MODULE__{projection: :oblique} = state, opts),
+    do: Oblique.cells(state.atlas, opts)
+
+  defp source_of(state, opts, {pane_w, pane_h}) do
+    {px, py} = pane_project(state, opts, state.focus)
+    {round(px - pane_w / 2), round(py - pane_h / 2)}
+  end
+
+  defp scene_opts(opts, focus, size) do
+    opts
+    |> Keyword.put(:size, size)
+    |> Keyword.put(:focus, focus)
+    |> Keyword.put(:movers, [])
+    |> Keyword.put(:labels, [])
+  end
+
+  defp patches(state, rect, atlas, id, opts, {across, down}, rects) do
+    shown =
+      rects
+      |> Enum.with_index(@patch_base)
+      |> Enum.map(fn {{px, py, pw, ph}, placement} ->
+        image = FrenchCurve.image_id({id, :patch, placement})
+        focus = pane_unproject(state, opts, {px + pw / 2, py + ph / 2})
+
+        raster =
+          pane_compose(state, opts |> Keyword.put(:focus, focus) |> Keyword.put(:size, {pw, ph}))
+
+        place = [
+          ANSI.cursor_to(rect.x + div(px, across) + 1, rect.y + div(py, down) + 1),
+          Kitty.place(image,
+            fit: {div(pw, across), div(ph, down)},
+            z: @patch_layer,
+            placement: placement
+          )
+        ]
+
+        {{image, placement},
+         [
+           Kitty.delete(id: image, placement: placement),
+           Kitty.transmit(raster, image, compress: state.compress),
+           place
+         ], place}
+      end)
+
+    paint =
+      retired(atlas, {id, :patches}, Enum.map(shown, &elem(&1, 0))) ++
+        Enum.map(shown, &elem(&1, 1))
+
+    {paint, Enum.map(shown, &elem(&1, 2))}
+  end
+
+  defp moving_spots(%__MODULE__{movers: [], labels: []}, _opts), do: []
+
+  defp moving_spots(%__MODULE__{} = state, opts) do
+    atlas = Atlas.fetch(state.atlas)
+    rise = (Atlas.tallest(atlas) + atlas.tile) / pane_shrink(state)
+
+    movers = for {_art, position} <- flat_movers(state), do: spot(state, opts, position, rise)
+
+    movers ++ for label <- state.labels, do: label_spot(state, opts, label)
+  end
+
+  defp label_spot(state, opts, label) do
+    {text, position, colour} = label_parts(label)
+    drawn = Linocut.Font.render(text, colour, scale: label_scale(label))
+    {px, py} = pane_project(state, opts, position)
+
+    {px - drawn.width / 2, py - drawn.height / 2, drawn.width, drawn.height}
+  end
+
+  defp spot(state, opts, {x, y}, rise) do
+    corners =
+      for dx <- [-0.6, 0.6], dy <- [-0.6, 0.6], do: pane_project(state, opts, {x + dx, y + dy})
+
+    {left, right} = corners |> Enum.map(&elem(&1, 0)) |> Enum.min_max()
+    {top, bottom} = corners |> Enum.map(&elem(&1, 1)) |> Enum.min_max()
+
+    {left, top - rise, right - left, bottom - top + rise}
+  end
+
+  defp pane_shrink(%__MODULE__{projection: :iso} = state), do: iso_shrink(projection_zoom(state))
+  defp pane_shrink(_state), do: 1
+
+  defp pane_opts(%__MODULE__{projection: :iso} = state, size), do: iso_opts(state, size, 1.0)
+
+  defp pane_opts(%__MODULE__{projection: :oblique} = state, size),
+    do: oblique_opts(state, size, 1.0)
+
+  defp pane_compose(%__MODULE__{projection: :iso} = state, opts),
+    do: Iso.compose(state.atlas, opts)
+
+  defp pane_compose(%__MODULE__{projection: :oblique} = state, opts),
+    do: Oblique.compose(state.atlas, opts)
+
+  defp pane_project(%__MODULE__{projection: :iso} = state, opts, world),
+    do: Iso.project(state.atlas, world, opts)
+
+  defp pane_project(%__MODULE__{projection: :oblique} = state, opts, world),
+    do: Oblique.project(state.atlas, world, opts)
+
+  defp pane_unproject(%__MODULE__{projection: :iso} = state, opts, pixel),
+    do: Iso.unproject(state.atlas, pixel, opts)
+
+  defp pane_unproject(%__MODULE__{projection: :oblique} = state, opts, pixel),
+    do: Oblique.unproject(state.atlas, pixel, opts)
+
+  defp forgotten(%__MODULE__{} = state, id) do
+    atlas = Atlas.fetch(state.atlas)
+    table = Atlas.cache(atlas.name)
+    key = {:scene, id}
+
+    dropped =
+      case :ets.lookup(table, key) do
+        [{^key, image, _digest, _focus}] ->
+          :ets.delete(table, key)
+          [Kitty.delete(id: image)]
+
+        _none ->
+          []
+      end
+
+    :ets.delete(table, churn_key(key))
+
+    dropped ++ retired(atlas, {id, :patches}, [])
   end
 
   defp serialize(raster, protocol, fit, id, compress?) do

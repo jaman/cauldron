@@ -58,7 +58,7 @@ defmodule Cauldron2D.Surface do
   they used to look.
   """
 
-  alias Cauldron2D.Atlas
+  alias Cauldron2D.{Atlas, Blend}
   alias Cauldron2D.Projection.Volume
   alias FrenchCurve.Raster
 
@@ -88,6 +88,11 @@ defmodule Cauldron2D.Surface do
       describes. Default `[]`
     * `:volumes` — coloured regions tinting everything beneath them, as the module
       documentation describes. Default `[]`
+    * `:void` — `:opaque`, filling an empty tile with the atlas's void colour, or
+      `:transparent`, leaving it clear so whatever is under the raster shows through.
+      Default `:opaque`
+    * `:under` — a raster of the same size composited beneath the result, which is how
+      `Cauldron2D.Parallax` puts a background behind the world. Default `nil`
   """
   @spec compose(
           Atlas.name() | Atlas.t(),
@@ -112,7 +117,7 @@ defmodule Cauldron2D.Surface do
     {width, height} = {columns * tile, length(rows) * tile}
 
     {fitted, standing} = fit_to_grid(atlas, rows)
-    grid = grid_rows(atlas, fitted, tile, scale, at)
+    grid = grid_rows(atlas, fitted, tile, scale, at, Keyword.get(opts, :void, :opaque))
     labels = Keyword.get(opts, :labels, [])
     volumes = Volume.list(Keyword.get(opts, :volumes, []))
 
@@ -125,8 +130,23 @@ defmodule Cauldron2D.Surface do
           paint(atlas, grid, sprites, labels, volumes, {width, height, tile}, scale, at)
       end
 
-    Raster.from_rgba(width, height, IO.iodata_to_binary(pixels))
+    width
+    |> Raster.from_rgba(height, IO.iodata_to_binary(pixels))
+    |> beneath(Keyword.get(opts, :under))
   end
+
+  @doc "`above` composited over `beneath`, two rasters of the same width and height."
+  @spec stack(Raster.t(), Raster.t()) :: Raster.t()
+  def stack(%Raster{width: width, height: height} = beneath, %Raster{} = above) do
+    Raster.from_rgba(
+      width,
+      height,
+      Blend.over(Raster.to_rgba_binary(beneath), Raster.to_rgba_binary(above))
+    )
+  end
+
+  defp beneath(raster, nil), do: raster
+  defp beneath(raster, %Raster{} = under), do: stack(under, raster)
 
   defp fit_to_grid(atlas, rows) do
     {fitted, standing} =
@@ -161,9 +181,9 @@ defmodule Cauldron2D.Surface do
     {{base, fitting, tint}, Enum.reverse(placed) ++ acc}
   end
 
-  defp grid_rows(atlas, rows, tile, scale, at) do
+  defp grid_rows(atlas, rows, tile, scale, at, void) do
     Enum.map(rows, fn row ->
-      tiles = Enum.map(row, &tile_binary(atlas, &1, scale, at))
+      tiles = Enum.map(row, &tile_binary(atlas, &1, scale, at, void))
       for py <- 0..(tile - 1)//1, do: Enum.map(tiles, &binary_part(&1, py * tile * 4, tile * 4))
     end)
   end
@@ -327,18 +347,35 @@ defmodule Cauldron2D.Surface do
   Blends the cell on first sight and keeps the result in the atlas's cache table, which
   `Cauldron2D.Atlas.install/1` must have created.
   """
-  @spec tile_binary(Atlas.name() | Atlas.t(), cell(), pos_integer(), integer()) :: binary()
-  def tile_binary(atlas, cell, scale \\ 1, at \\ 0) do
+  @spec tile_binary(
+          Atlas.name() | Atlas.t(),
+          cell(),
+          pos_integer(),
+          integer(),
+          :opaque | :transparent
+        ) :: binary()
+  def tile_binary(atlas, cell, scale \\ 1, at \\ 0, void \\ :opaque) do
     atlas = Atlas.fetch(atlas)
 
     cached(
       atlas,
-      scaled_key(cache_key(atlas, cell, at), scale),
-      fn -> blend(atlas, cell, at) end,
+      scaled_key(cache_key(atlas, cell, at, void), scale),
+      fn -> blend(atlas, cell, at, void) end,
       {atlas.tile, atlas.tile},
       scale
     )
   end
+
+  @doc """
+  One art's pixels as `{rgba, width, height}`, at `1 / scale` of the atlas's resolution and
+  at the frame showing at `at` milliseconds.
+
+  Blends and samples on first sight and keeps the result in the atlas's cache table.
+  """
+  @spec sprite_rgba(Atlas.name() | Atlas.t(), Atlas.art(), pos_integer(), integer()) ::
+          {binary(), pos_integer(), pos_integer()}
+  def sprite_rgba(atlas, art, scale \\ 1, at \\ 0),
+    do: atlas |> Atlas.fetch() |> sprite_binary(art, nil, {nil, false}, scale, at)
 
   defp sprite_binary(atlas, art, tint, {pose, flip}, scale, at) do
     sprite = posed(atlas, art, pose, at)
@@ -399,19 +436,22 @@ defmodule Cauldron2D.Surface do
     end
   end
 
-  defp cache_key(_atlas, :void, _at), do: :void
+  defp cache_key(_atlas, :void, _at, void), do: {:void, void}
 
-  defp cache_key(atlas, {base, overlays, tint}, at) do
+  defp cache_key(atlas, {base, overlays, tint}, at, _void) do
     {Atlas.frame_at(atlas, base, at).id, Enum.map(overlays, &Atlas.frame_at(atlas, &1, at).id),
      tint}
   end
 
-  defp blend(atlas, :void, _at) do
+  defp blend(atlas, :void, _at, :opaque) do
     {r, g, b} = atlas.void
     :binary.copy(<<r, g, b, 255>>, atlas.tile * atlas.tile)
   end
 
-  defp blend(atlas, {base, overlays, tint}, at) do
+  defp blend(atlas, :void, _at, :transparent),
+    do: :binary.copy(<<0, 0, 0, 0>>, atlas.tile * atlas.tile)
+
+  defp blend(atlas, {base, overlays, tint}, at, _void) do
     overlays
     |> Enum.reduce(tile_rgba(atlas, base, at), fn art, beneath ->
       over(beneath, Atlas.frame_at(atlas, art, at).raster.rgba, [])
@@ -432,31 +472,7 @@ defmodule Cauldron2D.Surface do
     end
   end
 
-  defp over(<<>>, <<>>, acc), do: acc |> Enum.reverse() |> IO.iodata_to_binary()
-
-  defp over(<<br, bg, bb, ba, base::binary>>, <<_tr, _tg, _tb, 0, top::binary>>, acc) do
-    over(base, top, [<<br, bg, bb, ba>> | acc])
-  end
-
-  defp over(<<_br, _bg, _bb, _ba, base::binary>>, <<tr, tg, tb, 255, top::binary>>, acc) do
-    over(base, top, [<<tr, tg, tb, 255>> | acc])
-  end
-
-  defp over(<<br, bg, bb, ba, base::binary>>, <<tr, tg, tb, ta, top::binary>>, acc) do
-    top_alpha = ta / 255
-    base_alpha = ba / 255 * (1 - top_alpha)
-    alpha = top_alpha + base_alpha
-
-    pixel =
-      <<mix(tr, br, top_alpha, base_alpha, alpha), mix(tg, bg, top_alpha, base_alpha, alpha),
-        mix(tb, bb, top_alpha, base_alpha, alpha), round(alpha * 255)>>
-
-    over(base, top, [pixel | acc])
-  end
-
-  defp mix(top, bottom, top_alpha, base_alpha, alpha) do
-    round((top * top_alpha + bottom * base_alpha) / alpha)
-  end
+  defp over(beneath, above, []), do: Blend.over(beneath, above)
 
   defp shade(binary, _atlas, nil), do: binary
 

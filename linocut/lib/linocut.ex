@@ -163,6 +163,34 @@ defmodule Linocut do
 
   defp mix(from, to, amount), do: round(from + (to - from) * amount)
 
+  @doc """
+  The picture scaled to a share of its size on each axis and placed back in a canvas of
+  the original size.
+
+  ## Options
+
+    * `:anchor` — `:centre` (default) or `:bottom`, where the scaled picture sits
+    * `:lean` — `-1.0..1.0`, how far toward an edge it slides across. Default `0.0`
+  """
+  @spec squash(Raster.t(), {number(), number()}, keyword()) :: Raster.t()
+  def squash(%Raster{width: width, height: height} = raster, {across, down}, opts \\ []) do
+    narrow = max(1, round(width * across))
+    short = max(1, round(height * down))
+    small = Linocut.Resample.to(raster, {narrow, short})
+    lean = Keyword.get(opts, :lean, 0.0)
+    left = div(width - narrow, 2) + round(lean * (width - narrow) / 2)
+
+    top =
+      case Keyword.get(opts, :anchor, :centre) do
+        :bottom -> height - short
+        _centre -> div(height - short, 2)
+      end
+
+    for y <- 0..(short - 1)//1, x <- 0..(narrow - 1)//1, reduce: Raster.new(width, height) do
+      canvas -> Raster.put_pixel(canvas, left + x, top + y, Raster.get_pixel(small, x, y))
+    end
+  end
+
   @doc "The raster enlarged `factor` times, each pixel becoming a square block."
   @spec scale(Raster.t(), pos_integer()) :: Raster.t()
   def scale(%Raster{} = raster, factor) when is_integer(factor) and factor > 0 do

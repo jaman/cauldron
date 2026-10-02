@@ -270,3 +270,77 @@ Cauldron2D.Surface.compose(:notebook, rows, [], at: 340)
 
 `at:` is the time in milliseconds the animated art's frame is chosen for; try `0`, `170`
 and `340` to see the flame's three frames.
+
+## Parallax layers
+
+A set of `Cauldron2D.Parallax` layers can be looked at before any game exists:
+`Cauldron2D.Easel.Kino.parallax/3` runs a camera across them and shows the pictures in
+turn, which is the only way to judge a factor.
+
+Four depths over the notebook's own atlas — a pinned back wall, two scattered middles and
+a scatter in front that streams past faster than the ground:
+
+```elixir
+alias Cauldron2D.Parallax
+
+layers = [
+  Parallax.layer(
+    name: :wall,
+    cell: fn _ -> {:face, [], nil} end,
+    factor: 0.0,
+    void: :opaque
+  ),
+  Parallax.layer(
+    name: :far,
+    cell: Parallax.scatter(seed: 11, density: 0.08, arts: [:flame]),
+    factor: {0.25, 1.0}
+  ),
+  Parallax.layer(
+    name: :near,
+    cell: Parallax.scatter(seed: 22, density: 0.05, arts: [:face]),
+    factor: {0.7, 1.0}
+  ),
+  Parallax.layer(
+    name: :rush,
+    cell: Parallax.scatter(seed: 33, density: 0.02, arts: [:flame]),
+    factor: {1.6, 1.0},
+    front: true
+  )
+]
+
+Cauldron2D.Easel.Kino.parallax(:notebook, layers,
+  focus: {0.0, 0.0},
+  size: {20, 10},
+  travel: {40.0, 0.0},
+  frames: 80,
+  zoom: 3
+)
+```
+
+Change a `factor` and run the cell again: `0.0` pins a layer to the pane, `1.0` moves it
+with the world, and anything above `1.0` passes in front of it. `Parallax.scatter/1`
+places art by hashing the tile's own coordinate, so a layer goes on forever without
+holding anything, and the same seed always lays it out the same way.
+
+A layer that is one picture rather than a grid of tiles uses `Parallax.panorama/1`,
+which copies the picture across the pane instead of blending it:
+
+```elixir
+sky =
+  Parallax.panorama(
+    name: :sky,
+    art: :face,
+    size: {4, 4},
+    wrap: :both,
+    factor: 0.1,
+    void: :opaque
+  )
+
+Cauldron2D.Easel.Kino.parallax(:notebook, [sky | tl(layers)],
+  focus: {0.0, 0.0},
+  size: {20, 10},
+  travel: {40.0, 0.0},
+  frames: 80,
+  zoom: 3
+)
+```

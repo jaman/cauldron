@@ -48,7 +48,7 @@ defmodule Cauldron2D.Easel.Drafter.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib mix.exs README.md)
+      files: ~w(lib mix.exs README.md CHANGELOG.md)
     ]
   end
 
@@ -58,7 +58,7 @@ defmodule Cauldron2D.Easel.Drafter.MixProject do
       source_ref: "v#{@version}",
       source_url_pattern:
         "#{@source_url}/blob/v#{@version}/cauldron_2d_easel_drafter/%{path}#L%{line}",
-      extras: ["README.md"]
+      extras: ["README.md", "CHANGELOG.md"]
     ]
   end
 end

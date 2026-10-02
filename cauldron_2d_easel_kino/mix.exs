@@ -47,7 +47,7 @@ defmodule Cauldron2D.Easel.Kino.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib notebooks mix.exs README.md)
+      files: ~w(lib notebooks mix.exs README.md CHANGELOG.md)
     ]
   end
 
@@ -57,7 +57,7 @@ defmodule Cauldron2D.Easel.Kino.MixProject do
       source_ref: "v#{@version}",
       source_url_pattern:
         "#{@source_url}/blob/v#{@version}/cauldron_2d_easel_kino/%{path}#L%{line}",
-      extras: ["README.md"]
+      extras: ["README.md", "CHANGELOG.md"]
     ]
   end
 end

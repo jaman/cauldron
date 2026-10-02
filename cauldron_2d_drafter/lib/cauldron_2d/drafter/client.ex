@@ -142,6 +142,7 @@ defmodule Cauldron2D.Drafter.Client do
   alias FrenchCurve.Backend.Cells
 
   @hold_ms 250
+  @audio_stop_ms 2_000
   @default_keys %{
     back: :escape,
     title: :q,
@@ -238,7 +239,7 @@ defmodule Cauldron2D.Drafter.Client do
       joined: nil,
       view: nil,
       geometry: nil,
-      zoom: 1,
+      zoom: initial_zoom(game),
       look: Map.merge(@look, optional(game, :look, [], %{})),
       pad_aim: nil,
       stick_aim?: false,
@@ -302,7 +303,7 @@ defmodule Cauldron2D.Drafter.Client do
     do: if(Keyword.get(opts, :title, true), do: :title, else: :lobby)
 
   defp first_screen({:play, _id, opts}),
-    do: if(Keyword.get(opts, :title, false), do: :title, else: :lobby)
+    do: if(Keyword.get(opts, :title, false), do: :title, else: :play)
 
   defp first_screen(fun) when is_function(fun, 1), do: :lobby
 
@@ -354,9 +355,15 @@ defmodule Cauldron2D.Drafter.Client do
   @impl true
   def unmount(state) do
     leave_world(state)
-    if state.audio, do: GenServer.stop(state.audio)
+    if state.audio, do: stop_audio(state.audio)
     Trace.stop()
     :ok
+  end
+
+  defp stop_audio(audio) do
+    GenServer.stop(audio, :normal, @audio_stop_ms)
+  catch
+    :exit, _gone -> :ok
   end
 
   @impl true
@@ -737,7 +744,7 @@ defmodule Cauldron2D.Drafter.Client do
             last_input: nil,
             talk: Chat.history({:world, entry.id}),
             talking?: false,
-            zoom: 1,
+            zoom: initial_zoom(state.game),
             pan: {0.0, 0.0},
             subject: nil,
             watching?: Map.get(extra, :spectate, false) == true,
@@ -788,7 +795,7 @@ defmodule Cauldron2D.Drafter.Client do
         view: nil,
         input: nil,
         talking?: false,
-        zoom: 1,
+        zoom: initial_zoom(state.game),
         pan: {0.0, 0.0},
         subject: nil,
         watching?: false,
@@ -1013,8 +1020,19 @@ defmodule Cauldron2D.Drafter.Client do
   def turns_with_pointer?(%{projection: projection}) when projection in [:first_person, :mode7],
     do: true
 
-  def turns_with_pointer?(%{projection: :iso, facings: facings}), do: facings > 4
+  def turns_with_pointer?(%{projection: :iso} = look), do: facings_of(look) > 4
   def turns_with_pointer?(_look), do: false
+
+  defp facings_of(%{projection: projection} = look) do
+    case Map.get(look, :facings) do
+      counts when is_map(counts) -> Map.get(counts, projection, fixed(projection))
+      nil -> fixed(projection)
+      count -> if projection == :oblique, do: fixed(projection), else: count
+    end
+  end
+
+  defp fixed(:oblique), do: 1
+  defp fixed(_projection), do: 4
 
   defp turn_eye(event, %{pointer: {px, py}} = state, {x, y}),
     do:
@@ -1028,7 +1046,8 @@ defmodule Cauldron2D.Drafter.Client do
   defp turn_eye(event, state, {x, y}),
     do: play_input(event, %{state | pointer: {x, y}, pad_aim: nil})
 
-  defp dragged(%{projection: :iso, facings: facings} = look, {dx, dy}) do
+  defp dragged(%{projection: :iso} = look, {dx, dy}) do
+    facings = facings_of(look)
     steps = dx * @mouse_turn * facings / (2 * :math.pi())
 
     %{
@@ -1090,6 +1109,8 @@ defmodule Cauldron2D.Drafter.Client do
     index = Enum.find_index(levels, &(&1 == state.zoom)) || Enum.find_index(levels, &(&1 == 1))
     zoom_to(state, Enum.at(levels, min(max(index - step, 0), length(levels) - 1)), anchor)
   end
+
+  defp initial_zoom(game), do: game |> optional(:look, [], %{}) |> Map.get(:zoom, 1)
 
   defp zoom_to(%{zoom: zoom} = state, zoom, _anchor), do: state
 
@@ -1211,8 +1232,21 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp tilted_by(state, _amount), do: state
 
-  defp turn(%{look: %{projection: :iso} = look} = state, steps) do
-    facings = Map.get(look, :facings, 4)
+  defp turn(%{look: %{projection: :iso} = look} = state, steps), do: stepped(state, look, steps)
+
+  defp turn(%{look: %{projection: :oblique} = look} = state, steps),
+    do: stepped(state, look, steps)
+
+  defp turn(%{look: %{projection: :mode7} = look} = state, amount),
+    do: %{state | look: %{look | heading: look.heading + amount * @turn}}
+
+  defp turn(%{look: %{projection: :first_person} = look} = state, amount),
+    do: %{state | look: %{look | heading: look.heading + amount * @turn}}
+
+  defp turn(state, _amount), do: state
+
+  defp stepped(state, look, steps) do
+    facings = facings_of(look)
     turned = look.facing + steps
 
     wrapped =
@@ -1222,14 +1256,6 @@ defmodule Cauldron2D.Drafter.Client do
 
     %{state | look: %{look | facing: wrapped}}
   end
-
-  defp turn(%{look: %{projection: :mode7} = look} = state, amount),
-    do: %{state | look: %{look | heading: look.heading + amount * @turn}}
-
-  defp turn(%{look: %{projection: :first_person} = look} = state, amount),
-    do: %{state | look: %{look | heading: look.heading + amount * @turn}}
-
-  defp turn(state, _amount), do: state
 
   defp tilt(%{look: %{projection: :iso} = look} = state, amount),
     do: %{state | look: %{look | tilt: (look.tilt + amount * @tilt_step) |> min(1.5) |> max(0.5)}}
@@ -1356,7 +1382,7 @@ defmodule Cauldron2D.Drafter.Client do
     {:ok, %{state | pad_aim: {ax + dx, ay + dy}} |> push_input()}
   end
 
-  defp facing_of(%{projection: :iso, facing: facing, facings: 4}), do: facing
+  defp facing_of(%{projection: :iso, facing: facing} = look) when look.facings == 4, do: facing
   defp facing_of(_look), do: 0
 
   defp toggle_mouse_look(%{look: look} = state),
@@ -1403,10 +1429,10 @@ defmodule Cauldron2D.Drafter.Client do
   @directions %{left: {-1, 0}, right: {1, 0}, up: {0, -1}, down: {0, 1}}
 
   @doc """
-  The player's input as the world should see it for the projection in use. Top-down and
-  oblique send it as held, since neither turns. The isometric view at one of four facings
-  turns the four direction actions with it, and of the directions a stick holds keeps only
-  the one pushed hardest.
+  The player's input as the world should see it for the projection in use. A view that
+  does not turn sends it as held: top-down always, and the oblique view at its default
+  single facing. A view at one of four facings turns the four direction actions with it,
+  and of the directions a stick holds keeps only the one pushed hardest.
 
   On a finer `facings` a quarter turn is no longer the step, so the directions go as held
   and the input carries `:heading` instead, as it does in first person and mode 7: a
@@ -1417,9 +1443,23 @@ defmodule Cauldron2D.Drafter.Client do
   and `turn_right`, not a game action.
   """
   @spec steered(Input.state(), map()) :: map()
-  def steered(read, %{projection: projection}) when projection in [:top, :oblique], do: read
+  def steered(read, %{projection: :top}), do: read
 
-  def steered(read, %{projection: :iso, facing: facing, facings: 4}) do
+  def steered(read, %{projection: projection, heading: heading})
+      when projection in [:first_person, :mode7],
+      do: Map.put(read, :heading, heading)
+
+  def steered(read, %{projection: projection} = look) when projection in [:iso, :oblique] do
+    case facings_of(look) do
+      1 -> read
+      4 -> quartered(read, look.facing)
+      facings -> Map.put(read, :heading, Iso.up(facing: look.facing, facings: facings))
+    end
+  end
+
+  def steered(read, _look), do: read
+
+  defp quartered(read, facing) do
     held =
       MapSet.new(snapped(read), fn action ->
         case Map.fetch(@directions, action) do
@@ -1430,13 +1470,6 @@ defmodule Cauldron2D.Drafter.Client do
 
     %{read | held: held}
   end
-
-  def steered(read, %{projection: projection, heading: heading})
-      when projection in [:first_person, :mode7],
-      do: Map.put(read, :heading, heading)
-
-  def steered(read, %{projection: :iso, facing: facing, facings: facings}),
-    do: Map.put(read, :heading, Iso.up(facing: facing, facings: facings))
 
   defp snapped(%{held: held, strength: strength}) do
     pushed = Map.take(strength, Map.keys(@directions))
@@ -1535,7 +1568,7 @@ defmodule Cauldron2D.Drafter.Client do
       mode: Settings.surface_mode(state.settings),
       projection: look.projection,
       facing: look.facing,
-      facings: Map.get(look, :facings, 4),
+      facings: Map.get(look, :facings) || 4,
       tilt: look.tilt,
       heading: Map.get(scene, :heading) || look.heading,
       pitch: look.pitch,

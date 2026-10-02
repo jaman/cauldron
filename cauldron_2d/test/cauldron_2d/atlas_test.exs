@@ -79,6 +79,26 @@ defmodule Cauldron2D.AtlasTest do
       assert first_pixel(:void, :void) == <<7, 7, 7, 255>>
     end
 
+    test "a different atlas under the same name empties the cache, so what renderers kept there is dropped" do
+      Atlas.install(atlas(:emptied))
+      table = Atlas.cache(name(:emptied))
+      :ets.insert(table, {{:kept, :by_a_renderer}, :anything})
+
+      Atlas.install(atlas(:emptied, color: {99, 99, 99, 255}))
+
+      assert :ets.lookup(table, {:kept, :by_a_renderer}) == []
+    end
+
+    test "the very same atlas again leaves what renderers kept in the cache alone" do
+      Atlas.install(atlas(:untouched))
+      table = Atlas.cache(name(:untouched))
+      :ets.insert(table, {{:kept, :by_a_renderer}, :anything})
+
+      Atlas.install(atlas(:untouched))
+
+      assert :ets.lookup(table, {:kept, :by_a_renderer}) == [{{:kept, :by_a_renderer}, :anything}]
+    end
+
     test "the cache table survives a re-install, so a held reference stays good" do
       Atlas.install(atlas(:table))
       held = :ets.whereis(Atlas.cache(name(:table)))

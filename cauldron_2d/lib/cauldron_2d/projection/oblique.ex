@@ -12,8 +12,12 @@ defmodule Cauldron2D.Projection.Oblique do
 
   A tile of `t` pixels is drawn `t` wide and `t * squash` tall, and each storey raises
   what stands on it by `t * rise` pixels, so a wall shows `rise` of its side and the
-  ground behind it is covered. Rows are painted back to front. There is no rotation:
-  `+x` runs right and `+y` runs down and towards the viewer.
+  ground behind it is covered. Rows are painted back to front.
+
+  At the default single facing `+x` runs right and `+y` runs down and towards the viewer.
+  At four facings the view turns in quarters, which leaves the grid square on the screen,
+  so nothing is resampled; a mover's pose is read from where it heads on the screen rather
+  than in the world.
 
   ## Options
 
@@ -21,6 +25,10 @@ defmodule Cauldron2D.Projection.Oblique do
     * `:cell` — `fn {x, y} -> cell end`, as `Cauldron2D.Surface` takes cells, required
     * `:size` — `{width, height}` of the picture in pixels, required
     * `:squash` — a row's height as a fraction of the tile, `0.25..1.0`. Default `0.5`
+    * `:facings` — `1` or `4`, how many steps make a full turn. Default `1`, which is
+      fixed and ignores `:facing`
+    * `:facing` — which quarter the view is turned to, `0` to `3`, counted the way `+x`
+      turns towards `-y`. Whole numbers only. Default `0`
     * `:rise` — a storey's height as a fraction of the tile, `0.25..2.0`. Default `0.75`
     * `:movers` — `[{art, {x, y}}]` or `[{art, {x, y}, heading}]` in tiles, `heading` in
       radians with `0` along `+x`. A mover shows its `:front` pose when heading towards
@@ -47,6 +55,8 @@ defmodule Cauldron2D.Projection.Oblique do
           | {:cell, ({integer(), integer()} -> Cauldron2D.Surface.cell())}
           | {:size, {pos_integer(), pos_integer()}}
           | {:squash, number()}
+          | {:facing, integer()}
+          | {:facings, 1 | 4}
           | {:rise, number()}
           | {:movers, [tuple()]}
           | {:labels, [tuple()]}
@@ -89,12 +99,42 @@ defmodule Cauldron2D.Projection.Oblique do
           {float(), float()}
   def unproject(atlas, pixel, opts), do: ground_at(pixel, geometry(Atlas.fetch(atlas), opts))
 
+  @doc """
+  The ground as a straight walk across the picture: `{origin, across, down}`, the world
+  point at the top-left pixel and the world it moves one pixel right and one pixel down.
+
+  The ground map is exact, so `origin + px * across + py * down` is the world point
+  `unproject/3` answers for `{px, py}`. A caller drawing a grid can take the map once and
+  add.
+  """
+  @spec ground_map(Atlas.name() | Atlas.t(), [option()]) ::
+          {{float(), float()}, {float(), float()}, {float(), float()}}
+  def ground_map(atlas, opts), do: walked(geometry(Atlas.fetch(atlas), opts), &ground_at/2)
+
+  @doc """
+  The cells this picture shows, each as `{position, tile}` with the tile the `:cell`
+  function gave for it.
+
+  Cells the function answered `:void` for are left out.
+  """
+  @spec cells(Atlas.name() | Atlas.t(), [option()]) :: [{{integer(), integer()}, term()}]
+  def cells(atlas, opts),
+    do: rows(geometry(Atlas.fetch(atlas), opts), Keyword.fetch!(opts, :cell))
+
   @doc "The tile under picture pixel `{px, py}`."
   @spec tile_at(Atlas.name() | Atlas.t(), {number(), number()}, [option()]) ::
           {integer(), integer()}
   def tile_at(atlas, point, opts) do
     {x, y} = unproject(atlas, point, opts)
     {floor(x), floor(y)}
+  end
+
+  defp walked(geometry, at) do
+    {ox, oy} = origin = at.({0, 0}, geometry)
+    {rx, ry} = at.({1, 0}, geometry)
+    {dx, dy} = at.({0, 1}, geometry)
+
+    {origin, {rx - ox, ry - oy}, {dx - ox, dy - oy}}
   end
 
   defp geometry(atlas, opts) do
@@ -107,39 +147,63 @@ defmodule Cauldron2D.Projection.Oblique do
       tile: tile,
       row_h: max(2, round(tile * squash)),
       lift: max(1, round(tile * rise)),
+      turn: turn(opts),
       focus: Keyword.fetch!(opts, :focus),
       size: {width, height},
       centre: {width / 2, height / 2}
     }
   end
 
+  defp turn(opts) do
+    case Keyword.get(opts, :facings, 1) do
+      4 -> opts |> Keyword.get(:facing, 0) |> trunc() |> Integer.mod(4)
+      _fixed -> 0
+    end
+  end
+
+  defp spun({dx, dy}, 0), do: {dx, dy}
+  defp spun({dx, dy}, 1), do: {dy, -dx}
+  defp spun({dx, dy}, 2), do: {-dx, -dy}
+  defp spun({dx, dy}, 3), do: {-dy, dx}
+
+  defp unspun(point, turn), do: spun(point, Integer.mod(-turn, 4))
+
   defp place({x, y}, geometry) do
     {fx, fy} = geometry.focus
     {cx, cy} = geometry.centre
-    {cx + (x - fx) * geometry.tile, cy + (y - fy) * geometry.row_h}
+    {rx, ry} = spun({x - fx, y - fy}, geometry.turn)
+
+    {cx + rx * geometry.tile, cy + ry * geometry.row_h}
+  end
+
+  defp depth({x, y}, geometry) do
+    {fx, fy} = geometry.focus
+    {_rx, ry} = spun({x - fx, y - fy}, geometry.turn)
+
+    ry
   end
 
   defp cell_items(geometry, cell, atlas, at) do
-    for {{_x, y} = position, tile} <- rows(geometry, cell) do
-      %{row: y, paint: &column(&1, atlas, position, tile, geometry, at)}
+    for {position, tile} <- rows(geometry, cell) do
+      %{row: depth(position, geometry), paint: &column(&1, atlas, position, tile, geometry, at)}
     end
   end
 
   defp mover_items(movers, atlas, geometry, at) do
-    for {_art, {_x, y}, _heading} = walker <- Enum.map(movers, &with_heading/1) do
-      %{row: y, paint: &mover(&1, atlas, walker, geometry, at)}
+    for {_art, position, _heading} = walker <- Enum.map(movers, &with_heading/1) do
+      %{row: depth(position, geometry), paint: &mover(&1, atlas, walker, geometry, at)}
     end
   end
 
   defp volume_items(opts, geometry) do
-    for %{at: {_x, y}} = volume <- Volume.list(Keyword.get(opts, :volumes, [])) do
-      %{row: y, paint: &volume(&1, volume, geometry)}
+    for %{at: position} = volume <- Volume.list(Keyword.get(opts, :volumes, [])) do
+      %{row: depth(position, geometry), paint: &volume(&1, volume, geometry)}
     end
   end
 
   defp volume(canvas, volume, geometry) do
-    across = {geometry.tile, 0}
-    down = {0, geometry.row_h}
+    across = spun({geometry.tile, 0}, geometry.turn)
+    down = spun({0, geometry.row_h}, geometry.turn)
     direction = Volume.eyeline(across, down, geometry.lift)
     plan = Volume.ground_plan(&ground_at(&1, geometry), direction)
 
@@ -154,7 +218,9 @@ defmodule Cauldron2D.Projection.Oblique do
   defp ground_at({px, py}, geometry) do
     {cx, cy} = geometry.centre
     {fx, fy} = geometry.focus
-    {fx + (px - cx) / geometry.tile, fy + (py - cy) / geometry.row_h}
+    {dx, dy} = unspun({(px - cx) / geometry.tile, (py - cy) / geometry.row_h}, geometry.turn)
+
+    {fx + dx, fy + dy}
   end
 
   defp rows(geometry, cell) do
@@ -163,11 +229,21 @@ defmodule Cauldron2D.Projection.Oblique do
     across = ceil(width / geometry.tile / 2) + 2
     down = ceil(height / geometry.row_h / 2) + ceil(4 * geometry.lift / geometry.row_h) + 2
 
-    for y <- (floor(fy) - down)..(floor(fy) + down)//1,
-        x <- (floor(fx) - across)..(floor(fx) + across)//1,
+    reach = max(across, down)
+
+    for y <- (floor(fy) - reach)..(floor(fy) + reach)//1,
+        x <- (floor(fx) - reach)..(floor(fx) + reach)//1,
+        shown?({x, y}, geometry, across, down),
         tile = cell.({x, y}),
         tile != :void,
         do: {{x, y}, tile}
+  end
+
+  defp shown?(position, geometry, across, down) do
+    {fx, fy} = geometry.focus
+    {rx, ry} = spun({elem(position, 0) - fx, elem(position, 1) - fy}, geometry.turn)
+
+    abs(rx) <= across and abs(ry) <= down
   end
 
   defp column(canvas, atlas, position, {base, overlays, tint}, geometry, at) do
@@ -224,7 +300,7 @@ defmodule Cauldron2D.Projection.Oblique do
 
   defp mover(canvas, atlas, mover, geometry, at) do
     {art, {x, y}, heading} = with_heading(mover)
-    {pose, flip} = pose(heading)
+    {pose, flip} = pose(heading, geometry.turn)
     sprite = Atlas.pose(atlas, art, pose, at)
     {sx, sy} = place({x, y}, geometry)
 
@@ -259,10 +335,10 @@ defmodule Cauldron2D.Projection.Oblique do
   defp with_heading({art, position}), do: {art, position, nil}
   defp with_heading({art, position, heading}), do: {art, position, heading}
 
-  defp pose(nil), do: {:front, false}
+  defp pose(nil, _turn), do: {:front, false}
 
-  defp pose(heading) do
-    {hx, hy} = {:math.cos(heading), :math.sin(heading)}
+  defp pose(heading, turn) do
+    {hx, hy} = spun({:math.cos(heading), :math.sin(heading)}, turn)
 
     cond do
       hy > 0.5 -> {:front, false}

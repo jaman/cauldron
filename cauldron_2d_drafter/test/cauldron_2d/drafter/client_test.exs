@@ -1902,6 +1902,25 @@ defmodule Cauldron2D.Drafter.ClientSteeredTest do
     assert_in_delta steered.heading, :math.pi() / 8, 1.0e-9
   end
 
+  test "the oblique view steers as held at its default facing and turns at four" do
+    fixed = %{projection: :oblique, facing: 1, facings: 4, heading: 0.0}
+
+    assert MapSet.to_list(Client.steered(read([:up]), fixed).held) == [:up]
+
+    asked = %{projection: :oblique, facing: 1, facings: %{oblique: 4}, heading: 0.0}
+    turned = Client.steered(read([:up]), asked)
+
+    assert MapSet.size(turned.held) == 1
+    refute MapSet.member?(turned.held, :up)
+  end
+
+  test "a facings map picks the count for the projection in view" do
+    assert Client.turns_with_pointer?(%{projection: :iso, facings: %{iso: 16}})
+    refute Client.turns_with_pointer?(%{projection: :iso, facings: %{iso: 4}})
+    refute Client.turns_with_pointer?(%{projection: :oblique, facings: %{oblique: 4}})
+    refute Client.turns_with_pointer?(%{projection: :oblique, facings: 16})
+  end
+
   test "a drag turns first person, mode 7 and a free isometric view, but not four facings" do
     assert Client.turns_with_pointer?(%{projection: :first_person})
     assert Client.turns_with_pointer?(%{projection: :mode7})

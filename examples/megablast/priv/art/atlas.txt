@@ -1,0 +1,7 @@
+drone	o 	#a03050	14
+pod	* 	#30b070	10
+ship	A 	#6a8ab0	
+turret	@ 	#d08030	
+rock	##	#96a5b4	
+coral	. 	#8a5a28	
+nebula	  	#1a1038	

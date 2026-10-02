@@ -369,12 +369,43 @@ defmodule Cauldron2D.Projection.Iso do
     :math.atan2(-:math.cos(angle), :math.sin(angle))
   end
 
+  @doc """
+  The ground as a straight walk across the picture: `{origin, across, down}`, the world
+  point at the top-left pixel and the world it moves one pixel right and one pixel down.
+
+  The ground map is exact, so `origin + px * across + py * down` is the world point
+  `unproject/3` answers for `{px, py}`. A caller drawing a grid can take the map once and
+  add.
+  """
+  @spec ground_map(Atlas.name() | Atlas.t(), [option()]) ::
+          {{float(), float()}, {float(), float()}, {float(), float()}}
+  def ground_map(atlas, opts), do: walked(geometry(Atlas.fetch(atlas), opts), &unprojected/2)
+
+  @doc """
+  The cells this picture shows, each as `{position, tile}` with the tile the `:cell`
+  function gave for it.
+
+  Cells the function answered `:void` for are left out, and so is everything outside the
+  picture.
+  """
+  @spec cells(Atlas.name() | Atlas.t(), [option()]) :: [{{integer(), integer()}, term()}]
+  def cells(atlas, opts),
+    do: visible_cells(Keyword.fetch!(opts, :cell), geometry(Atlas.fetch(atlas), opts))
+
   @doc "The tile under picture pixel `{px, py}`."
   @spec tile_at(Atlas.name() | Atlas.t(), {number(), number()}, [option()]) ::
           {integer(), integer()}
   def tile_at(atlas, pixel, opts) do
     {x, y} = unproject(atlas, pixel, opts)
     {floor(x), floor(y)}
+  end
+
+  defp walked(geometry, at) do
+    {ox, oy} = origin = at.({0, 0}, geometry)
+    {rx, ry} = at.({1, 0}, geometry)
+    {dx, dy} = at.({0, 1}, geometry)
+
+    {origin, {rx - ox, ry - oy}, {dx - ox, dy - oy}}
   end
 
   defp geometry(atlas, opts) do
@@ -460,7 +491,7 @@ defmodule Cauldron2D.Projection.Iso do
     rise = @storeys * geometry.block_h
 
     corners =
-      for px <- [0, width], py <- [-rise, height], do: unprojected({px, py}, geometry)
+      for px <- [0, width], py <- [-rise, height + rise], do: unprojected({px, py}, geometry)
 
     xs = Enum.map(corners, &elem(&1, 0))
     ys = Enum.map(corners, &elem(&1, 1))

@@ -56,7 +56,7 @@ defmodule Cauldron2D.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib c_src Makefile mix.exs README.md)
+      files: ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md)
     ]
   end
 
@@ -65,7 +65,7 @@ defmodule Cauldron2D.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_2d/%{path}#L%{line}",
-      extras: ["README.md", "guides/tutorial.md"]
+      extras: ["README.md", "CHANGELOG.md", "guides/tutorial.md"]
     ]
   end
 end

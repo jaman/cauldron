@@ -51,11 +51,78 @@ defmodule Cauldron2D.Drafter.SurfaceProjectionTest do
     end
   end
 
-  test "plain glyphs stay top-down whatever the projection", %{state: state} do
+  test "plain glyphs draw the isometric and oblique projections, and turn with them",
+       %{state: state} do
     top = Surface.render(%{state | mode: :text}, rect(40, 12))
-    iso = Surface.render(%{state | mode: :text, projection: :iso}, rect(40, 12))
 
-    assert top == iso
+    for projection <- [:iso, :oblique] do
+      drawn = Surface.render(%{state | mode: :text, projection: projection}, rect(40, 12))
+      refute drawn == top, "#{projection} glyphs should not be the top-down grid"
+    end
+
+    patterned = %{
+      state
+      | mode: :text,
+        projection: :iso,
+        cell: fn {x, y} -> if x > y, do: {:floor, [:house], nil}, else: {:floor, [], nil} end
+    }
+
+    straight = Surface.render(%{patterned | facing: 0}, rect(40, 12))
+    turned = Surface.render(%{patterned | facing: 1}, rect(40, 12))
+
+    refute straight == turned
+  end
+
+  test "plain glyphs stay top-down where the projection casts rays", %{state: state} do
+    top = Surface.render(%{state | mode: :text}, rect(40, 12))
+
+    for projection <- [:mode7, :first_person] do
+      drawn = Surface.render(%{state | mode: :text, projection: projection}, rect(40, 12))
+      assert drawn == top, "#{projection} glyphs should be the top-down grid"
+    end
+  end
+
+  test "plain glyphs zoom through the text levels where they draw top-down" do
+    text = Surface.zoom_levels(:projection_widget, :text, :top)
+
+    for projection <- [:mode7, :first_person] do
+      assert Surface.zoom_levels(:projection_widget, :text, projection) == text
+    end
+
+    assert Surface.zoom_levels(:projection_widget, :text, :iso) == [2, 1, 0.5, 0.25]
+  end
+
+  test "the oblique view is fixed under a plain facings count and turns under its own",
+       %{state: state} do
+    patterned = %{
+      state
+      | mode: :text,
+        projection: :oblique,
+        cell: fn {x, y} -> if x > y, do: {:floor, [:house], nil}, else: {:floor, [], nil} end
+    }
+
+    plain = %{patterned | facings: 4}
+
+    assert Surface.render(%{plain | facing: 1}, rect(40, 12)) ==
+             Surface.render(%{plain | facing: 0}, rect(40, 12))
+
+    asked = %{patterned | facings: %{oblique: 4}}
+
+    refute Surface.render(%{asked | facing: 1}, rect(40, 12)) ==
+             Surface.render(%{asked | facing: 0}, rect(40, 12))
+  end
+
+  test "a facings map still turns the isometric view", %{state: state} do
+    patterned = %{
+      state
+      | mode: :text,
+        projection: :iso,
+        facings: %{iso: 4, oblique: 4},
+        cell: fn {x, y} -> if x > y, do: {:floor, [:house], nil}, else: {:floor, [], nil} end
+    }
+
+    refute Surface.render(%{patterned | facing: 1}, rect(40, 12)) ==
+             Surface.render(%{patterned | facing: 0}, rect(40, 12))
   end
 
   test "a pane cell maps to a world point in the top and isometric views and to nothing in first person",
@@ -132,11 +199,15 @@ defmodule Cauldron2D.Drafter.SurfaceSwitchTest do
   test "a projection frame after a placed top-down frame takes the placed sprites down with it",
        %{state: state} do
     {top_paint, _clear, _region} = Surface.image(state, rect(), :map)
-    assert IO.iodata_to_binary(top_paint) =~ "z=1"
+    top = IO.iodata_to_binary(top_paint)
+
+    assert [[_whole, sprite, placement]] =
+             Regex.scan(~r/a=p,i=(\d+),q=2,C=1,p=(\d+),z=1/, top)
 
     {paint, clear, _region} = Surface.image(%{state | projection: :iso}, rect(), :map)
+
+    assert IO.iodata_to_binary(paint) =~ "a=d,d=i,i=#{sprite},q=2,p=#{placement}"
     assert IO.iodata_to_binary(clear) =~ "a=d,d=z,z=1"
-    assert IO.iodata_to_binary(paint) =~ "a=d,d=z,z=1"
   end
 end
 

@@ -1,11 +1,72 @@
 # Changelog
 
-## Unreleased
+## [Unreleased]
 
+### Breaking changes
+
+* The HTTP API lists worlds at `GET /worlds` (was `/arenas`); `GET /stats` answers
+  `worlds` (was `arenas`); the board narrows with `world=<name>` (was `arena=`).
+* `Cauldron2D.Net.Api.arena_json/1` is now `world_json/1`.
+* The pages serve `worlds.json` (was `arenas.json`) and a world at `/world/:id` (was
+  `/arena/:id`). The page's element ids and classes are `world`, `worlds` and
+  `world-page` (were `arena`, `arenas` and `arena-page`); a stylesheet or script of the
+  game's that targets them must follow.
+* `Cauldron2D.Net.Pages`, `Socket` and `Channel` call the game's `worlds/1` (was
+  `arenas/1`) and cue music with `cue(view, :play)` and `cue(view, {:static, :play})`
+  (was `:arena`).
+* `Cauldron2D.Net.Audio` music policy `:world` (was `:arena`).
+* `Cauldron2D.Net.Remote.arenas/1` is now `worlds/1`, `node_arenas/1` is now
+  `node_worlds/1`, and the `arena()` type is `world()`. `stats/1` answers `worlds:`, and
+  `leaders/4` takes `world:` (was `arena:`).
+* `Cauldron2D.Net.Link.World` takes `:world` (was `:arena`), and the view it hands a
+  player is `%{wire, map, sheet, world}` (was `arena`).
+* `Cauldron2D.Net.Load` takes `:worlds` (was `:arenas`), and its reports carry
+  `server.worlds` (was `server.arenas`). `Cauldron2D.Net.Load.Session` takes `:world`
+  (was `:arena`).
+* A `{module, function}` `:sheet_url` is called each time a sheet is sent — at the join
+  and on every atlas change — rather than once at the connect.
+* Depends on the `gamepad` package.
+
+### Added
+
+* Game controllers in the browser: the world page loads `gamepad.js` (served by
+  `Cauldron2D.Net.Pages` at `/gamepad.js`) and mounts `cauldron.js` with the game's
+  `padmap/1`, asked with `%{username: name}` (`Cauldron2D.Input.Pad.default_map/1` of its
+  actions without one). Buttons hold in full; an axis past `pad: {deadzone}` (default
+  0.3) holds at its magnitude as `strength`.
+* `Cauldron2D.Net.Keys.browser_padmap/1`: a padmap as `cauldron.js` takes it, with
+  `buttons`, `axes`, `aim` and `push`.
+* A padmap's `aim: [{:stick, :left | :right}]` makes that stick aim eight tiles from the
+  focus the way it points (`cauldron.js` `pad: {distance}`), following the focus while
+  held and letting go when it centres. `aim: [{:stick, side, push: [action:, beyond:,
+  least:, gain:]}]` also holds an action past `beyond` at a strength that grows with the
+  push.
+* `cauldron.js` `touch: {tilt: {range, deadzone, distance, smoothing, invert}}`: the
+  device's tilt aims, `range` degrees from the pose it was first read in being full
+  deflection, levelled again when the screen turns or the page comes back. A stick zone
+  takes the aim from tilt only past its `push.beyond`, and holds its push action from
+  the lightest touch while tilt aims.
+* `cauldron.js` handle: `aim(point)`, `hold(action, down, strength)`, `focus()` and
+  `input()`, for a page adding an input source of its own.
+
+### Changed
+
+* `cauldron.js`: a controller holding a steering action drops the pointer's aim, as a
+  steering key does.
+
+### Fixed
+
+* `cauldron.js` tilt on iOS asks for motion permission from a tap only, never at mount,
+  so tilt steering starts on the first tap.
+
+## 0.1.0
+
+* `Cauldron2D.Net.Game` behaviour, `Sheet`, `Frame`, `Session`, `Channel` and
+  `priv/static/cauldron.js`: a `cauldron_2d` world on a canvas over a Phoenix channel, with
+  the player's sound as binary PCM on the same socket.
 * `Cauldron2D.Net.Wire`, `Link.Socket`, `Link.Local` and `Sound` — the wire's Elixir
   client side — moved here from `cauldron_2d_wx`; their messages are tagged
   `:cauldron_link` (were `:cauldron_wx`). Depends on `mint` and `mint_web_socket`.
-
 * `cauldron.js`: `onStats` and `stats()`, the frames received and the draws made each
   second, for a page that shows a frame rate.
 * `cauldron.js`: `touch: {zones}` — buttons and a thumbstick the page lays out, by
@@ -20,46 +81,8 @@
   A stick zone's `push: {action, beyond, least, gain}` holds an action while the stick
   is pushed past `beyond`, with a `strength` that grows with the push; the input message
   may carry `strength` (action to 0.0–1.0), validated by `Session.input/4`.
-* `cauldron.js` `touch: {tilt: {range, deadzone, distance, smoothing}}`: the device's
-  tilt aims — `range` degrees from the pose it was first read in (levelled again when
-  the screen turns or the page comes back) is full deflection, in the screen's frame —
-  while a stick zone yields the aim to the stick only past its `push.beyond`, holding
-  the push action from the lightest touch. Motion access is asked for on the first
-  gesture where the browser requires it.
-* A `{module, function}` `:sheet_url` is called each time a sheet is sent — at the join
-  and on every atlas change — not once at the connect, so a browser fetches the new
-  pixels at a new address when the atlas grows (`Cauldron2D.Net.Socket`, `Session`).
-* `cauldron.js`: a controller holding a steering action drops the pointer's aim, as a
-  steering key does, so a still mouse no longer steers against the pad until it moves.
-* The world page asks the game's `padmap/1` with `%{username: name}`.
-* A padmap's `aim: [{:stick, :left | :right}]` makes that stick aim — `Cauldron2D.Input.Pad.aim/1`
-  is its direction — and both clients turn it into an aim eight tiles from the focus
-  the way it points, let go when it centres (`Keys.browser_padmap/1` sends it as
-  `aim`; `cauldron.js` `pad: {distance}`, default 8, and the pad drops the pointer's
-  aim while it aims). The aim follows the focus while the stick is held: the terminal
-  client re-aims on every world frame, `cauldron.js` on every draw.
-* `cauldron.js` tilt asks iOS for motion permission only from a tap, never at mount:
-  a request made with no gesture could stay pending and every later tap was ignored,
-  so a page whose settings had already been allowed never steered by tilt.
-* The terminal client turns and pitches the first-person eye on a mouse drag, whether
-  or not `mouse_look` is on; a click still reaches the game.
-* `cauldron.js`: the handle exposes the input — `aim(point)`, `hold(action, down,
-  strength)`, `focus()`, `input()` — so a page can add an input source of its own on top
-  of, or instead of, the built-in keys, pointer, touch, tilt and pad; the built-in tilt
-  takes `invert`.
-* An aim stick may push an action past its ring: `aim: [{:stick, :left, push: [action:
-  :thrust, beyond: 0.6, least: 0.3, gain: 1.4]}]` holds `:thrust` at a strength that
-  grows with the push, the rule the touch stick's `push` follows; `Keys.browser_padmap/1`
-  sends it as `push` and `cauldron.js`'s pad holds it the same way.
-
-* Input messages are no longer logged (`log_handle_in: false`).
+* Input messages are not logged (`log_handle_in: false`).
 * `cauldron.js` `zoom: {min, max, keys, wheel, pinch}`: `+`/`-`/`0`, the wheel and a
   pinch change the tile size, out as far as the whole map in view; `zoom(tile)` and
   `zoomBy(factor)` on the handle, `onZoom(tile)` in the options. The static map is
   drawn from one pre-rendered layer at the current size.
-
-## 0.1.0
-
-* `Cauldron2D.Net.Game` behaviour, `Sheet`, `Frame`, `Session`, `Channel` and
-  `priv/static/cauldron.js`: a `cauldron_2d` world on a canvas over a Phoenix channel, with
-  the player's sound as binary PCM on the same socket.
