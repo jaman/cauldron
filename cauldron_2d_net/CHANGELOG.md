@@ -6,7 +6,7 @@
 
 * The HTTP API lists worlds at `GET /worlds` (was `/arenas`); `GET /stats` answers
   `worlds` (was `arenas`); the board narrows with `world=<name>` (was `arena=`).
-* `Cauldron2D.Net.Api.arena_json/1` is now `world_json/1`.
+* `arena_json/1` in `Cauldron2D.Net.Api` is now `world_json/1`.
 * The pages serve `worlds.json` (was `arenas.json`) and a world at `/world/:id` (was
   `/arena/:id`). The page's element ids and classes are `world`, `worlds` and
   `world-page` (were `arena`, `arenas` and `arena-page`); a stylesheet or script of the

@@ -1547,14 +1547,21 @@ defmodule Cauldron2D.Drafter.Surface do
 
     case Patch.plan(moving_spots(state, opts), pane, grid, @patch_room) do
       {:patches, rects} when length(rects) <= @patch_limit ->
-        layered(state, rect, id, opts, pane, grid, rects, columns, cells)
+        layered(state, rect, id, opts, %{
+          pane: pane,
+          grid: grid,
+          rects: rects,
+          columns: columns,
+          cells: cells
+        })
 
       _too_much ->
         :whole
     end
   end
 
-  defp layered(state, rect, id, opts, {pane_w, pane_h} = pane, grid, rects, columns, cells) do
+  defp layered(state, rect, id, opts, %{pane: {pane_w, pane_h} = pane} = cut) do
+    %{grid: grid, rects: rects, columns: columns, cells: cells} = cut
     atlas = Atlas.fetch(state.atlas)
     image = FrenchCurve.image_id({id, :scene})
     size = {pane_w + 2 * round(pane_w * @pan_margin), pane_h + 2 * round(pane_h * @pan_margin)}
@@ -1586,26 +1593,11 @@ defmodule Cauldron2D.Drafter.Surface do
     end
   end
 
-  defp scene(state, atlas, id, image, opts, {wide, tall} = size, {pane_w, pane_h} = pane) do
+  defp scene(state, atlas, id, image, opts, size, pane) do
     table = Atlas.cache(atlas.name)
     key = {:scene, id}
 
-    kept =
-      case :ets.lookup(table, key) do
-        [{^key, ^image, digest, focus}] ->
-          stored = scene_opts(opts, focus, size)
-          {sx, sy} = source = source_of(state, stored, pane)
-
-          if sx >= 0 and sy >= 0 and sx + pane_w <= wide and sy + pane_h <= tall and
-               digest == scene_digest(state, atlas, stored, size),
-             do: source,
-             else: nil
-
-        _gone ->
-          nil
-      end
-
-    case kept do
+    case table |> :ets.lookup(key) |> reusable(state, atlas, image, opts, size, pane) do
       nil ->
         recomposed(state, atlas, table, key, image, opts, size, pane)
 
@@ -1632,6 +1624,20 @@ defmodule Cauldron2D.Drafter.Surface do
          {div(wide - pane_w, 2), div(tall - pane_h, 2)}}
     end
   end
+
+  defp reusable([{_key, image, digest, focus}], state, atlas, image, opts, size, pane) do
+    stored = scene_opts(opts, focus, size)
+    source = source_of(state, stored, pane)
+
+    if within?(source, size, pane) and digest == scene_digest(state, atlas, stored, size),
+      do: source,
+      else: nil
+  end
+
+  defp reusable(_gone, _state, _atlas, _image, _opts, _size, _pane), do: nil
+
+  defp within?({sx, sy}, {wide, tall}, {pane_w, pane_h}),
+    do: sx >= 0 and sy >= 0 and sx + pane_w <= wide and sy + pane_h <= tall
 
   defp settled(table, key) do
     :ets.delete(table, churn_key(key))

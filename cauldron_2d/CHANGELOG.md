@@ -14,12 +14,12 @@
   (was `:unknown_arena`).
 * `Cauldron2D.Client.Game` callback `arenas/1` is now `worlds/1`, and the `arena()` type
   is `world()`. Rename the callback; the entries keep the same keys.
-* `Cauldron2D.Client.Game.arena/3` is now `Cauldron2D.Client.Game.world/3`.
+* `arena/3` in `Cauldron2D.Client.Game` is now `Cauldron2D.Client.Game.world/3`.
 * The screen a world is played on is `:play`, not `:arena`: `cue(view, :play)` and
   `cue(view, {:static, :play})`, and `:play` in the `screen()` type.
 * `outcome/1`'s `:next` is `:next_world` or `:same_world` (was `:next_arena` or
   `:same_arena`).
-* `Cauldron2D.Stats.arenas/0` is now `Cauldron2D.Stats.worlds/0`, and its `arena()` type
+* `arenas/0` in `Cauldron2D.Stats` is now `Cauldron2D.Stats.worlds/0`, and its `arena()` type
   is `world()`.
 * `Cauldron2D.Ledger.board/4` narrows to one world with `world:` (was `arena:`); an
   `arena:` option is ignored.

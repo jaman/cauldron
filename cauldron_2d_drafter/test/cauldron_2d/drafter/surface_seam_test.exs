@@ -60,15 +60,7 @@ defmodule Cauldron2D.Drafter.SurfaceSeamTest do
     ~r/\e_G([^;\e]*);([^\e]*)\e\\/
     |> Regex.scan(bytes)
     |> Enum.reduce({%{}, nil}, fn [_whole, control, payload], {held, open} ->
-      keys =
-        control
-        |> String.split(",")
-        |> Map.new(fn pair ->
-          case String.split(pair, "=") do
-            [key, value] -> {key, value}
-            [key] -> {key, ""}
-          end
-        end)
+      keys = control |> String.split(",") |> Map.new(&control_pair/1)
 
       case {keys["a"], keys["i"]} do
         {"t", id} ->
@@ -90,6 +82,13 @@ defmodule Cauldron2D.Drafter.SurfaceSeamTest do
     |> Map.new(fn {id, image} ->
       {id, %{image | payload: Base.decode64!(image.payload)}}
     end)
+  end
+
+  defp control_pair(pair) do
+    case String.split(pair, "=") do
+      [key, value] -> {key, value}
+      [key] -> {key, ""}
+    end
   end
 
   defp source(bytes, id) do

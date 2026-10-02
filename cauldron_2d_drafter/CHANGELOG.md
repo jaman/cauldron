@@ -16,13 +16,13 @@
   `client_pad/0`.
 * `Cauldron2D.Drafter.Client.arenas/1` is now `worlds/1`, calling the game's
   `worlds/1`.
-* `Cauldron2D.Drafter.Client.next_arena/1` is now `next_world/1`, reading `:next_world`
+* `next_arena/1` in `Cauldron2D.Drafter.Client` is now `next_world/1`, reading `:next_world`
   and `:same_world` from the outcome.
 * The screen a world is played on is `:play` (was `:arena`), and the geometry event is
   `:play_geometry` (was `:arena_geometry`). The client's state holds the joined world as
   `:joined` (was `:arena`) and the summary's as `:summary_world` (was `:summary_arena`).
   Chat inside a world arrives as `{:chat, {:world, id}, message}`.
-* `Cauldron2D.Drafter.Client.Screens.arena/1` is now `play/1`, and `arena_at/3` is now
+* `arena/1` in `Cauldron2D.Drafter.Client.Screens` is now `play/1`, and `arena_at/3` is now
   `world_at/3`.
 
 ### Added

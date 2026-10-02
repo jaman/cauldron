@@ -92,11 +92,11 @@ defmodule Cauldron2D.Client.Game do
       boolean `key` of the look, shown among the key hints by its name
     * `client_pad/0` — the client's own actions on controller buttons, as the terminal
       client documents them
-    * `look/0` — the view a client starts in: a map over `%{projection: :top | :oblique |
-      :iso | :mode7 | :first_person, projections: [projection], facing: step,
-      facings: steps in a turn, tilt: 0.5..1.5, heading: radians, pitch: -1.0..1.0,
-      zoom: how many times native a tile is drawn when a world opens, mouse_look?:
-      boolean}`, any key omitted.
+    * `look/0` — the view a client starts in: a map with any of `:projection` (`:top`,
+      `:oblique`, `:iso`, `:mode7` or `:first_person`), `:projections` (a list of
+      those), `:facing` (a step), `:facings` (steps in a turn), `:tilt` (`0.5..1.5`),
+      `:heading` (radians), `:pitch` (`-1.0..1.0`), `:zoom` (how many times native a
+      tile is drawn when a world opens) and `:mouse_look?` (a boolean).
       `projections` lists the views the projection key cycles through, in order;
       `density` is `Cauldron2D.Drafter.Surface`'s, the pixels a cell is drawn with.
       Default top-down, cycling all three. Any other key is the game's own, kept on
