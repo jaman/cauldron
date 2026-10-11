@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Formats.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.2.1"
   @source_url "https://github.com/jaman/cauldron"
   @description "Readers for the Quake family of game files into Cauldron3D: map files, models, sprites, picture collections, sounds, entity text and pak and pk3 archives."
 
@@ -25,10 +25,16 @@ defmodule Cauldron3D.Formats.MixProject do
 
   defp deps do
     [
-      {:cauldron_3d, path: "../cauldron_3d"},
+      family(:cauldron_3d, "~> 0.2.1", "../cauldron_3d", []),
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
+  end
+
+  defp family(app, requirement, path, opts) do
+    if System.get_env("PLUMB_HEX") == nil and File.dir?(Path.expand(path, __DIR__)),
+      do: {app, [path: path] ++ opts},
+      else: {app, requirement, Keyword.delete(opts, :override)}
   end
 
   defp package do
