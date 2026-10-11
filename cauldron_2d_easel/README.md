@@ -9,7 +9,7 @@ it is a pure function.
 ```elixir
 def deps do
   [
-    {:cauldron_2d_easel, "~> 0.1"}
+    {:cauldron_2d_easel, "~> 0.2"}
   ]
 end
 ```
@@ -25,6 +25,8 @@ easel = Cauldron2D.Easel.undo(easel)
 |---|---|
 | `Cauldron2D.Easel` | the document: paint, line, rect, fill, erase; flip, rotate, shift; the palette; frames at a rate; undo and redo; `.pic` and `.png` in and out |
 | `Cauldron2D.Easel.Project` | an art directory: its arts, opening one, saving one, the manifest (`atlas.txt`) with each art's glyph, colour and rate, and installing the directory as an atlas |
+| `Cauldron2D.Easel.Sectors` | a sector map being edited: rooms drawn as polygons on a grid, joined where they share an edge, with heights, pictures and light per room and per wall, and a history to undo through |
+| `Cauldron2D.Easel.SectorArt` | pictures for previewing a sector map with no game art: a palette of sixteen hues in sixteen shades, and wall, floor and ceiling textures drawn from it |
 
 The document is what a `.pic` file holds ([`Linocut.Pic`](https://hexdocs.pm/linocut)): palette lines, a
 blank line, the frames separated by `---`. That makes an edit a change to a key in a

@@ -24,7 +24,7 @@ defmodule Cauldron2D.Parallax do
   `{art, {x, y}}` or `{art, {x, y}, tint}`.
   """
 
-  alias Cauldron2D.{Atlas, Camera, Surface}
+  alias Cauldron2D.{Atlas, Camera, Render, Surface}
   alias Cauldron2D.Atlas.Tables
   alias Cauldron2D.Parallax.{Bands, Layer, Panorama, Scatter, Strip}
   alias FrenchCurve.Raster
@@ -118,11 +118,16 @@ defmodule Cauldron2D.Parallax do
         {round(columns * tile), round(rows * tile)}
       end)
 
-    Enum.reduce(layers, nil, fn layer, beneath ->
-      above = picture(atlas, layer, focus, {columns, rows}, at, scale, tile, target)
+    [backmost | rest] =
+      Enum.map(layers, &picture(atlas, &1, focus, {columns, rows}, at, scale, tile, target))
 
-      if beneath, do: Surface.stack(beneath, above), else: above
-    end)
+    case rest do
+      [] ->
+        backmost
+
+      _ ->
+        Render.render(target, Enum.map(rest, &{:raster, &1, {0, 0}}), background: backmost)
+    end
   end
 
   defp picture(atlas, layer, focus, size, at, scale, tile, target) do

@@ -9,7 +9,7 @@ and to reach a server from a client.
 ```elixir
 def deps do
   [
-    {:cauldron_2d_net, "~> 0.1"},
+    {:cauldron_2d_net, "~> 0.2"},
     {:phoenix, "~> 1.8"}
   ]
 end
@@ -18,7 +18,7 @@ end
 The world is a process; a browser player is a Phoenix channel process that joins it
 like any other and forwards what the world sends. Rendering happens in the browser from
 a sprite sheet fetched once; the server sends positions, hud text and sound, never
-pixels. `CAULDRON_WEB_DESIGN.md` at the repository root is the design.
+pixels.
 
 | module | what it is |
 |---|---|
@@ -42,6 +42,27 @@ own Phoenix endpoint and login; `Cauldron2D.Net.Pages` gives it the pages. The a
 `TuningFork.Sink.Process`; each player's `Cauldron2D.Audio` runs on the server and its
 PCM rides the same socket as the frames.
 
+## Serving a game
+
+The game's router forwards a path to the pages, its socket module `use`s
+`Cauldron2D.Net.Socket` and its channel module `use`s `Cauldron2D.Net.Channel`:
+
+```elixir
+forward "/play", Cauldron2D.Net.Pages, game: MyGame.Client, username: &MyGame.Web.Auth.username/1, token: &MyGame.Web.Auth.token/1, login: "/login"
+
+defmodule MyGame.Web.UserSocket do
+  use Cauldron2D.Net.Socket, channel: MyGame.Web.WorldChannel, verify: {MyGame.Web.Auth, :verify}
+end
+
+defmodule MyGame.Web.WorldChannel do
+  use Cauldron2D.Net.Channel, game: MyGame.Client, topic: "world", audio: %{rate: 22_050, channels: 2}
+end
+```
+
+The pages reach the socket at the path their `:socket` option names (default
+`"/socket"`), where the endpoint mounts it. `Cauldron2D.Net.Pages`, `Cauldron2D.Net.Socket`
+and `Cauldron2D.Net.Channel` document every option.
+
 ## The wire
 
 | event | payload |
@@ -59,21 +80,20 @@ PCM rides the same socket as the frames.
 ## The view in the browser
 
 `Cauldron.mount(canvas, opts)` draws the world around the frame's focus: the static map
-from cached chunks of about a thousand device pixels a side, only those in view drawn
-and at most sixteen kept, so no canvas ever nears a browser's size limit whatever the
-map, the zoom or the screen's pixel ratio; movers, labels and animated cells over it. With
+from cached chunks, only those in view drawn, at any map size, zoom and screen pixel
+ratio; movers, labels and animated cells over it. With
 `zoom: {min, max, keys, wheel, pinch}` the player zooms: `+`/`=` and `-`, the wheel, a
 pinch, `0` back to `scale`; `game.zoom(tile)` and `game.zoomBy(factor)` from the page.
 Watching — `spectate` among the join `params`, or `watching: true` — the view can be
 moved as well: the arrows, a drag with the mouse or one finger pan it, the wheel and a
 pinch zoom about the pointer or the fingers, `0` recentres; `game.panBy(dx, dy)` in
-tiles and `game.recentre()` from the page, and a frame whose `subject` differs from the
-last drops the pan, so a newly watched ship comes up centred. The focus is always the centre of the view: at
-a map's edge, or zoomed out past the whole map, the void shows around it rather than the
-view sliding off the ship, so zooming out and back in lands where it started. Flying, the view stays on the ship, and the
-aim is where the mouse is on the screen: it is worked out again from the mouse's last
-place after every draw, so a ship flying under a still mouse keeps aiming at the point
-ahead of it rather than at the spot the mouse last passed over. `game.levels(sfx, music)`
+tiles and `game.recentre()` from the page; a frame whose `subject` differs from the
+last drops the pan, and a newly watched subject comes up centred. The focus is always
+the centre of the view: at a map's edge, or zoomed out past the whole map, the void shows
+around it rather than the view sliding off the focus, and zooming out and back in lands
+where it started. Playing, the view stays on the focus, and the aim is where the mouse is
+on the screen, worked out again from the mouse's last place after every draw: a focus
+moving under a still mouse keeps aiming at the point ahead of it. `game.levels(sfx, music)`
 sets the sound levels and `game.music(on)` switches the music off or back on at its level.
 
 The handle also exposes the input every built-in source writes to, so a page can add

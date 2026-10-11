@@ -252,8 +252,47 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
   end
 
-  test "a refused join is said in the lobby rather than swallowed", %{ctx: ctx, world: world} do
+  test "a name another process plays as is joined as a numbered namesake", %{
+    ctx: ctx,
+    world: world
+  } do
+    holder = self()
     :ok = Player.join(world, "alice", %{username: "alice"})
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "▶ Main" end)
+    DT.send_key(ctx, :enter)
+
+    assert :ok ==
+             DT.wait_for(ctx, fn _ ->
+               Enum.sort(World.players(world)) == ["alice", "alice (2)"]
+             end)
+
+    assert %{pid: ^holder} = :sys.get_state(world).players["alice"]
+  end
+
+  test "a player whose world stops is taken to the lobby and told", %{ctx: ctx, world: world} do
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "▶ Main" end)
+    DT.send_key(ctx, :enter)
+    assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == ["alice"] end)
+
+    GenServer.stop(world)
+
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Main stopped" end)
+  end
+
+  test "a refused join is said in the lobby rather than swallowed", %{ctx: ctx, world: world} do
+    GenServer.stop(world)
+    seated = %{pos: {5.0, 5.0}, held: MapSet.new(), spectator: false}
+
+    {:ok, _world} =
+      World.start_link(
+        game: Dots,
+        hz: 50,
+        name: :dots_world,
+        state: %{players: %{"alice" => seated}, events: []}
+      )
+
     DT.send_key(ctx, :enter)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "▶ Main" end)
     DT.send_key(ctx, :enter)
@@ -1085,7 +1124,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Far enough" end, timeout: 3_000)
     assert DT.screen_text(ctx) =~ "you reached"
-    assert DT.screen_text(ctx) =~ "Enter  Main again"
+    assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Enter  Main again" end)
     assert :ok == DT.wait_for(ctx, fn _ -> World.players(world) == [] end)
 
     DT.send_key(ctx, :enter)

@@ -1,4 +1,5 @@
-CFLAGS ?= -fPIC -O3 -Wall -Wextra -ffp-contract=off
+CFLAGS ?= -fPIC -O3 -Wall -Wextra
+override CFLAGS += -ffp-contract=off
 LDFLAGS ?=
 
 UNAME_S := $(shell uname -s)
@@ -10,8 +11,8 @@ endif
 
 ERTS_INCLUDE_DIR ?= $(shell erl -noshell -eval 'io:format("~s/include", [code:root_dir() ++ "/erts-" ++ erlang:system_info(version)])' -s init stop)
 
-PRIV_DIR = priv
-NIFS = $(PRIV_DIR)/plane_nif.so $(PRIV_DIR)/volume_nif.so $(PRIV_DIR)/blend_nif.so
+PRIV_DIR ?= priv
+NIFS = $(PRIV_DIR)/plane_nif.so $(PRIV_DIR)/volume_nif.so $(PRIV_DIR)/blend_nif.so $(PRIV_DIR)/sector_nif.so
 
 all: $(NIFS)
 

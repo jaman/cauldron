@@ -10,7 +10,7 @@ as a sheet, or an animation, each as an image a cell shows.
 In a notebook's setup cell:
 
 ```elixir
-Mix.install([{:cauldron_2d_easel_kino, "~> 0.1"}])
+Mix.install([{:cauldron_2d_easel_kino, "~> 0.2"}])
 ```
 
 ```elixir
@@ -32,13 +32,12 @@ document as it stands, for any later cell.
 static tile and an animated one made with `Cauldron2D.Easel`, an art directory with its
 manifest, derivations with `Linocut`, and the directory installed as an atlas and composed
 as a surface. The badge opens it in Livebook; its setup cell installs the package from Hex
-and it needs nothing else. Working from a checkout instead, give the setup cell a `path:` —
-`{:cauldron_2d_easel_kino, path: "/absolute/path/to/cauldron_2d_easel_kino"}` — and
-re-run it after editing the code.
+and it needs nothing else. From a checkout, give the setup cell
+`{:cauldron_2d_easel_kino, path: "/absolute/path/to/cauldron_2d_easel_kino"}` instead.
 
-| Notebook | | |
-| --- | --- | --- |
-| `notebooks/easel.livemd` | The tour: the editor cell, pictures as text and as code, an animated one, an art directory and its manifest, one drawing derived into many, the atlas installed and a surface composed from it | [![Run in Livebook](https://livebook.dev/badge/v1/blue.svg)](https://livebook.dev/run?url=https%3A%2F%2Fraw.githubusercontent.com%2Fjaman%2Fcauldron%2Fmain%2Fcauldron_2d_easel_kino%2Fnotebooks%2Feasel.livemd) |
+| Notebook | |
+| --- | --- |
+| `notebooks/easel.livemd` | The tour: the editor cell, pictures as text and as code, an animated one, an art directory and its manifest, one drawing derived into many, the atlas installed and a surface composed from it |
 
 `Cauldron2D.Easel.derive/3` makes a view from a picture by a line — `colour B #20c040;
 flip h; over hat 0 -1` — and `Cauldron2D.Easel.Project.derive/3` keeps such a line in

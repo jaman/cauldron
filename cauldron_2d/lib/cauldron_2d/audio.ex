@@ -27,7 +27,13 @@ defmodule Cauldron2D.Audio do
     * An event is any term the table knows, or `{event, {x, y}}` placing it. With a listener set, a placed event is
       scaled by its distance — full within one tile, silent at `:earshot` tiles — and
       panned by its side; an unplaced one plays at full level, centred.
-    * Effects and music have separate levels, set by `levels/3`.
+    * `keyed/4`, `moved/2` and `stopped/2` build events for sounds that keep sounding under
+      a key: one replaces another under the same key, and each is placed again when the
+      listener moves, when `moved/2` moves it, and when the effects level changes.
+    * The stage sounds at most `:voices` sounds at once and lets the oldest go past that;
+      a game sets it through `Cauldron2D.Client.Game` `audio/0`.
+    * Effects and music have separate levels, set by `levels/3`; a `muted/1` event
+      silences both until another lets them sound.
     * Beds are keyed by a string. A render runs once, in a task, and is kept in memory and
       on disk via `TuningFork.Cache`; a bed finishing after another key was asked for is
       dropped. A render that raises is logged and never plays.
@@ -39,8 +45,8 @@ defmodule Cauldron2D.Audio do
 
   require Logger
 
-  alias Cauldron2D.Audio.{Music, Rendered}
-  alias TuningFork.{Cache, Mixer, Stage, Voice}
+  alias Cauldron2D.Audio.{Keyed, Music, Rendered}
+  alias TuningFork.{Cache, Mixer, Sample, Stage, Voice}
 
   @bed {__MODULE__, :bed}
 
@@ -81,6 +87,11 @@ defmodule Cauldron2D.Audio do
     * `:stage` — an already running stage to use instead of starting one
     * `:mode` — the default for `play_piece/4`, `:live` or `:rendered`. Default `:live`
     * `:sfx`, `:music` — levels 0.0 to 1.0. Default `default_levels/0`
+    * `:recordings` — a function from an event name to its recording,
+      `%{rate: rate, channels: channels, pcm: pcm}` (signed 16-bit little-endian), or
+      `nil`, for keyed music (`keyed/4`'s `music: true`). Default: none
+    * `:master` — `:sfx` to have the effects level scale the music as well, the music
+      sounding at `music × sfx`; `:none` for separate levels. Default `:none`
     * `:earshot` — tiles at which a placed event falls silent. Default `30.0`
     * `:music_dir` — the directory rendered music is kept in; a game's is
       `Cauldron2D.Client.Game.music_dir/1`. Default `TuningFork.Cache.dir/0`
@@ -117,9 +128,69 @@ defmodule Cauldron2D.Audio do
   @spec listener(instance(), {number(), number()} | nil) :: :ok
   def listener(audio \\ __MODULE__, pos), do: cast(audio, {:listener, pos})
 
+  @doc """
+  The event that silences everything — effects and music — while `on?` is `true`, and
+  lets it sound again at the levels set when `false`. Sounds started meanwhile are kept
+  at no level, and come back with the rest.
+  """
+  @spec muted(boolean()) :: {module(), :muted, boolean()}
+  def muted(on?) when is_boolean(on?), do: {__MODULE__, :muted, on?}
+
   @doc "Sound `events` in order through the table given at start: a name — any term — or `{name, {x, y}}` placed against the listener; one the table answers `nil` for, or has no clause for, is silent."
   @spec play(instance(), [event()]) :: :ok
   def play(audio \\ __MODULE__, events), do: cast(audio, {:play, events})
+
+  @doc """
+  The event that sounds `name` under `key` at `at`. Whatever sounds under `key` is let go
+  first, over `:fade` seconds (default 0.05). The sound plays until it ends or `stopped/2`
+  lets it go; a run sounds as one, its voices' own pans left out. With `loop: true` a
+  sound that is a voice playing a recording goes round its recording — its own loop, or
+  the whole of it — until `stopped/2` lets it go; any other sound plays once.
+
+  `at` is one of:
+
+    * `{x, y}` — placed against the listener, and placed again when the listener moves
+    * `nil` — full level, centred
+    * `{:level, gain, pan}` — the game's own level, `gain` 0.0 upward and `pan` from
+      `-1.0` left to `1.0` right; the listener does not move it, `moved/2` does
+
+  The effects level scales every one of them, and the voice's own gain and pan apply on
+  top. Options: `:fade`, the seconds it takes to replace another, default 0.05; `:loop`,
+  `true` to sound round and round until stopped; `:music`, `true` for the sound to be
+  instead the recording `:recordings` gives for `name`, played in its own channels as a
+  looping layer of the stage's music (`TuningFork.Stage.layers/3`) from its own
+  beginning, at the music level and its placement's gain — `moved/2` changes that gain,
+  `stopped/2` drops the layer, and cueing a `Cauldron2D.Audio.Music` piece replaces these
+  layers. Raises `ArgumentError` for any other `at`.
+
+      Audio.play(audio, [Audio.keyed({:entity, 12, :voice}, :announce, {40.0, 8.0})])
+      Audio.play(audio, [Audio.keyed({:entity, 12, :weapon}, :spark, {:level, 0.4, -0.6})])
+  """
+  @spec keyed(term(), term(), Keyed.position(), keyword()) :: Keyed.t()
+  def keyed(key, name, at \\ nil, opts \\ []) do
+    %Keyed{
+      action: :play,
+      key: key,
+      name: name,
+      at: at!(at),
+      fade: Keyword.get(opts, :fade, 0.05) / 1,
+      loop: Keyword.get(opts, :loop, false),
+      music: Keyword.get(opts, :music, false)
+    }
+  end
+
+  @doc """
+  The event that moves the sound under `key` to `at`, any `at` `keyed/4` takes. Nothing
+  happens when nothing sounds under `key`.
+
+      Audio.play(audio, [Audio.moved({:entity, 12, :weapon}, {:level, 0.2, 0.9})])
+  """
+  @spec moved(term(), Keyed.position()) :: Keyed.t()
+  def moved(key, at), do: %Keyed{action: :move, key: key, at: at!(at)}
+
+  @doc "The event that lets the sound under `key` go over `fade` seconds, default 0.05."
+  @spec stopped(term(), number()) :: Keyed.t()
+  def stopped(key, fade \\ 0.05), do: %Keyed{action: :stop, key: key, fade: fade / 1}
 
   @doc "Sound `voice` directly, scaled by the effects level."
   @spec play_voice(instance(), Voice.t()) :: :ok
@@ -173,6 +244,14 @@ defmodule Cauldron2D.Audio do
   @doc false
   def rate(audio), do: GenServer.call(audio, :rate)
 
+  defp at!(nil), do: nil
+  defp at!({x, y} = at) when is_number(x) and is_number(y), do: at
+
+  defp at!({:level, gain, pan} = at) when is_number(gain) and gain >= 0 and is_number(pan),
+    do: at
+
+  defp at!(at), do: raise(ArgumentError, "not a position or level: #{inspect(at)}")
+
   defp cast(audio, message) do
     if alive?(audio), do: GenServer.cast(audio, message)
     :ok
@@ -198,11 +277,22 @@ defmodule Cauldron2D.Audio do
       sounds: Keyword.get(opts, :sounds, fn _event -> nil end),
       mode: Keyword.get(opts, :mode, :live),
       sfx: Keyword.get(opts, :sfx, @sfx) / 1,
-      music: Keyword.get(opts, :music, @music) / 1,
+      music:
+        heard_music(
+          Keyword.get(opts, :master, :none),
+          Keyword.get(opts, :sfx, @sfx),
+          Keyword.get(opts, :music, @music)
+        ),
+      master: Keyword.get(opts, :master, :none),
+      set: %{sfx: Keyword.get(opts, :sfx, @sfx) / 1, music: Keyword.get(opts, :music, @music) / 1},
+      muted?: false,
+      recordings: Keyword.get(opts, :recordings, fn _event -> nil end),
+      music_keys: %{},
       earshot: Keyword.get(opts, :earshot, 30.0) / 1,
       parallel: Keyword.get(opts, :parallel, false),
       music_dir: Keyword.get(opts, :music_dir, Cache.dir()),
       listener: nil,
+      keyed: %{},
       playing: nil,
       piece: :rendered,
       music_director: Music.new(static: Keyword.get(opts, :static_music, false))
@@ -276,11 +366,11 @@ defmodule Cauldron2D.Audio do
   @impl GenServer
   def handle_cast(_message, %{stage: nil} = state), do: {:noreply, state}
 
-  def handle_cast({:listener, pos}, state), do: {:noreply, %{state | listener: pos}}
+  def handle_cast({:listener, pos}, state),
+    do: {:noreply, replaced(%{state | listener: pos}, :placed)}
 
   def handle_cast({:play, events}, state) do
-    Enum.each(events, fn event -> sound(state, event) end)
-    {:noreply, state}
+    {:noreply, Enum.reduce(events, state, &heard(&2, &1))}
   end
 
   def handle_cast({:play_voice, voice}, state) do
@@ -288,12 +378,8 @@ defmodule Cauldron2D.Audio do
     {:noreply, state}
   end
 
-  def handle_cast({:levels, sfx, music}, state) do
-    Stage.bed_gain(state.stage, music)
-    state = %{state | sfx: sfx, music: music}
-    {:ok, director} = Music.handle({:level, music}, state.music_director, self(), state)
-    {:noreply, %{state | music_director: director}}
-  end
+  def handle_cast({:levels, sfx, music}, state),
+    do: {:noreply, leveled(%{state | set: %{sfx: sfx, music: music}})}
 
   def handle_cast({:play_piece, key, score, opts}, state) do
     mode = resolve_mode(Keyword.get(opts, :mode), state.mode)
@@ -424,12 +510,201 @@ defmodule Cauldron2D.Audio do
 
   defp sound(state, name), do: emit(state, lookup(state, name), state.sfx, 0.0)
 
+  defp heard(state, %Keyed{action: :play} = event), do: keyed_play(state, event)
+
+  defp heard(%{music_keys: music} = state, %Keyed{action: :move, key: key, at: at})
+       when is_map_key(music, key) do
+    Stage.layer_gains(state.stage, %{key => music_gain(state, at)})
+    %{state | music_keys: Map.put(music, key, at)}
+  end
+
+  defp heard(%{music_keys: music} = state, %Keyed{action: :stop, key: key})
+       when is_map_key(music, key) do
+    Stage.drop_layers(state.stage, [key])
+    %{state | music_keys: Map.delete(music, key)}
+  end
+
+  defp heard(state, %Keyed{action: :move, key: key, at: at}) do
+    case Map.fetch(state.keyed, key) do
+      {:ok, sounding} ->
+        sounding = %{sounding | at: at}
+        {gain, pan} = keyed_place(state, sounding)
+        Stage.place(state.stage, key, gain: gain, pan: pan)
+        %{state | keyed: Map.put(state.keyed, key, sounding)}
+
+      :error ->
+        state
+    end
+  end
+
+  defp heard(state, %Keyed{action: :stop, key: key, fade: fade}) do
+    Stage.release(state.stage, key, fade)
+    %{state | keyed: Map.delete(state.keyed, key)}
+  end
+
+  defp heard(state, {__MODULE__, :muted, on?}), do: leveled(%{state | muted?: on?})
+
+  defp heard(state, event) do
+    sound(state, event)
+    state
+  end
+
+  defp leveled(%{set: %{sfx: sfx, music: music}} = state) do
+    {sfx, music} =
+      if state.muted?, do: {0.0, 0.0}, else: {sfx, heard_music(state.master, sfx, music)}
+
+    Stage.bed_gain(state.stage, music)
+    state = replaced(%{state | sfx: sfx, music: music})
+    {:ok, director} = Music.handle({:level, music}, state.music_director, self(), state)
+    %{state | music_director: director}
+  end
+
+  defp heard_music(:sfx, sfx, music), do: music * sfx / 1
+  defp heard_music(:none, _sfx, music), do: music / 1
+
+  defp keyed_play(state, %Keyed{music: true, key: key, name: name, at: at}) do
+    case recording(state, name) do
+      %{rate: rate, channels: channels, pcm: pcm} ->
+        pcm = Mixer.fit(pcm, rate, channels, state.rate, state.channels)
+        gain = music_gain(state, at)
+
+        Stage.layers(state.stage, %{key => pcm},
+          keep: true,
+          from_start: true,
+          gains: %{key => gain}
+        )
+
+        %{state | music_keys: Map.put(state.music_keys, key, at)}
+
+      nil ->
+        state
+    end
+  end
+
+  defp keyed_play(state, %Keyed{
+         key: key,
+         name: name,
+         at: at,
+         fade: fade,
+         loop: loop,
+         music: music?
+       }) do
+    case lookup(state, name) do
+      nil ->
+        state
+
+      %Voice{sample: %Sample{} = sample} = voice when loop ->
+        sounding = %{at: at, own: voice.pan, until: :held, music?: music?}
+        {gain, pan} = keyed_place(state, sounding)
+
+        Stage.hold(state.stage, key, %{voice | sample: round_and_round(sample)},
+          gain: gain,
+          pan: pan,
+          fade: fade
+        )
+
+        %{state | keyed: state |> current_keyed() |> Map.put(key, sounding)}
+
+      sound ->
+        {mono, own} = clip(state, sound)
+
+        sounding = %{
+          at: at,
+          own: own,
+          until: now() + div(byte_size(mono) * 500, state.rate),
+          music?: music?
+        }
+
+        {gain, pan} = keyed_place(state, sounding)
+        Stage.play_pcm(state.stage, mono, key: key, gain: gain, pan: pan, fade: fade)
+        %{state | keyed: state |> current_keyed() |> Map.put(key, sounding)}
+    end
+  end
+
+  defp keyed_place(state, %{at: at, own: own} = sounding) do
+    case placement(state, at) do
+      :silent -> {0.0, own}
+      {gain, side} -> {level_of(state, sounding) * gain, max(-1.0, min(1.0, own + side))}
+    end
+  end
+
+  defp music_gain(state, at) do
+    case placement(state, at) do
+      :silent -> 0.0
+      {gain, _side} -> gain
+    end
+  end
+
+  defp recording(state, name) do
+    state.recordings.(name)
+  rescue
+    FunctionClauseError -> nil
+  end
+
+  defp level_of(state, %{music?: true}), do: state.music
+  defp level_of(state, _sounding), do: state.sfx
+
+  defp replaced(state, which \\ :all) do
+    keyed = current_keyed(state)
+
+    keyed
+    |> Enum.reject(fn {_key, sounding} -> which == :placed and level?(sounding.at) end)
+    |> Enum.each(fn {key, sounding} ->
+      {gain, pan} = keyed_place(state, sounding)
+      Stage.place(state.stage, key, gain: gain, pan: pan)
+    end)
+
+    placed_music =
+      for {key, at} <- state.music_keys,
+          not (which == :placed and level?(at)),
+          into: %{},
+          do: {key, music_gain(state, at)}
+
+    if placed_music != %{}, do: Stage.layer_gains(state.stage, placed_music)
+
+    %{state | keyed: keyed}
+  end
+
+  defp level?({:level, _gain, _pan}), do: true
+  defp level?(_at), do: false
+
+  defp current_keyed(state) do
+    now = now()
+
+    for {key, %{until: until} = sounding} <- state.keyed,
+        until == :held or until > now,
+        into: %{},
+        do: {key, sounding}
+  end
+
+  defp round_and_round(%Sample{loop: {_from, _to}} = sample), do: sample
+  defp round_and_round(%Sample{} = sample), do: %{sample | loop: {0, Sample.frames(sample)}}
+
+  defp now, do: System.monotonic_time(:millisecond)
+
+  defp clip(state, %Voice{} = voice),
+    do: {voice |> Rendered.fetch(state.rate) |> Mixer.scale(voice.gain), voice.pan}
+
+  defp clip(state, run) when is_list(run) do
+    mono =
+      run
+      |> Enum.map(fn {delay, voice} ->
+        Mixer.silence(div(delay * state.rate, 1_000), 1) <>
+          (voice |> Rendered.fetch(state.rate) |> Mixer.scale(voice.gain))
+      end)
+      |> Mixer.mix()
+
+    {mono, 0.0}
+  end
+
   defp lookup(state, name) do
     state.sounds.(name)
   rescue
     FunctionClauseError -> nil
   end
 
+  defp placement(_state, {:level, gain, pan}), do: {gain / 1, pan / 1}
+  defp placement(_state, nil), do: {1.0, 0.0}
   defp placement(%{listener: nil}, _pos), do: {1.0, 0.0}
 
   defp placement(%{listener: {lx, ly}, earshot: earshot}, {x, y}) do

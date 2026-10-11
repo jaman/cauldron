@@ -36,6 +36,11 @@ defmodule Cauldron2D.Audio.Music do
       what is still to render and takes effect when the section is ready — at the next
       bar boundary of the playing section, with a cross-fade; new gains at once
 
+  A piece of long recordings — whole tracks rather than loops — sets `render: :on_cue`:
+  then a section is rendered only when it is first cued, and once another section of the
+  piece plays, the one before leaves memory (its render stays in the cache, so cueing it
+  again reads it back).
+
   The music level from `Cauldron2D.Audio.levels/3` scales either.
 
   A director made static (`Cauldron2D.Audio` started with `static_music: true`) plays
@@ -56,7 +61,8 @@ defmodule Cauldron2D.Audio.Music do
           required(:beats_per_bar) => pos_integer(),
           required(:layers) => [atom()],
           required(:sections) => %{atom() => %{atom() => renderable()}},
-          optional(:fingerprint) => String.t()
+          optional(:fingerprint) => String.t(),
+          optional(:render) => :ahead | :on_cue
         }
   @type cue :: %{
           required(:piece) => String.t(),
@@ -142,6 +148,7 @@ defmodule Cauldron2D.Audio.Music do
       wanted: nil,
       playing: nil,
       queue: [],
+      requested: MapSet.new(),
       rendering: 0,
       live: false,
       static: Keyword.get(opts, :static, false)
@@ -149,11 +156,7 @@ defmodule Cauldron2D.Audio.Music do
 
   @doc false
   def handle({:piece, name, spec}, director, owner, state) do
-    stems =
-      for {section, layers} <- spec.sections,
-          not live?(layers),
-          {layer, renderable} <- layers,
-          do: {name, section, layer, renderable, spec}
+    stems = if on_cue?(spec), do: [], else: stems(name, spec, Map.keys(spec.sections))
 
     director = %{
       director
@@ -178,7 +181,9 @@ defmodule Cauldron2D.Audio.Music do
   end
 
   def handle({:cue, cue}, director, owner, state) do
-    director = %{director | wanted: cue} |> prioritise() |> start_renders(owner, state)
+    director =
+      %{director | wanted: cue} |> request(cue) |> prioritise() |> start_renders(owner, state)
+
     {:ok, apply_cue(director, state)}
   end
 
@@ -212,6 +217,49 @@ defmodule Cauldron2D.Audio.Music do
     }
     |> start_renders(owner, state)
     |> apply_cue(state)
+  end
+
+  defp stems(name, spec, sections) do
+    for section <- sections,
+        layers = Map.fetch!(spec.sections, section),
+        not live?(layers),
+        {layer, renderable} <- layers,
+        do: {name, section, layer, renderable, spec}
+  end
+
+  defp on_cue?(spec), do: Map.get(spec, :render, :ahead) == :on_cue
+
+  defp request(director, %{piece: piece, section: section}) do
+    key = {piece, section}
+
+    with {:ok, spec} <- Map.fetch(director.pieces, piece),
+         true <- on_cue?(spec) and is_map_key(spec.sections, section),
+         false <- MapSet.member?(director.requested, key) do
+      %{
+        director
+        | queue: director.queue ++ stems(piece, spec, [section]),
+          requested: MapSet.put(director.requested, key)
+      }
+    else
+      _ahead_or_requested -> director
+    end
+  end
+
+  defp forget_others(director, {piece, _section} = key) do
+    case Map.fetch(director.pieces, piece) do
+      {:ok, spec} -> if on_cue?(spec), do: drop_others(director, key), else: director
+      :error -> director
+    end
+  end
+
+  defp drop_others(director, {piece, _section} = key) do
+    others = for {{^piece, _} = other, _stems} <- director.rendered, other != key, do: other
+
+    %{
+      director
+      | rendered: Map.drop(director.rendered, others),
+        requested: Enum.reduce(others, director.requested, &MapSet.delete(&2, &1))
+    }
   end
 
   defp prioritise(%{wanted: nil} = director), do: director
@@ -398,7 +446,7 @@ defmodule Cauldron2D.Audio.Music do
     if director.live, do: Stage.stop_pattern(state.stage)
     opts = [gains: gains, fade_ms: @fade_ms] ++ bar_opt(director, state.rate)
     Stage.layers(state.stage, stems, opts)
-    %{director | playing: key, live: false}
+    forget_others(%{director | playing: key, live: false}, key)
   end
 
   defp bar_opt(%{playing: nil}, _rate), do: []

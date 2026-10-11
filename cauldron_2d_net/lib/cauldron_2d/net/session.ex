@@ -388,15 +388,17 @@ defmodule Cauldron2D.Net.Session do
 
     {:ok, audio} =
       Audio.start_link(
-        name: nil,
-        sink: sink,
-        sounds: if(sfx?, do: game.sounds(), else: fn _event -> nil end),
-        sfx: if(sfx?, do: levels.sfx, else: 0.0),
-        music: if(music?, do: levels.music, else: 0.0),
-        static_music: music == :static,
-        music_dir: Game.music_dir(game),
-        rate: format.rate,
-        channels: format.channels
+        [
+          name: nil,
+          sink: sink,
+          sounds: if(sfx?, do: game.sounds(), else: fn _event -> nil end),
+          sfx: if(sfx?, do: levels.sfx, else: 0.0),
+          music: if(music?, do: levels.music, else: 0.0),
+          static_music: music == :static,
+          music_dir: Game.music_dir(game),
+          rate: format.rate,
+          channels: format.channels
+        ] ++ Game.audio_options(game)
       )
 
     if music?, do: for({name, spec} <- game.music(), do: Music.piece(audio, name, spec))

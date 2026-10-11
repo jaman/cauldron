@@ -16,7 +16,7 @@ defmodule Cauldron2D.Drafter.Server do
   ## Options
 
     * `:game` — the module implementing `Cauldron2D.Client.Game`. Required
-    * `:port` — the ssh port. Default `2222`
+    * `:port` — the ssh port, `0` for any free one. Default `2222`
     * `:ip` — what to bind, as `Drafter.Server.start_ssh/2` takes it. Default `:any`
     * `:accounts` — the account file, or a running `Drafter.Accounts` server. Default
       `Cauldron2D.Paths.data(atlas, "accounts.terms")`
@@ -25,6 +25,11 @@ defmodule Cauldron2D.Drafter.Server do
     * `:system_dir` — the ssh host key directory. Default: drafter's temporary keys
     * `:register_as` — the name that registers. Default `"new"`
     * `:mount_props` — merged into every session's mount props. Default `%{}`
+    * `:send_buffer` — the bytes of each connection's send buffer
+      (`Drafter.Server.start_ssh/2`), so a session drawing faster than its connection
+      carries skips frames instead of falling behind. Default `65536`
+    * `:login_timeout` — the milliseconds a player has from connecting to logging in,
+      ssh's host key question and the password included. Default `600000`
     * `:web` — `{otp_app, endpoint, port}`: the game's Phoenix endpoint, started on
       every IPv4 interface at that port. Default: none
     * `:beacon` — call on the local network with `Cauldron2D.Beacon`. Default `true`
@@ -32,7 +37,8 @@ defmodule Cauldron2D.Drafter.Server do
     * `:node` — name this VM so other nodes can join its worlds, `false` for none.
       Default `<atlas>@<host>`, when the VM is not already named
 
-  Returns `{:ok, %{daemon, accounts, http, node, beacon}}`; `stop/1` stops what was
+  Returns `{:ok, %{daemon, port, accounts, http, node, beacon}}`, `port` the ssh port
+  served on; `stop/1` stops what was
   started, leaving the worlds registered.
   """
 
@@ -40,9 +46,13 @@ defmodule Cauldron2D.Drafter.Server do
 
   @supervisor Cauldron2D.Drafter.Server.Supervisor
   @sound_port 24_713
+  @send_buffer 65_536
+  @login_timeout 600_000
+  @closed "The server closed this session."
 
   @type t :: %{
           daemon: pid() | [pid()],
+          port: pos_integer(),
           accounts: pid(),
           http: pos_integer() | nil,
           node: node() | nil,
@@ -58,7 +68,9 @@ defmodule Cauldron2D.Drafter.Server do
     Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
     Drafter.Widget.Registry.register(Cauldron2D.Drafter.Surface)
 
-    with {:ok, accounts} <- accounts(game, opts),
+    with {:ok, port} <- free_port(Keyword.get(opts, :port, 2222)),
+         opts = Keyword.put(opts, :port, port),
+         {:ok, accounts} <- accounts(game, opts),
          {:ok, daemon} <- daemon(game, accounts, opts),
          {:ok, http, endpoint} <- web(Keyword.get(opts, :web)) do
       node = if Keyword.get(opts, :beacon, true), do: named_node(game, Keyword.get(opts, :node))
@@ -70,6 +82,7 @@ defmodule Cauldron2D.Drafter.Server do
       {:ok,
        %{
          daemon: daemon,
+         port: port,
          accounts: accounts,
          http: http,
          node: node,
@@ -79,14 +92,25 @@ defmodule Cauldron2D.Drafter.Server do
     end
   end
 
-  @doc "Stop what `start/1` started."
-  @spec stop(t()) :: :ok
-  def stop(%{daemon: daemon, accounts: accounts} = server) do
-    Drafter.Server.stop_ssh(daemon)
+  @doc """
+  Stop what `start/1` started. Returns once the ssh port, the web endpoint and the
+  beacon are stopped, so the port can be served on again at once. Then, from a process
+  of its own, each player connected over ssh is disconnected — their game left, their
+  terminal restored and `notice` shown on it (default "#{@closed}") — and the
+  accounts server is stopped; the caller may be a process those players' games call.
+  """
+  @spec stop(t(), String.t()) :: :ok
+  def stop(%{daemon: daemon, accounts: accounts} = server, notice \\ @closed) do
+    Drafter.Server.stop_ssh_listening(daemon)
     if endpoint = Map.get(server, :web), do: stop_web(endpoint)
     if beacon = Map.get(server, :beacon), do: GenServer.stop(beacon)
-    if is_pid(accounts) and Process.alive?(accounts), do: GenServer.stop(accounts)
+    {:ok, _disconnecting} = Task.start(fn -> disconnect(daemon, accounts, notice) end)
     :ok
+  end
+
+  defp disconnect(daemon, accounts, notice) do
+    Drafter.Server.stop_ssh(daemon, notice)
+    if is_pid(accounts) and Process.alive?(accounts), do: GenServer.stop(accounts)
   end
 
   defp accounts(game, opts) do
@@ -106,6 +130,16 @@ defmodule Cauldron2D.Drafter.Server do
   defp sound_ports(false), do: fn _number -> %{} end
   defp sound_ports(first), do: fn number -> %{pulse_port: first + number} end
 
+  defp free_port(0) do
+    with {:ok, socket} <- :gen_tcp.listen(0, []) do
+      {:ok, port} = :inet.port(socket)
+      :gen_tcp.close(socket)
+      {:ok, port}
+    end
+  end
+
+  defp free_port(port), do: {:ok, port}
+
   defp daemon(game, accounts, opts) do
     port = Keyword.get(opts, :port, 2222)
 
@@ -116,6 +150,8 @@ defmodule Cauldron2D.Drafter.Server do
         auth: {:accounts, accounts},
         register_as: Keyword.get(opts, :register_as, "new"),
         tunnel: true,
+        send_buffer: Keyword.get(opts, :send_buffer, @send_buffer),
+        login_timeout: Keyword.get(opts, :login_timeout, @login_timeout),
         mount_props:
           Map.merge(
             %{game: game, accounts: accounts, served_by: %{host: hostname(), port: port}},

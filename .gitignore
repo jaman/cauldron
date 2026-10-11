@@ -7,3 +7,5 @@
 *.ez
 erl_crash.dump
 .DS_Store
+ENGINE_ADDITIONS.md
+GAMEMAKER_DESIGN.md

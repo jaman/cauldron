@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0]
 
 ### Breaking changes
 
@@ -25,10 +25,11 @@
   (was `:arena`).
 * A `{module, function}` `:sheet_url` is called each time a sheet is sent — at the join
   and on every atlas change — rather than once at the connect.
-* Depends on the `gamepad` package.
 
 ### Added
 
+* A session starts its audio with the game's `audio/0` settings (`:voices`,
+  `:earshot`).
 * Game controllers in the browser: the world page loads `gamepad.js` (served by
   `Cauldron2D.Net.Pages` at `/gamepad.js`) and mounts `cauldron.js` with the game's
   `padmap/1`, asked with `%{username: name}` (`Cauldron2D.Input.Pad.default_map/1` of its
@@ -51,17 +52,20 @@
 
 ### Changed
 
+* Depends on the `gamepad` package.
 * `cauldron.js`: a controller holding a steering action drops the pointer's aim, as a
   steering key does.
 
 ### Fixed
 
+* `Cauldron2D.Net.Link.World` takes `Cauldron2D.World.join/4`'s join, and a player
+  joined with `frames: false` is sent no frames and plays no sound.
 * `cauldron.js` tilt on iOS asks for motion permission from a tap only, never at mount,
   so tilt steering starts on the first tap.
 
 ## 0.1.0
 
-* `Cauldron2D.Net.Game` behaviour, `Sheet`, `Frame`, `Session`, `Channel` and
+* `Cauldron2D.Net.Game` behaviour (it became `Cauldron2D.Client.Game`), `Sheet`, `Frame`, `Session`, `Channel` and
   `priv/static/cauldron.js`: a `cauldron_2d` world on a canvas over a Phoenix channel, with
   the player's sound as binary PCM on the same socket.
 * `Cauldron2D.Net.Wire`, `Link.Socket`, `Link.Local` and `Sound` — the wire's Elixir

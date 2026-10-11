@@ -51,6 +51,7 @@ defmodule Cauldron2D.Wx.View do
 
   import Bitwise
 
+  alias Cauldron2D.Client.Hud
   alias Cauldron2D.Net.{Link, Sound}
   alias Cauldron2D.Wx.{Const, Input, Painter, Sheet}
 
@@ -66,9 +67,13 @@ defmodule Cauldron2D.Wx.View do
   @spec new(term(), keyword()) :: term()
   def new(parent, opts \\ []), do: :wx_object.start_link(__MODULE__, {parent, opts}, [])
 
-  @doc "Join a world through a link: `{:socket, opts}` or `{:local, opts}`, the options of the link module less `:owner`."
-  @spec join(term(), {:socket | :local, keyword()}) :: :ok
-  def join(world, link), do: :wx_object.call(world, {:join, link})
+  @doc """
+  Join a world through a link: `{:socket, opts}` or `{:local, opts}`, the options of the
+  link module less `:owner`. Option `:opening` is rows of runs (`Cauldron2D.Client.Hud`)
+  drawn centred on the canvas until the world's first frame arrives; default none.
+  """
+  @spec join(term(), {:socket | :local, keyword()}, keyword()) :: :ok
+  def join(world, link, opts \\ []), do: :wx_object.call(world, {:join, link, opts})
 
   @doc "Leave the world."
   @spec leave(term()) :: :ok
@@ -193,6 +198,7 @@ defmodule Cauldron2D.Wx.View do
       bitmaps: :ets.new(Sheet, [:set, :public]),
       map: nil,
       frame: nil,
+      opening: [],
       font: font,
       scene: scene,
       sound: if(Keyword.get(opts, :sound, true), do: start_sound(), else: nil),
@@ -228,7 +234,7 @@ defmodule Cauldron2D.Wx.View do
   end
 
   @impl :wx_object
-  def handle_call({:join, {kind, opts}}, _from, state) do
+  def handle_call({:join, {kind, opts}, join_opts}, _from, state) do
     state = drop_link(state)
     module = link_module(kind)
 
@@ -247,6 +253,7 @@ defmodule Cauldron2D.Wx.View do
            | link: {module, link},
              map: nil,
              frame: nil,
+             opening: Keyword.get(join_opts, :opening, []),
              over: nil,
              pan: {0.0, 0.0},
              subject: nil,
@@ -387,7 +394,11 @@ defmodule Cauldron2D.Wx.View do
   def handle_info(_message, state), do: {:noreply, state}
 
   defp staged(state) do
-    :ets.insert(state.scene, {:scene, state.sheet, state.map, shown(state), state.layer})
+    :ets.insert(
+      state.scene,
+      {:scene, state.sheet, state.map, shown(state), state.layer, state.opening}
+    )
+
     state
   end
 
@@ -626,23 +637,45 @@ defmodule Cauldron2D.Wx.View do
 
   defp scene(table) do
     case :ets.lookup(table, :scene) do
-      [{:scene, sheet, map, frame, layer}] -> {sheet, map, frame, layer}
-      [] -> {nil, nil, nil, nil}
+      [{:scene, sheet, map, frame, layer, opening}] -> {sheet, map, frame, layer, opening}
+      [] -> {nil, nil, nil, nil, []}
     end
   end
 
   defp paint_canvas(canvas, table, font, size) do
-    {sheet, map, frame, layer} = scene(table)
+    {sheet, map, frame, layer, opening} = scene(table)
     :ets.update_counter(table, :counts, {3, 1})
     dc = :wxBufferedPaintDC.new(canvas)
     :wxDC.setBackground(dc, :wxBrush.new(if(sheet, do: sheet.void, else: {0, 0, 0})))
     :wxDC.clear(dc)
     draw_world(dc, sheet, map, frame, layer, size)
     draw_labels(dc, sheet, map, frame, size)
+    draw_opening(dc, font, frame, opening, size)
     draw_stats(dc, font, :ets.lookup(table, :stats))
     :wxBufferedPaintDC.destroy(dc)
     :ok
   end
+
+  defp draw_opening(dc, font, nil, [_ | _] = rows, {width, height}) do
+    :wxDC.setFont(dc, font)
+    {_width, line} = :wxDC.getTextExtent(dc, "M")
+    top = div(height - line * length(rows), 2)
+
+    rows
+    |> Enum.with_index()
+    |> Enum.each(fn {row, index} ->
+      runs = Hud.runs(row)
+      {row_width, _height} = :wxDC.getTextExtent(dc, Hud.text(row))
+
+      Enum.reduce(runs, div(width - row_width, 2), fn {text, _style} = run, x ->
+        draw_run(dc, text, Hud.colour(run) || {255, 255, 255}, {x, top + index * line})
+      end)
+    end)
+
+    :ok
+  end
+
+  defp draw_opening(_dc, _font, _frame, _rows, _size), do: :ok
 
   defp draw_stats(dc, font, [{:stats, text}]) when is_binary(text) do
     :wxDC.setFont(dc, font)
@@ -716,7 +749,7 @@ defmodule Cauldron2D.Wx.View do
   defp draw_world(_dc, _sheet, _map, _frame, _layer, _size), do: :ok
 
   defp paint_hud(hud, table, font, colours) do
-    {_sheet, _map, frame, _layer} = scene(table)
+    {_sheet, _map, frame, _layer, _opening} = scene(table)
     dc = :wxBufferedPaintDC.new(hud)
     :wxDC.setBackground(dc, :wxBrush.new(colours.background))
     :wxDC.clear(dc)

@@ -168,7 +168,7 @@ defmodule Cauldron2D.Net.Link.World do
   end
 
   @impl GenServer
-  def handle_call({:join, id, props, pid}, _from, state) do
+  def handle_call({:join, id, props, pid, frames?}, _from, state) do
     params =
       for {key, value} <- Map.take(props, [:team, :spectate]),
           value != nil and value != false,
@@ -184,8 +184,17 @@ defmodule Cauldron2D.Net.Link.World do
          ) do
       {:ok, link} ->
         monitor = Process.monitor(pid)
-        sound = if state.sound?, do: start_sound()
-        player = %{pid: pid, link: link, monitor: monitor, tick: 0, sound: sound}
+        sound = if state.sound? and frames?, do: start_sound()
+
+        player = %{
+          pid: pid,
+          link: link,
+          monitor: monitor,
+          tick: 0,
+          sound: sound,
+          frames?: frames?
+        }
+
         {:reply, :ok, %{state | players: Map.put(state.players, id, player)}}
 
       _refused ->
@@ -240,18 +249,22 @@ defmodule Cauldron2D.Net.Link.World do
 
   def handle_info({:cauldron_link, :frame, frame}, state) do
     players =
-      Map.new(state.players, fn {id, player} ->
-        send(
-          player.pid,
-          {:cauldron_frame,
-           %{
-             tick: player.tick,
-             view: %{wire: frame, map: state.map, sheet: state.sheet, world: state.world},
-             events: []
-           }}
-        )
+      Map.new(state.players, fn
+        {id, %{frames?: false} = player} ->
+          {id, player}
 
-        {id, %{player | tick: player.tick + 1}}
+        {id, player} ->
+          send(
+            player.pid,
+            {:cauldron_frame,
+             %{
+               tick: player.tick,
+               view: %{wire: frame, map: state.map, sheet: state.sheet, world: state.world},
+               events: []
+             }}
+          )
+
+          {id, %{player | tick: player.tick + 1}}
       end)
 
     {:noreply, %{state | players: players}}

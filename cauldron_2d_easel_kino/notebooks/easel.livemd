@@ -2,7 +2,7 @@
 
 ```elixir
 Mix.install([
-  {:cauldron_2d_easel_kino, "~> 0.1"}
+  {:cauldron_2d_easel_kino, "~> 0.2"}
 ])
 ```
 

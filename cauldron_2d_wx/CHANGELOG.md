@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0]
 
 ### Breaking changes
 
@@ -13,8 +13,7 @@
 
 ### Changed
 
-* The lobby is titled "Worlds" and lists worlds; the README and docs say world where
-  they said arena.
+* The lobby is titled "Worlds" and lists worlds.
 
 ## 0.1.0
 
@@ -27,7 +26,7 @@
 * `Cauldron2D.Wx.View.pointer/2` and the `:pointer` option: whether the pointer aims.
 * `Cauldron2D.Wx.View` `:on_stats`, `:show_stats` and `show_stats/2`: the frames received
   and the draws made each second, told to the game or drawn in the canvas corner.
-* `Cauldron2D.Wx.Link.Socket` delivers the server's `"audio"` format and takes an
+* `Cauldron2D.Net.Link.Socket` delivers the server's `"audio"` format and takes an
   `:audio` option to ask for one; `Sound.format/3` reopens the speaker at it, and the
   view does so on its own.
 * `Cauldron2D.Wx.View` `zoom: true` and `zoom/2`: `+`/`-`/`0` and the wheel change the

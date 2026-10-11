@@ -9,7 +9,7 @@ The pointer paints; every tool and colour has a key.
 ```elixir
 def deps do
   [
-    {:cauldron_2d_easel_drafter, "~> 0.1", only: :dev}
+    {:cauldron_2d_easel_drafter, "~> 0.2", only: :dev}
   ]
 end
 ```
@@ -33,8 +33,7 @@ to it (`Cauldron2D.Atlas.subscribe/1`) redraws with the new art on its next fram
 Beside the canvas the picture is shown at actual size, drawn by the engine's own surface
 widget the way a game draws it: through the terminal's graphics protocol (kitty, sixel,
 iTerm) where the terminal has one, animated at the picture's rate; as its glyph where it
-has not. `m` tiles it, for a picture meant to repeat. This is what french_curve gives the
-editor: the picture as the player will see it, not as blocks of cells.
+has not. `m` tiles it, for a picture meant to repeat.
 
 On the arts screen `D` derives an art from the one chosen — `name = from ART; colour K
 #rrggbb; flip h; over HAT 0 -2`, the line `Linocut.Derive` reads — kept in `atlas.txt`
@@ -49,6 +48,21 @@ own. Draw the knight once; the red knight is a line.
 This is a pixel-art tool: a picture is a palette of up to ninety colours and a grid of
 keys, which is what `.pic` holds and what every renderer draws. A `.png` with more
 colours than that is refused on load rather than quantised.
+
+## The sector editor
+
+`mix cauldron.sectors` opens `Cauldron2D.Easel.Drafter.SectorEditor` on a sector
+document, creating it on the first save if it does not exist:
+
+```
+mix cauldron.sectors priv/maps/hall.json
+mix cauldron.sectors priv/maps/hall.json --grid 16
+```
+
+`--grid` is the snap for a new document, in world units (default `32`). The document is a
+`Cauldron2D.Easel.Sectors` map: rooms drawn as polygons on a grid, joined where they share
+an edge, with heights, pictures and light set per room and per wall, and a history to undo
+through.
 
 ## License
 

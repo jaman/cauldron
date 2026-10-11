@@ -37,7 +37,9 @@ defmodule Cauldron2D.Drafter.Client do
     * `:game` — the client module. Required
     * `:username` — the player's name, set by the ssh transport. Default `"player"`
     * `:sink` — a `TuningFork.Sink` module or `{module, opts}` this player's audio plays
-      through. Default: the game's `sink/1` given all the mount props, else
+      through. Default: the game's `sink/1` given all the mount props, else for a session
+      served over ssh (`:served_by`) raw PCM to `127.0.0.1:<:pulse_port>`, the account's
+      tunnel (`TuningFork.Sink.Tcp`), or silence without one; for any other session
       `TuningFork.Sink.Speaker` when that package is present, else silence
     * `:settings` — the map `Cauldron2D.Drafter.Client.Settings.to_props/1` produced,
       from the account props; a settings file for the player overrides it. Default: the
@@ -82,7 +84,8 @@ defmodule Cauldron2D.Drafter.Client do
   game binds it, shows under the world how many frames a second the world sends and
   hides it again. `=` (or `+`) and `-` zoom the world in and out through the levels
   `Cauldron2D.Drafter.Surface.zoom_levels/2` gives for the display in use, the wheel
-  too (one step for the events a notch sends within 150 ms), and `0` puts the zoom
+  too (one step for the events a notch sends within 150 ms) unless the game binds the
+  wheel (`{:mouse, :wheel_up}`, `{:mouse, :wheel_down}`), and `0` puts the zoom
   back; the zoom shows under the world while it is not
   native. Watching (joined with `w`), the arrows and a drag with the left button pan
   the view, the wheel zooms about the pointer, and `0` recentres; flying, the view
@@ -92,16 +95,24 @@ defmodule Cauldron2D.Drafter.Client do
   The view: `v` cycles the projection (top-down, oblique, isometric, mode 7, first
   person, as the game's `look/0` lists them), `[` and `]`
   turn it — the isometric facing, or the eye by 15° in first person when the scene
-  gives no heading — `'` and `;` tilt the isometric diamond or pitch the eye. Three
+  gives no heading — `'` and `;` tilt the isometric diamond or pitch the eye. Four
   keys are unbound until a game binds them through `client_keys/0`: `display` toggles
-  pictures against block characters, `glyphs` cycles the glyph sets, `mouse_look` lets
+  pictures against block characters, `glyphs` cycles the glyph sets, `menu` opens the game's
+  own menu (its `open_menu/1`; see `Cauldron2D.Client.Game`), `mouse_look` lets
   the pointer turn and pitch the eye in first person; a drag turns and pitches it there
   whether or not `mouse_look` is on, and a click still reaches the game. What the view is, and how it is
   drawn, shows under the world when it is not the top-down default. A game's `look/0`
   sets the view it starts in.
 
+  Each connected controller plays one of the client's players — the player itself, then
+  its seats — as `Cauldron2D.Drafter.Client.Controllers` assigns them from the settings'
+  `pads`, and the settings' `controllers` list them for the game's menus; a controller
+  that plays no one is ignored during play, and while the game's menu is open any
+  controller works it. A controller moved to another player first lets go of what it
+  held for the one before.
+
   A controller: the left stick and d-pad hold the game's directions (`padmap/1`), the
-  right stick nudges the aim a tile at a time top-down and isometric and looks around
+  right stick, unless the padmap binds its axes to actions, nudges the aim a tile at a time top-down and isometric and looks around
   in first person, the triggers tilt the isometric diamond or pitch the eye — right up,
   left down, as far as they are pulled — `Start` cycles the projection and the bumpers
   turn; `client_pad/0` rebinds the client's own actions to buttons, and in the lobby
@@ -116,7 +127,7 @@ defmodule Cauldron2D.Drafter.Client do
   level, display (pixels where the terminal has them, braille, a block-character glyph
   set, or glyphs), frame rate
   (auto picks the terminal's best) — `←`/`→` change the item under the cursor, `Enter` on a binding then
-  a key or a mouse button adds it to the binding, `Backspace` removes the binding's last
+  a key, a mouse button or a notch of the wheel adds it to the binding, `Backspace` removes the binding's last
   key, `Esc` during a rebind cancels it. World: the game's bindings; `Tab`
   opens settings without leaving the ship; the pointer steers only when pointer
   steering is on, and a key bound to one of the game's `steering/0` actions takes over
@@ -134,7 +145,7 @@ defmodule Cauldron2D.Drafter.Client do
   alias Cauldron2D.Audio.Music
   alias Cauldron2D.Client.Game
   alias Cauldron2D.Drafter.{Chat, Surface}
-  alias Cauldron2D.Drafter.Client.{Screens, Settings}
+  alias Cauldron2D.Drafter.Client.{Controllers, Screens, Seats, Settings}
   alias Cauldron2D.Input.Pad
   alias Cauldron2D.Projection.Iso
   alias Cauldron2D.World.Presence
@@ -142,11 +153,14 @@ defmodule Cauldron2D.Drafter.Client do
   alias FrenchCurve.Backend.Cells
 
   @hold_ms 250
+  @namesakes 9
+  @menu_frame_ms 100
   @audio_stop_ms 2_000
   @default_keys %{
     back: :escape,
     title: :q,
     settings: :tab,
+    menu: nil,
     settings_menu: :s,
     talk: :t,
     watch: :w,
@@ -236,6 +250,10 @@ defmodule Cauldron2D.Drafter.Client do
       audio: start_audio(game, props, settings),
       input: nil,
       pad: Pad.new(padmap(game, props)),
+      seats: [],
+      devices: %{},
+      controllers: Controllers.new(),
+      player_id: nil,
       joined: nil,
       view: nil,
       geometry: nil,
@@ -257,6 +275,14 @@ defmodule Cauldron2D.Drafter.Client do
       talk: [],
       selected: :preset,
       summary: nil,
+      menu: nil,
+      menu_paused?: false,
+      menu_frame: 0,
+      requests: 0,
+      request: nil,
+      asked: nil,
+      return_props: nil,
+      world_ref: nil,
       summary_world: nil,
       rebinding: nil,
       cue: nil,
@@ -411,13 +437,16 @@ defmodule Cauldron2D.Drafter.Client do
   def handle_event({:key, :q, [:ctrl]}, _state), do: {:stop, :normal}
   def handle_event({:key, :c, [:ctrl]}, _state), do: {:stop, :normal}
 
-  def handle_event({:key_release_support, true}, state),
-    do:
-      {:ok,
-       %{
-         state
-         | input: state.input && Input.handle(state.input, {:key_release_support, true}, now())
-       }}
+  def handle_event({:key_release_support, true} = event, state) do
+    now = now()
+
+    {:ok,
+     %{
+       state
+       | input: state.input && Input.handle(state.input, event, now),
+         seats: Seats.key(state.seats, event, now)
+     }}
+  end
 
   def handle_event({:cell_size, _}, state), do: {:noreply, state}
 
@@ -459,6 +488,10 @@ defmodule Cauldron2D.Drafter.Client do
   defp screen_key(event, %{screen: :guide} = state), do: guide_key(event, state)
   defp screen_key(event, %{screen: :lobby} = state), do: lobby_key(event, state)
   defp screen_key(event, %{screen: :settings} = state), do: settings_key(event, state)
+
+  defp screen_key(event, %{screen: :play, menu: menu} = state) when menu != nil,
+    do: menu_event(event, state)
+
   defp screen_key(event, %{screen: :play} = state), do: play_event(event, state)
   defp screen_key({:key, :enter}, %{screen: :summary} = state), do: after_summary(state)
 
@@ -482,6 +515,16 @@ defmodule Cauldron2D.Drafter.Client do
   defp said_as(%{game: game, username: username}), do: Screens.player_label(game, username)
 
   @impl true
+  def on_timer(:menu_frame, %{menu: nil} = state), do: state
+
+  def on_timer(:menu_frame, state) do
+    Drafter.set_timeout(@menu_frame_ms, :menu_frame)
+    %{state | menu_frame: state.menu_frame + 1}
+  end
+
+  def on_timer(_timer, state), do: state
+
+  @impl true
   def on_message({:cauldron_frame, frame}, %{joined: joined} = state) when joined != nil do
     Trace.write(:frame, tick: frame.tick)
 
@@ -490,6 +533,7 @@ defmodule Cauldron2D.Drafter.Client do
         state
         | view: frame.view,
           input: Input.expire(state.input, now()),
+          seats: Seats.expire(state.seats, now()),
           fps: counted(state.fps, now())
       }
       |> followed()
@@ -498,10 +542,11 @@ defmodule Cauldron2D.Drafter.Client do
 
     Audio.listener(state.audio, state.game.listener(frame.view))
     Audio.play(state.audio, frame.events)
+    state = answer(state, Game.optional(state.game, :ask, [frame.view], nil))
 
     case outcome(state, frame.view) do
       nil ->
-        state |> push_input() |> cue_music()
+        state |> push_input() |> push_seats() |> cue_music()
 
       summary ->
         state
@@ -522,12 +567,14 @@ defmodule Cauldron2D.Drafter.Client do
     %{state | lobby: %{state.lobby | changes: state.lobby.changes + 1}}
   end
 
-  def on_message({:chat, :lobby, message}, state) do
-    %{
-      state
-      | lobby: %{state.lobby | messages: Enum.take(state.lobby.messages ++ [message], -100)}
-    }
-  end
+  def on_message({:chat, :lobby, message}, state), do: noted(state, message)
+
+  def on_message({:DOWN, ref, :process, _world, _reason}, %{world_ref: ref} = state)
+      when state.return_props != nil,
+      do: returned(%{state | world_ref: nil})
+
+  def on_message({:DOWN, ref, :process, _world, _reason}, %{world_ref: ref} = state),
+    do: world_gone(state)
 
   def on_message(_message, state), do: state
 
@@ -622,15 +669,46 @@ defmodule Cauldron2D.Drafter.Client do
   defp leave_settings(%{return: screen} = state), do: %{state | screen: screen}
 
   defp release_keys(%{input: nil} = state), do: state
-  defp release_keys(state), do: %{state | input: new_input(state)} |> push_input()
 
-  defp new_input(state) do
-    Input.new(state.settings.bindings,
+  defp release_keys(state) do
+    seats = Seats.release(state.seats, local_seats(state), input_options(state))
+    %{state | input: new_input(state), seats: seats} |> push_input() |> push_seats()
+  end
+
+  defp new_input(state), do: Input.new(state.settings.bindings, input_options(state))
+
+  defp input_options(state) do
+    [
       releases?: Context.key_release?(),
       toggles: state.game.toggles(),
       holds: optional(state.game, :holds, []),
       steering: optional(state.game, :steering, [])
-    )
+    ] ++ optional(state.game, :input_options, [options_of(state)], [])
+  end
+
+  defp local_seats(state),
+    do: optional(state.game, :local_seats, [Map.put(state.props, :settings, state.settings)], [])
+
+  defp join_seats(state, props) do
+    seats =
+      Seats.join(
+        state.joined.world,
+        state.player_id,
+        props,
+        local_seats(state),
+        padmap(state.game, state.props),
+        input_options(state)
+      )
+
+    assign_controllers(%{state | seats: seats})
+  end
+
+  defp push_seats(%{joined: nil} = state), do: state
+  defp push_seats(%{seats: []} = state), do: state
+
+  defp push_seats(state) do
+    look = look(state)
+    %{state | seats: Seats.send_input(state.seats, state.joined.world, &steered(&1, look))}
   end
 
   defp lobby_key({:mouse, %{type: :scroll, direction: :down}}, state), do: {:ok, select(state, 1)}
@@ -731,14 +809,16 @@ defmodule Cauldron2D.Drafter.Client do
     props = %{username: state.username} |> Map.merge(game_props) |> Map.merge(extra)
     {entry, local} = local_world(entry)
 
-    case Player.join(entry.world, state.username, props) do
-      :ok ->
+    case join_as(entry.world, state.username, props, frame_rate(state)) do
+      {:ok, player_id} ->
         Chat.join({:world, entry.id})
 
         state = %{
           state
           | joined: entry,
+            player_id: player_id,
             local_world: local,
+            world_ref: watch(entry.world),
             screen: :play,
             view: nil,
             last_input: nil,
@@ -751,21 +831,27 @@ defmodule Cauldron2D.Drafter.Client do
             drag: nil
         }
 
-        cue_music(%{state | input: new_input(state)})
+        %{state | input: new_input(state)} |> join_seats(props) |> cue_music()
 
       {:error, reason} ->
         if local, do: GenServer.stop(local)
 
-        notice = %{
+        noted(state, %{
           from: entry.name,
           text: "could not join: " <> Game.refusal_text(state.game, reason)
-        }
-
-        %{
-          state
-          | lobby: %{state.lobby | messages: Enum.take(state.lobby.messages ++ [notice], -100)}
-        }
+        })
     end
+  end
+
+  defp join_as(world, username, props, rate) do
+    [username | Enum.map(2..@namesakes, &"#{username} (#{&1})")]
+    |> Enum.reduce_while({:error, :taken}, fn id, _taken ->
+      case Player.join(world, id, props, frames: rate) do
+        :ok -> {:halt, {:ok, id}}
+        {:error, :taken} -> {:cont, {:error, :taken}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp local_world(%{world: {module, opts}} = entry) do
@@ -779,21 +865,45 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp leave_world(state) do
     try do
-      Player.leave(state.joined.world, state.username)
-      Chat.leave({:world, state.joined.id})
+      Seats.leave(state.seats, state.joined.world)
+      Player.leave(state.joined.world, state.player_id)
     catch
       :exit, _gone -> :ok
     end
 
+    forget_world(state)
+  end
+
+  defp world_gone(%{joined: entry} = state) do
+    state
+    |> forget_world()
+    |> Map.put(:screen, :lobby)
+    |> noted(%{from: entry.name, text: "#{entry.name} stopped"})
+  end
+
+  defp noted(state, message),
+    do: %{
+      state
+      | lobby: %{state.lobby | messages: Enum.take(state.lobby.messages ++ [message], -100)}
+    }
+
+  defp forget_world(state) do
+    Chat.leave({:world, state.joined.id})
+
     if state.local_world && Process.alive?(state.local_world),
       do: GenServer.stop(state.local_world)
+
+    if state.world_ref, do: Process.demonitor(state.world_ref, [:flush])
 
     %{
       state
       | joined: nil,
+        world_ref: nil,
         local_world: nil,
         view: nil,
         input: nil,
+        seats: [],
+        devices: %{},
         talking?: false,
         zoom: initial_zoom(state.game),
         pan: {0.0, 0.0},
@@ -802,8 +912,6 @@ defmodule Cauldron2D.Drafter.Client do
         drag: nil
     }
   end
-
-  defp toggle_pause(%{local_world: nil} = state), do: state
 
   defp toggle_pause(%{local_world: world} = state) do
     if World.paused?(world), do: World.resume(world), else: World.pause(world)
@@ -869,16 +977,29 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp apply_frame_rate(state) do
-    protocol = Surface.protocol(%Surface{mode: Settings.surface_mode(state.settings)})
-
-    placements? = FrenchCurve.Capability.placements?(Context.terminal_env())
-    rate = Settings.frame_rate(state.settings, protocol, placements?)
+    rate = frame_rate(state)
     Drafter.set_refresh_rate(Integer.to_string(rate) <> "fps")
+    paced_frames(state, rate)
+  end
+
+  defp frame_rate(state) do
+    protocol = Surface.protocol(%Surface{mode: Settings.surface_mode(state.settings)})
+    placements? = FrenchCurve.Capability.placements?(Context.terminal_env())
+    link = if Map.has_key?(state.props, :served_by), do: :ssh, else: :local
+    Settings.frame_rate(state.settings, protocol, placements?, link)
+  end
+
+  defp paced_frames(%{joined: nil}, _rate), do: :ok
+
+  defp paced_frames(state, rate) do
+    Player.frames(state.joined.world, state.player_id, rate)
+  catch
+    :exit, _gone -> :ok
   end
 
   defp put_settings(state, settings) do
     Audio.levels(state.audio, settings.sfx, settings.music)
-    %{state | settings: settings}
+    assign_controllers(%{state | settings: settings})
   end
 
   defp step_preset(state, delta) do
@@ -889,16 +1010,132 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp rebind_key({:key, :escape}), do: :cancel
-
-  defp rebind_key({:mouse, %{type: :mouse_down, button: button}})
-       when button in [:left, :middle, :right], do: {:mouse, button}
-
   defp rebind_key({:key_down, key, _mods}) when key in [:enter, :escape, :tab], do: nil
-  defp rebind_key({:key_down, key, []}), do: key
-  defp rebind_key({:key_down, key, mods}), do: {key, mods}
-  defp rebind_key({:key, key}) when key not in [:enter, :tab], do: key
-  defp rebind_key({:key, key, mods}), do: {key, mods}
-  defp rebind_key(_event), do: nil
+  defp rebind_key({:key, key}) when key in [:enter, :tab], do: nil
+  defp rebind_key(event), do: Input.spec_of(event)
+
+  defp open_menu(state), do: opened_menu(state, state.game.open_menu(state.settings))
+
+  defp open_menu(state, arg) do
+    if function_exported?(state.game, :open_menu, 2),
+      do: opened_menu(state, state.game.open_menu(state.settings, arg)),
+      else: open_menu(state)
+  end
+
+  defp opened_menu(state, menu) do
+    paused? = pause_for_menu(state.local_world)
+    Drafter.set_timeout(@menu_frame_ms, :menu_frame)
+    %{release_keys(state) | menu: menu, menu_paused?: paused?}
+  end
+
+  defp pause_for_menu(nil), do: false
+
+  defp pause_for_menu(world) do
+    if Process.alive?(world) and not World.paused?(world) do
+      World.pause(world)
+      true
+    else
+      false
+    end
+  end
+
+  defp resume_after_menu(%{menu: nil, menu_paused?: true, local_world: world} = state) do
+    if world && Process.alive?(world), do: World.resume(world)
+    %{state | menu_paused?: false}
+  end
+
+  defp resume_after_menu(state), do: state
+
+  defp menu_event(event, state) do
+    if menu_input?(event) do
+      result = state.game.menu_event(state.menu, event, state.settings)
+
+      state =
+        state
+        |> take_menu_settings(Map.fetch!(result, :settings))
+        |> Map.put(:menu, Map.get(result, :menu))
+        |> resume_after_menu()
+        |> menu_request(Map.get(result, :request))
+
+      Audio.play(state.audio, Map.get(result, :sounds, []))
+      if Map.get(result, :leave, false), do: leave(state), else: {:ok, state}
+    else
+      {:noreply, state}
+    end
+  end
+
+  defp menu_input?({:key, _key}), do: true
+  defp menu_input?({:key, _key, _mods}), do: true
+  defp menu_input?({:mouse, %{type: type}}), do: type in [:mouse_down, :scroll]
+  defp menu_input?(_event), do: false
+
+  defp menu_pad_key(:dpad_up), do: :up
+  defp menu_pad_key(:dpad_down), do: :down
+  defp menu_pad_key(:dpad_left), do: :left
+  defp menu_pad_key(:dpad_right), do: :right
+  defp menu_pad_key(:a), do: :enter
+  defp menu_pad_key(button) when button in [:b, :start], do: :escape
+  defp menu_pad_key(_button), do: nil
+
+  defp take_menu_settings(%{settings: settings} = state, settings), do: state
+
+  defp take_menu_settings(state, settings) do
+    state
+    |> put_settings(settings)
+    |> save_settings()
+    |> release_keys()
+  end
+
+  defp answer(state, nil), do: state
+  defp answer(%{asked: number} = state, {number, _ask}), do: state
+
+  defp answer(state, {number, :quit}) do
+    send(self(), :shutdown)
+    %{state | asked: number}
+  end
+
+  defp answer(%{menu: nil} = state, {number, :menu}) do
+    if function_exported?(state.game, :open_menu, 1),
+      do: open_menu(%{state | asked: number}),
+      else: %{state | asked: number}
+  end
+
+  defp answer(%{menu: nil} = state, {number, {:menu, arg}}) do
+    if function_exported?(state.game, :open_menu, 1) or
+         function_exported?(state.game, :open_menu, 2),
+       do: open_menu(%{state | asked: number}, arg),
+       else: %{state | asked: number}
+  end
+
+  defp answer(state, {number, {:enter, props}}) do
+    returning = state.return_props || state.props
+    state = leave_world(%{state | asked: number})
+    enter(%{state | props: Map.merge(state.props, props), return_props: returning}, :first)
+  end
+
+  defp answer(state, {number, _ask}), do: %{state | asked: number}
+
+  defp returned(%{return_props: props} = state) do
+    state = leave_world(state)
+    enter(%{state | props: props, return_props: nil}, :first)
+  end
+
+  defp watch(world) do
+    case GenServer.whereis(world) do
+      pid when is_pid(pid) -> Process.monitor(pid)
+      _none -> nil
+    end
+  end
+
+  defp menu_request(state, nil), do: state
+
+  defp menu_request(state, request) do
+    count = state.requests + 1
+    push_input(%{state | requests: count, request: {count, request}})
+  end
+
+  defp options_of(%{settings: %{options: options}}), do: options
+  defp options_of(_state), do: %{}
 
   defp save_settings(state) do
     Settings.save(state.settings, state.game, state.username, state.accounts, kind: state.kind)
@@ -916,6 +1153,7 @@ defmodule Cauldron2D.Drafter.Client do
     :back,
     :title,
     :settings,
+    :menu,
     :fps,
     :pause,
     :talk,
@@ -948,18 +1186,23 @@ defmodule Cauldron2D.Drafter.Client do
 
   @wheel_ms 150
 
-  defp play_event({:mouse, %{type: :scroll, direction: direction} = mouse}, state)
-       when direction in [:up, :down] do
-    at = now()
+  defp play_event({:mouse, %{px: {px, py}} = payload}, %{look: %{projection: :picture}} = state) do
+    payload = Map.delete(payload, :px)
 
-    if state.wheel_at != nil and at - state.wheel_at < @wheel_ms do
-      {:noreply, state}
-    else
-      step = if direction == :up, do: 1, else: -1
+    case Context.cell_size() do
+      {cell_width, cell_height} ->
+        play_event({:mouse, %{payload | x: px / cell_width, y: py / cell_height}}, state)
 
-      {:ok,
-       zoom_step(%{state | wheel_at: at}, step, if(state.watching?, do: pane_cell(state, mouse)))}
+      nil ->
+        play_event({:mouse, payload}, state)
     end
+  end
+
+  defp play_event({:mouse, %{type: :scroll, direction: direction}} = event, state)
+       when direction in [:up, :down] do
+    if game_wheel?(state, direction),
+      do: play_input(event, state),
+      else: zoom_wheel(event, state)
   end
 
   defp play_event(
@@ -1005,6 +1248,24 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp play_event(event, state), do: play_input(event, state)
+
+  defp game_wheel?(%{watching?: true}, _direction), do: false
+  defp game_wheel?(%{input: nil}, _direction), do: false
+  defp game_wheel?(state, :up), do: Input.binds?(state.input, {:mouse, :wheel_up})
+  defp game_wheel?(state, :down), do: Input.binds?(state.input, {:mouse, :wheel_down})
+
+  defp zoom_wheel({:mouse, %{direction: direction} = mouse}, state) do
+    at = now()
+
+    if state.wheel_at != nil and at - state.wheel_at < @wheel_ms do
+      {:noreply, state}
+    else
+      step = if direction == :up, do: 1, else: -1
+
+      {:ok,
+       zoom_step(%{state | wheel_at: at}, step, if(state.watching?, do: pane_cell(state, mouse)))}
+    end
+  end
 
   @doc """
   Whether a drag with the left button turns the view the look describes: it does in first
@@ -1154,6 +1415,13 @@ defmodule Cauldron2D.Drafter.Client do
   defp play_action(leave, _event, state) when leave in [:back, :title], do: leave(state)
 
   defp play_action(:settings, _event, state), do: {:ok, to_settings(state)}
+
+  defp play_action(:menu, event, state) do
+    if Code.ensure_loaded?(state.game) and function_exported?(state.game, :open_menu, 1),
+      do: {:ok, open_menu(state)},
+      else: play_input(event, state)
+  end
+
   defp play_action(:fps, _event, state), do: {:ok, %{state | fps?: not state.fps?}}
   defp play_action(:zoom_in, _event, state), do: {:ok, zoom_step(state, 1, nil)}
   defp play_action(:zoom_out, _event, state), do: {:ok, zoom_step(state, -1, nil)}
@@ -1182,7 +1450,14 @@ defmodule Cauldron2D.Drafter.Client do
 
   @doc "The client's projection settings for the world: projection, facing, tilt, heading and pitch, as `Cauldron2D.Drafter.Surface` takes them."
   @spec look(map()) :: map()
-  def look(%{look: look}), do: look
+  def look(%{look: look} = state),
+    do:
+      Map.merge(look, %{
+        menu: Map.get(state, :menu),
+        menu_frame: Map.get(state, :menu_frame, 0),
+        options: options_of(state)
+      })
+
   def look(_state), do: @look
 
   defp cycle_projection(%{look: %{projections: projections} = look} = state) do
@@ -1281,7 +1556,12 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp play_input(event, %{input: input} = state) when input != nil do
     trace_event(event)
-    {:ok, %{state | input: Input.handle(input, event, now())} |> push_input()}
+    now = now()
+
+    {:ok,
+     %{state | input: Input.handle(input, event, now), seats: Seats.key(state.seats, event, now)}
+     |> push_input()
+     |> push_seats()}
   end
 
   defp play_input(_event, state), do: {:noreply, state}
@@ -1289,10 +1569,77 @@ defmodule Cauldron2D.Drafter.Client do
   defp padmap(game, props),
     do: optional(game, :padmap, [props], Pad.default_map(game.actions()))
 
-  defp pad_event(event, state) do
+  defp pad_event(%{type: :connected, device: device, name: name}, state) do
+    controllers = Controllers.connect(state.controllers, device, name)
+    {:ok, assign_controllers(%{state | controllers: controllers})}
+  end
+
+  defp pad_event(%{type: :disconnected, device: device} = event, state) do
+    slot = Map.get(state.devices, device, 0)
+    state = %{state | controllers: Controllers.disconnect(state.controllers, device)}
+
+    if slot == 0,
+      do: own_pad_event(event, assign_controllers(state)),
+      else: {:ok, state |> release_device(slot, event) |> assign_controllers() |> push_seats()}
+  end
+
+  defp pad_event(%{device: device} = event, %{screen: :play, menu: nil} = state) do
+    state = known(state, device)
+
+    case Map.get(state.devices, device) do
+      0 -> own_pad_event(event, state)
+      nil -> {:noreply, state}
+      slot -> {:ok, push_seats(%{state | seats: Seats.controller(state.seats, slot - 1, event)})}
+    end
+  end
+
+  defp pad_event(event, state), do: own_pad_event(event, state)
+
+  defp known(state, device) do
+    if Controllers.known?(state.controllers, device),
+      do: state,
+      else:
+        assign_controllers(%{state | controllers: Controllers.seen(state.controllers, device)})
+  end
+
+  defp assign_controllers(state) do
+    slots = Controllers.slots(state.controllers, state.settings.pads, 1 + length(state.seats))
+
+    state =
+      Enum.reduce(state.devices, state, fn {device, slot}, state ->
+        if Map.get(slots, device) == slot,
+          do: state,
+          else: release_device(state, slot, %{type: :disconnected, device: device})
+      end)
+
+    settings = %{state.settings | controllers: Controllers.listed(state.controllers, slots)}
+    %{state | devices: slots, settings: settings}
+  end
+
+  defp release_device(state, nil, _event), do: state
+  defp release_device(state, 0, event), do: %{state | pad: Pad.handle(state.pad, event)}
+
+  defp release_device(state, slot, event),
+    do: %{state | seats: Seats.controller(state.seats, slot - 1, event)}
+
+  defp own_pad_event(event, state) do
     pad = Pad.handle(state.pad, event)
     pad_screen(event, %{state | pad: pad})
   end
+
+  defp pad_screen(
+         %{type: :button, pressed: true, button: button},
+         %{screen: :play, menu: menu} = state
+       )
+       when menu != nil do
+    case menu_pad_key(button) do
+      nil -> {:noreply, state}
+      key -> menu_event({:key, key}, state)
+    end
+  end
+
+  defp pad_screen(_event, %{screen: :play, menu: menu} = state) when menu != nil,
+    do: {:noreply, state}
 
   defp pad_screen(
          %{type: :button, pressed: true, button: button} = event,
@@ -1314,9 +1661,14 @@ defmodule Cauldron2D.Drafter.Client do
   defp pad_screen(%{type: :axis, axis: axis, value: value} = event, %{screen: :play} = state)
        when axis in [:right_x, :right_y] do
     cond do
-      Pad.aim_stick(state.pad) == :right -> pad_input(event, state)
-      abs(value) >= 0.5 -> nudge_aim(state, axis, value)
-      true -> pad_input(event, state)
+      Pad.aim_stick(state.pad) == :right or Pad.binds_axis?(state.pad, axis) ->
+        pad_input(event, state)
+
+      abs(value) >= 0.5 ->
+        nudge_aim(state, axis, value)
+
+      true ->
+        pad_input(event, state)
     end
   end
 
@@ -1500,21 +1852,30 @@ defmodule Cauldron2D.Drafter.Client do
   defp push_input(state) do
     read = Input.state(state.input)
 
-    sent = %{
-      steered(read, look(state))
-      | aim:
-          state.pad_aim ||
-            if(state.settings.pointer and read.aim != nil, do: aim_in_world(state, read.aim))
-    }
+    sent =
+      %{
+        steered(read, look(state))
+        | aim:
+            state.pad_aim ||
+              if(state.settings.pointer and read.aim != nil, do: aim_in_world(state, read.aim))
+      }
+      |> with_options(options_of(state))
+      |> with_request(Map.get(state, :request))
 
     if sent != state.last_input do
       Trace.write(:input, held: Enum.join(sent.held, ","), aim: aim_text(sent.aim))
-      Player.input(state.joined.world, state.username, sent)
+      Player.input(state.joined.world, state.player_id, sent)
       %{state | last_input: sent}
     else
       state
     end
   end
+
+  defp with_options(sent, options) when map_size(options) == 0, do: sent
+  defp with_options(sent, options), do: Map.put(sent, :options, options)
+
+  defp with_request(sent, nil), do: sent
+  defp with_request(sent, request), do: Map.put(sent, :request, request)
 
   defp after_summary(state) do
     case next_world(state) do
@@ -1573,7 +1934,8 @@ defmodule Cauldron2D.Drafter.Client do
       heading: Map.get(scene, :heading) || look.heading,
       pitch: look.pitch,
       density: Map.get(look, :density),
-      eye: eye_height(game, scene)
+      eye: eye_height(game, scene),
+      frame: Map.get(scene, :frame)
     }
 
     cell = {x - rect.x, y - rect.y}
@@ -1623,24 +1985,31 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp start_audio(game, props, settings) do
-    sink = Map.get(props, :sink) || optional(game, :sink, [props], default_sink())
+    sink = Map.get(props, :sink) || optional(game, :sink, [props], default_sink(props))
 
     {:ok, audio} =
       Audio.start_link(
-        name: nil,
-        sink: sink,
-        sounds: game.sounds(),
-        sfx: settings.sfx,
-        music: settings.music,
-        music_dir: Game.music_dir(game),
-        parallel: true
+        [
+          name: nil,
+          sink: sink,
+          sounds: game.sounds(),
+          sfx: settings.sfx,
+          music: settings.music,
+          music_dir: Game.music_dir(game),
+          parallel: true
+        ] ++ Game.audio_options(game)
       )
 
     for {name, spec} <- game.music(), do: Music.piece(audio, name, spec)
     audio
   end
 
-  defp default_sink,
+  defp default_sink(%{served_by: _server, pulse_port: port}) when is_integer(port),
+    do: {TuningFork.Sink.Tcp, port: port}
+
+  defp default_sink(%{served_by: _server}), do: TuningFork.Sink.Silent
+
+  defp default_sink(_props),
     do:
       if(Code.ensure_loaded?(TuningFork.Sink.Speaker),
         do: TuningFork.Sink.Speaker,

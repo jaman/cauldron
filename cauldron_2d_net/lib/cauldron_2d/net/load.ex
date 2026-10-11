@@ -81,8 +81,12 @@ defmodule Cauldron2D.Net.Load do
   @spec stop() :: :ok
   def stop do
     case Process.whereis(__MODULE__) do
-      nil -> :ok
-      runner -> send(runner, :stop) && :ok
+      nil ->
+        :ok
+
+      runner ->
+        send(runner, :stop)
+        :ok
     end
   end
 

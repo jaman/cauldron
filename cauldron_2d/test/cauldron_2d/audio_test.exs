@@ -64,10 +64,10 @@ defmodule Cauldron2D.AudioTest do
 
       before = Rendered.count()
       Audio.play(audio, [:ping])
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm, []}}}, 500
       assert byte_size(pcm) > 44_100 * 0.05 * 4 and byte_size(pcm) < 44_100 * 0.06 * 4
       Audio.play(audio, [:ping])
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, ^pcm}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, ^pcm, []}}}, 500
       assert Rendered.count() == before + 1
     end
 
@@ -75,7 +75,7 @@ defmodule Cauldron2D.AudioTest do
       audio = start(stage, sounds: fn _event -> nil end)
 
       assert Audio.play(audio, [:whatever]) == :ok
-      refute_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm}}}, 200
+      refute_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm, _}}}, 200
     end
 
     test "an event that is not a sound, a result or a message a game emits beside its sounds, is passed over",
@@ -88,7 +88,7 @@ defmodule Cauldron2D.AudioTest do
                :ping
              ]) == :ok
 
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm, []}}}, 500
       assert Process.alive?(audio)
     end
 
@@ -97,10 +97,10 @@ defmodule Cauldron2D.AudioTest do
       Audio.levels(audio, 0.5, 0.3)
       Audio.play(audio, [:ping])
 
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, half}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, half, []}}}, 500
       Audio.levels(audio, 1.0, 0.3)
       Audio.play(audio, [:ping])
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, full}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, full, []}}}, 500
       assert_in_delta TuningFork.Mixer.peak(half) / TuningFork.Mixer.peak(full), 0.5, 0.01
     end
 
@@ -109,14 +109,14 @@ defmodule Cauldron2D.AudioTest do
       audio = start(stage, sounds: fn :chime -> run end)
       Audio.play(audio, [:chime])
 
-      for _ <- 1..3, do: assert_receive({:stage, {:"$gen_cast", {:play_pcm, _}}}, 1_000)
+      for _ <- 1..3, do: assert_receive({:stage, {:"$gen_cast", {:play_pcm, _, []}}}, 1_000)
     end
 
     test "several events in a frame all sound", %{stage: stage} do
       audio = start(stage, sounds: fn _ -> beep() end)
       Audio.play(audio, [:one, :two, :three])
 
-      for _ <- 1..3, do: assert_receive({:stage, {:"$gen_cast", {:play_pcm, _}}}, 500)
+      for _ <- 1..3, do: assert_receive({:stage, {:"$gen_cast", {:play_pcm, _, []}}}, 500)
     end
   end
 
@@ -125,7 +125,7 @@ defmodule Cauldron2D.AudioTest do
       audio = start(stage, sounds: fn :bang -> beep(1.0) end, sfx: 1.0)
       Audio.play(audio, [{:bang, {50.0, 50.0}}])
 
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm, []}}}, 500
       {left, right} = sides(pcm)
       assert_in_delta left, right, 2
       assert left > 20_000
@@ -136,7 +136,7 @@ defmodule Cauldron2D.AudioTest do
       Audio.listener(audio, {10.0, 10.0})
       Audio.play(audio, [{:bang, {20.0, 10.0}}])
 
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm, []}}}, 500
       {left, right} = sides(pcm)
       assert right > left * 1.5
       assert right < 20_000 and right > 8_000
@@ -147,7 +147,7 @@ defmodule Cauldron2D.AudioTest do
       Audio.listener(audio, {10.0, 10.0})
       Audio.play(audio, [{:bang, {50.0, 10.0}}])
 
-      refute_receive {:stage, {:"$gen_cast", {:play_pcm, _}}}, 200
+      refute_receive {:stage, {:"$gen_cast", {:play_pcm, _, _}}}, 200
     end
 
     test "an event within a tile is at full level", %{stage: stage} do
@@ -155,9 +155,133 @@ defmodule Cauldron2D.AudioTest do
       Audio.listener(audio, {10.0, 10.0})
       Audio.play(audio, [{:bang, {10.5, 10.0}}])
 
-      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm}}}, 500
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm, []}}}, 500
       {left, _right} = sides(pcm)
       assert left > 20_000
+    end
+  end
+
+  describe "keyed events" do
+    defp long_tone, do: Voice.new(shape: :sine, freq: 440.0, envelope: Envelope.hit(2.0))
+
+    test "a keyed event sounds mono PCM under its key, placed against the listener",
+         %{stage: stage} do
+      audio = start(stage, sounds: fn :call -> long_tone() end, sfx: 1.0, earshot: 21.0)
+      Audio.listener(audio, {10.0, 10.0})
+      Audio.play(audio, [Audio.keyed(:announcer, :call, {20.0, 10.0})])
+
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, pcm, opts}}}, 500
+      assert byte_size(pcm) == byte_size(Rendered.fetch(long_tone(), 44_100))
+      assert opts[:key] == :announcer
+      assert_in_delta opts[:gain], 0.55, 0.001
+      assert_in_delta opts[:pan], 10.0 / 21.0, 0.001
+    end
+
+    test "keyed music is its stereo recording, a layer from its own start, levelled and dropped by key",
+         %{stage: stage} do
+      stereo = :binary.copy(<<100::16-signed-little, -100::16-signed-little>>, 64)
+
+      audio =
+        start(stage,
+          sounds: fn _ -> nil end,
+          recordings: fn :theme -> %{rate: 44_100, channels: 2, pcm: stereo} end
+        )
+
+      Audio.play(audio, [Audio.keyed(:title, :theme, {:level, 0.5, 0.0}, loop: true, music: true)])
+
+      assert_receive {:stage, {:"$gen_cast", {:layers, %{title: ^stereo}, opts}}}, 500
+      assert opts[:from_start] and opts[:keep]
+      assert opts[:gains] == %{title: 0.5}
+
+      Audio.play(audio, [Audio.moved(:title, {:level, 0.25, 0.0})])
+      assert_receive {:stage, {:"$gen_cast", {:layer_gains, %{title: 0.25}}}}, 500
+
+      Audio.play(audio, [Audio.stopped(:title)])
+      assert_receive {:stage, {:"$gen_cast", {:drop_layers, [:title]}}}, 500
+    end
+
+    test "moving the listener places the keyed sound again", %{stage: stage} do
+      audio = start(stage, sounds: fn :call -> long_tone() end, sfx: 1.0, earshot: 21.0)
+      Audio.listener(audio, {10.0, 10.0})
+      Audio.play(audio, [Audio.keyed(:announcer, :call, {20.0, 10.0})])
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm, _opts}}}, 500
+
+      Audio.listener(audio, {30.0, 10.0})
+
+      assert_receive {:stage, {:"$gen_cast", {:place, :announcer, opts}}}, 500
+      assert_in_delta opts[:gain], 0.55, 0.001
+      assert_in_delta opts[:pan], -10.0 / 21.0, 0.001
+    end
+
+    test "moved places the sound at its new position", %{stage: stage} do
+      audio = start(stage, sounds: fn :call -> long_tone() end, sfx: 1.0, earshot: 21.0)
+      Audio.listener(audio, {10.0, 10.0})
+      Audio.play(audio, [Audio.keyed(:announcer, :call, {20.0, 10.0})])
+      Audio.play(audio, [Audio.moved(:announcer, {10.0, 10.0})])
+
+      assert_receive {:stage, {:"$gen_cast", {:place, :announcer, opts}}}, 500
+      assert opts[:gain] == 1.0
+      assert opts[:pan] == 0.0
+    end
+
+    test "a keyed sound past earshot keeps sounding at no level", %{stage: stage} do
+      audio = start(stage, sounds: fn :call -> long_tone() end, sfx: 1.0, earshot: 21.0)
+      Audio.listener(audio, {10.0, 10.0})
+      Audio.play(audio, [Audio.keyed(:announcer, :call, {90.0, 10.0})])
+
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm, opts}}}, 500
+      assert opts[:gain] == 0.0
+    end
+
+    test "a keyed sound at a level plays at that level, scaled by the effects level",
+         %{stage: stage} do
+      audio = start(stage, sounds: fn :call -> long_tone() end, sfx: 0.5)
+      Audio.listener(audio, {10.0, 10.0})
+      Audio.play(audio, [Audio.keyed(:spark, :call, {:level, 0.8, -0.6})])
+
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm, opts}}}, 500
+      assert_in_delta opts[:gain], 0.4, 0.001
+      assert_in_delta opts[:pan], -0.6, 0.001
+    end
+
+    test "the listener moving leaves a sound at a level where the game put it",
+         %{stage: stage} do
+      audio = start(stage, sounds: fn :call -> long_tone() end, sfx: 1.0)
+      Audio.play(audio, [Audio.keyed(:spark, :call, {:level, 0.8, -0.6})])
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm, _opts}}}, 500
+
+      Audio.listener(audio, {30.0, 10.0})
+      refute_receive {:stage, {:"$gen_cast", {:place, :spark, _}}}, 200
+
+      Audio.play(audio, [Audio.moved(:spark, {:level, 0.2, 0.9})])
+      assert_receive {:stage, {:"$gen_cast", {:place, :spark, opts}}}, 500
+      assert_in_delta opts[:gain], 0.2, 0.001
+      assert_in_delta opts[:pan], 0.9, 0.001
+    end
+
+    test "a level a stage would refuse is refused where the event is built" do
+      assert_raise ArgumentError, fn -> Audio.keyed(:spark, :call, {:level, -1.0, 0.0}) end
+      assert_raise ArgumentError, fn -> Audio.moved(:spark, {:level, 0.5}) end
+    end
+
+    test "stopped lets the key go and it is no longer placed", %{stage: stage} do
+      audio = start(stage, sounds: fn :call -> long_tone() end, sfx: 1.0)
+      Audio.play(audio, [Audio.keyed(:announcer, :call), Audio.stopped(:announcer, 0.2)])
+
+      assert_receive {:stage, {:"$gen_cast", {:release, :announcer, 0.2}}}, 500
+      Audio.listener(audio, {1.0, 1.0})
+      refute_receive {:stage, {:"$gen_cast", {:place, :announcer, _}}}, 200
+    end
+
+    test "a keyed sound that has ended is no longer placed", %{stage: stage} do
+      short = Voice.new(shape: :sine, freq: 440.0, envelope: Envelope.hit(0.02))
+      audio = start(stage, sounds: fn :tick -> short end, sfx: 1.0)
+      Audio.play(audio, [Audio.keyed(:clock, :tick)])
+      assert_receive {:stage, {:"$gen_cast", {:play_pcm, _pcm, _opts}}}, 500
+
+      Process.sleep(100)
+      Audio.listener(audio, {1.0, 1.0})
+      refute_receive {:stage, {:"$gen_cast", {:place, :clock, _}}}, 200
     end
   end
 

@@ -30,7 +30,7 @@ defmodule Cauldron2D.Net.Pages do
 
   use Plug.Router
 
-  alias Cauldron2D.Client.Game
+  alias Cauldron2D.Client.{Game, Hud}
   alias Cauldron2D.Input.Pad
   alias Cauldron2D.Net.{Keys, Sheet}
 
@@ -273,12 +273,18 @@ defmodule Cauldron2D.Net.Pages do
     """
   end
 
-  defp world_page(_opts, world) do
+  defp world_page(opts, world) do
     [
-      ~s|<div class="world-page" id="world"><div class="stage"><canvas></canvas><div class="over" id="over" hidden><h2 id="over-title"></h2><div id="over-lines"></div><p><a class="button" id="over-again" href="">again</a> <a class="button" id="over-lobby" href="">lobby</a></p></div></div>|,
+      ~s|<div class="world-page" id="world"><div class="stage"><canvas></canvas><div class="opening" id="opening">#{opening_lines(opts, world)}</div><div class="over" id="over" hidden><h2 id="over-title"></h2><div id="over-lines"></div><p><a class="button" id="over-again" href="">again</a> <a class="button" id="over-lobby" href="">lobby</a></p></div></div>|,
       ~s|<aside class="hud" id="hud"></aside></div>|,
-      ~s|<p class="note" id="status">joining #{e(world.name)}…  <kbd>p</kbd> pauses a world of your own, <kbd>+</kbd><kbd>−</kbd> zoom</p>|
+      ~s|<p class="note" id="status"><kbd>p</kbd> pauses a world of your own, <kbd>+</kbd><kbd>−</kbd> zoom</p>|
     ]
+  end
+
+  defp opening_lines(opts, world) do
+    for row <- Game.optional(opts.game, :opening, [world], []),
+        into: "",
+        do: ~s|<p>#{e(Hud.text(row))}</p>|
   end
 
   defp world_script(opts, conn, world, name) do
@@ -328,7 +334,7 @@ defmodule Cauldron2D.Net.Pages do
         steering: #{Jason.encode!(steering)},
         pause: "KeyP",
         zoom: { min: 2, max: 64 },
-        onJoin: function () { status.textContent = "in #{e(world.name)} as #{e(name)}"; game.levels(settings.sfx == null ? 0.85 : settings.sfx, settings.music == null ? 0.35 : settings.music); },
+        onJoin: function () { document.getElementById("opening").hidden = true; status.textContent = "in #{e(world.name)} as #{e(name)}"; game.levels(settings.sfx == null ? 0.85 : settings.sfx, settings.music == null ? 0.35 : settings.music); },
         onError: function (reason) { status.textContent = "could not join: " + reason; },
         onOver: function (outcome) {
           document.getElementById("over-title").textContent = outcome.title;
@@ -447,6 +453,7 @@ defmodule Cauldron2D.Net.Pages do
     .joins a{margin-right:.6rem;color:#8fb2ff}
     .world-page{display:flex;gap:1rem}.stage{position:relative;flex:1;min-height:60vh;background:#000}.stage canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
     .hud{width:18rem;font-family:ui-monospace,monospace;white-space:pre;font-size:14px}.hud div{margin:0}
+    .opening{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}.opening p{margin:0}
     .over{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.7)}
     .settings label{display:block;margin:.6rem 0}.preset dt{font-weight:bold;display:inline-block;width:10rem}.preset dd{display:inline;margin:0}.preset dd::after{content:"";display:block}
     .guide dt{margin-top:.6rem;font-weight:bold}.art{display:inline-block;background-repeat:no-repeat;image-rendering:pixelated;transform:scale(2);transform-origin:left center;margin-right:1rem;vertical-align:middle}

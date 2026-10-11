@@ -593,7 +593,7 @@ watcher the frames a recorded player saw.
 
 `Cauldron2D.Tuning` from step 1 is also what a settings page shows: `describe/1` lists
 every setting with its value, limits and text; `step/3` moves one by a twentieth of its
-range. Carom binds keys to that.
+range. A game can bind keys to it.
 
 `CAULDRON_TRACE=1 mix cistern` writes a trace of every key, every input sent and every
 frame received; `mix cauldron.report --from key --to frame` tells you how long the game
@@ -601,16 +601,16 @@ takes to answer.
 
 ## 10. Where next
 
-Three games in the repository use everything above in different ways:
+Games built on Cauldron use everything above in different ways:
 
-- **Carom** — an Arkanoid. Its art is drawn in code with `FrenchCurve.Draw`; its physics
-  is `Cauldron2D.Collision`; its tuning keys change the paddle and the ball while you
-  play; its music is five pieces, one a level.
-- **Scriber** — a roguelike. Turn-based: its world runs with `tick: :on_input`, so it
-  steps only when a key arrives. It has screens of its own — a console with a shell-like
-  prompt — so it runs its own `Drafter.App` and starts the world itself rather than
-  using the ready-made client. Its creatures hunt by sound.
-- **ExPilot** — a multiplayer XPilot. Ships from an outline turned to every heading with
+- An Arkanoid. Its art is drawn in code with `FrenchCurve.Draw`; its physics is
+  `Cauldron2D.Collision`; its tuning keys change the paddle and the ball while you play;
+  its music is five pieces, one a level.
+- A roguelike. Turn-based: its world runs with `tick: :on_input`, so it steps only when
+  a key arrives. It has screens of its own — a console with a shell-like prompt — so it
+  runs its own `Drafter.App` and starts the world itself rather than using the
+  ready-made client. Its creatures hunt by sound.
+- A multiplayer XPilot. Ships from an outline turned to every heading with
   `Linocut.headings/3`; maps in XPilot's own file format through `Cauldron2D.Map`; a
   server over ssh with accounts; worlds on other nodes and other servers joined through
   `Cauldron2D.Net.Remote`; a ledger of results.

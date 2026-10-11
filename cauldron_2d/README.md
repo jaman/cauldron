@@ -9,14 +9,15 @@ many players, plays its sound and puts it on screen wherever you point it.
 ```elixir
 def deps do
   [
-    {:cauldron_2d, "~> 0.1"},
+    {:cauldron_2d, "~> 0.2"},
     {:cauldron_2d_drafter, "~> 0.1"},
+    {:linocut, "~> 0.1"},
     {:tuning_fork_speaker, "~> 0.1"}
   ]
 end
 ```
 
-Then read [Your first game](tutorial.md): it builds a small game from nothing — the game
+Then read [Your first game](guides/tutorial.md): it builds a small game from nothing — the game
 as a value, its tests, its art from `.pic` files, the terminal front end with settings
 and a hud, sound and music, a second player and a robot, the browser and the window —
 and every step is a working example in the repository.
@@ -56,7 +57,7 @@ The pieces, and where they live:
 | `Cauldron2D.Replay` | a record of joins and input that rebuilds the same game; `Replay.Viewer` plays it back to a watcher |
 | `Cauldron2D.Audio` | effects placed around a listener, and music in sections and layers, per player |
 | `Cauldron2D.Client.Game` | what a game gives every front end — terminal, browser, window — to put its worlds in front of a player; `Client.Hud` is the hud's data |
-| `Cauldron2D.Worlds` | the worlds a game offers: a world each with its children, started on first use and swept when idle; `Stats` says how the node keeps up |
+| `Cauldron2D.Worlds` | the worlds a game offers: a world each with its children, started on first use and swept when idle; `Cauldron2D.Stats` says how the node keeps up |
 | `Cauldron2D.Robot` | a computer player: a process that joins as `{:robot, n}` and decides through a brain module on a cadence set by its skill |
 | `Cauldron2D.Grid.Path`, `Cauldron2D.Grid.Coarse`, `Cauldron2D.Grid.Fov` | ways across a grid, in blocks, and what can be seen |
 | `Cauldron2D.Minimap` | the whole map in a few rows of braille with marks |
@@ -119,8 +120,7 @@ consults a map of bricks. Neither tells the engine anything else about itself.
 
 ### The fast path
 
-Drawing every tile into a shared raster would be about 245,000 map writes a frame at 16 px
-tiles and a 40×24 viewport. `Cauldron2D.Surface` touches no pixel on the frame path:
+`Cauldron2D.Surface` touches no pixel on the frame path:
 
 * **a tile is composited once.** A cell's appearance is fully described by
   `{base, overlays, tint}`; each distinct combination is alpha-blended once into a flat RGBA
@@ -128,8 +128,7 @@ tiles and a 40×24 viewport. `Cauldron2D.Surface` touches no pixel on the frame 
 * **a frame is built by slicing.** Pixel row *n* of a row of tiles is `binary_part/3` of each
   tile at the same offset, concatenated — sub-binaries, no copying, no arithmetic per pixel
 
-A 40×24 viewport is ~15,000 `binary_part` calls, about **1 ms**, and the result goes straight
-into `FrenchCurve.Raster.from_rgba/4`.
+The result goes straight into `FrenchCurve.Raster.from_rgba/4`.
 
 **Movers** — sprites at fractional positions, for anything that is not on the grid — are a
 separate path that touches only the rows they land on, so a frame with none pays nothing for
@@ -158,12 +157,6 @@ section's chains stacked, so a cue sounds at the next bar with nothing rendered 
 player's music level is the pattern's master gain on the stage, so a change reaches notes
 already sounding. A layer given as a score, a function or PCM (`{:pcm, binary}`) is rendered once and cached
 instead, two stems at a time, the cued section first.
-
-## Built with it
-
-* **Scriber** — a turn-based roguelike with a console inside it
-* **Carom** — a real-time Arkanoid
-* **ExPilot** — a multiplayer XPilot over ssh, in a browser and in a window
 
 ## License
 

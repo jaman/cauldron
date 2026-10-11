@@ -12,7 +12,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
   import Drafter.App
 
-  alias Cauldron2D.Client.Hud
+  alias Cauldron2D.Client.{Game, Hud}
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.Drafter.Client.Settings
   alias Cauldron2D.Drafter.Surface
@@ -480,7 +480,13 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
   @doc "The world: the world with the game's hud beside or under it, and the hints when asked."
   @spec play(map()) :: term()
-  def play(%{view: nil}), do: vertical([label("joining…", align: :center)])
+  def play(%{view: nil, game: game, joined: world}) do
+    vertical(
+      [label("", flex: 1)] ++
+        Enum.map(Game.optional(game, :opening, [world], []), &run_label(&1, align: :center)) ++
+        [label("", flex: 1)]
+    )
+  end
 
   def play(%{game: game, view: view, settings: settings} = state) do
     scene = Client.scene(state)
@@ -507,6 +513,11 @@ defmodule Cauldron2D.Drafter.Client.Screens do
          pitch: look.pitch,
          density: Map.get(look, :density),
          eye: Client.eye_height(game, scene),
+         picture: Map.get(scene, :picture),
+         native: Map.get(scene, :native),
+         native_scale: Map.get(scene, :native_scale, :fit),
+         picture_format: Map.get(scene, :picture_format, :rgba),
+         swap: Map.get(scene, :swap, false),
          on_geometry: :play_geometry,
          image_throttle: {1, :tick},
          image_priority: :normal,
@@ -527,10 +538,10 @@ defmodule Cauldron2D.Drafter.Client.Screens do
       else: []
   end
 
-  @doc "A row of runs as one label."
-  @spec run_label(Hud.row()) :: term()
-  def run_label(row) do
-    label(for {text, style} <- Hud.runs(row), do: {text, run_style(style)})
+  @doc "A row of runs as one label, with any label options."
+  @spec run_label(Hud.row(), keyword()) :: term()
+  def run_label(row, opts \\ []) do
+    label(for({text, style} <- Hud.runs(row), do: {text, run_style(style)}), opts)
   end
 
   defp run_style(style) do
@@ -568,7 +579,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     end
   end
 
-  defp look_note(%{projection: :top}), do: nil
+  defp look_note(%{projection: projection}) when projection in [:top, :picture], do: nil
 
   defp look_note(%{projection: :iso, facing: facing, tilt: tilt} = look) do
     turn = iso_turn(facing, Map.get(look, :facings, 4))
@@ -592,7 +603,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
   defp iso_turn(facing, facings), do: "facing #{round(facing * 360 / facings)}°"
 
   defp drawing_note(%{settings: %{display: :auto}} = state) do
-    if Client.look(state).projection == :top,
+    if Client.look(state).projection in [:top, :picture],
       do: nil,
       else: picture_note(Surface.protocol(%Surface{mode: nil}))
   end

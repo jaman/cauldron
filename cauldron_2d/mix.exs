@@ -1,7 +1,7 @@
 defmodule Cauldron2D.MixProject do
   use Mix.Project
 
-  @version "0.1.4"
+  @version "0.2.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "A 2D tile engine for terminals: a grid of tile ids, cheaply, as pixels or glyphs."
 
@@ -13,6 +13,7 @@ defmodule Cauldron2D.MixProject do
       compilers: [:elixir_make | Mix.compilers()],
       make_targets: ["all"],
       make_clean: ["clean"],
+      make_env: %{"PRIV_DIR" => "priv/native/#{:erlang.system_info(:system_architecture)}"},
       description: @description,
       start_permanent: Mix.env() == :prod,
       elixirc_options: [warnings_as_errors: true],
@@ -37,12 +38,12 @@ defmodule Cauldron2D.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:elixir_make, "~> 0.9", runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:french_curve, "~> 0.1.4", "../../french_curve", override: true),
-      family(:linocut, "~> 0.1.4", "../linocut", []),
+      family(:french_curve, "~> 0.2.0", "../../french_curve", override: true),
+      family(:linocut, "~> 0.2.0", "../linocut", []),
       # Synthesis and mixing. Playing the result through a speaker is
       # `tuning_fork_speaker`, which a game adds if it wants to be heard — the engine works
       # without it and stays silent.
-      family(:tuning_fork, "~> 0.1.11", "../../tuning_fork/tuning_fork", [])
+      family(:tuning_fork, "~> 0.1.12", "../../tuning_fork/tuning_fork", [])
     ]
   end
 

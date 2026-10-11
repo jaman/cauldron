@@ -15,20 +15,15 @@ defmodule Cauldron2D.Projection.Volume.Native do
 
   @doc false
   def load_nif do
-    :cauldron_2d
-    |> :code.priv_dir()
-    |> Path.join("volume_nif")
-    |> to_charlist()
+    "volume_nif"
+    |> Cauldron2D.Native.path()
     |> :erlang.load_nif(0)
-    |> case do
-      :ok -> :ok
-      {:error, _reason} -> :ok
-    end
+    |> then(&:persistent_term.put({__MODULE__, :native}, &1 == :ok))
   end
 
   @doc "Whether the library is loaded and volumes are drawn in C."
   @spec available?() :: boolean()
-  def available?, do: false
+  def available?, do: :persistent_term.get({__MODULE__, :native}, false)
 
   @doc """
   `pixels`, a `width` by `height` rectangle of RGBA, with `volume` blended in.

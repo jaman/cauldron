@@ -3,17 +3,6 @@
 Puts a [`cauldron_2d`](https://hexdocs.pm/cauldron_2d) world on screen through [drafter](https://hexdocs.pm/drafter). Two
 tiers, and a game picks the one it needs:
 
-## Installation
-
-```elixir
-def deps do
-  [
-    {:cauldron_2d_drafter, "~> 0.1"},
-    {:tuning_fork_speaker, "~> 0.1"}
-  ]
-end
-```
-
 * **Facilities** — a widget and helpers any drafter application drops into its own render
   tree. They assume nothing about what kind of game is on screen.
   * `Cauldron2D.Drafter.Surface`, the `cauldron_surface` widget: a viewport onto a grid and
@@ -25,6 +14,19 @@ end
   the shape "title, lobby of worlds, settings, world". It is boilerplate for that shape and
   nothing else in the library depends on it; a game with a different shape writes its own
   `Drafter.App` on the facilities.
+
+## Installation
+
+```elixir
+def deps do
+  [
+    {:cauldron_2d_drafter, "~> 0.2"},
+    {:tuning_fork_speaker, "~> 0.1"}
+  ]
+end
+```
+
+Needs drafter `~> 0.5`; the `gamepad` package is pulled in for game controllers.
 
 ## The surface
 
@@ -105,14 +107,12 @@ below.
   iTerm2 / sixel escape sequence. drafter owns placing and clearing it
 * **text** — `render/2` draws two-cell glyphs in truecolour, from the same cells
 
-The pixel path also returns blank strips, because the cells under an image still have to be
-painted with something or the previous frame shows through the transparent parts of the art.
+The pixel path also returns blank strips that paint the cells under the image.
 
 ## Compression
 
 kitty transmits are `compress: true` by default here. A tilemap is a handful of tiles stamped
-hundreds of times, which is about as compressible as image data gets — measured at ~300× on a
-full viewport, for roughly a millisecond of deflate. Pass `compress: false` for a terminal
+hundreds of times and compresses well. Pass `compress: false` to skip it, as for a terminal
 whose kitty support is partial.
 
 ## License

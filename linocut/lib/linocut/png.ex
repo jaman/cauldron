@@ -79,7 +79,7 @@ defmodule Linocut.Png do
 
     {rows, _prior} =
       Enum.map_reduce(1..height//1, {raw, prior}, fn _,
-                                                     {<<filter, line::binary-size(stride),
+                                                     {<<filter, line::binary-size(^stride),
                                                         rest::binary>>, prior} ->
         row = reconstruct(filter, line, prior, bpp)
         {row, {rest, row}}
@@ -161,7 +161,7 @@ defmodule Linocut.Png do
   defp row_rgba(row, %{colour_type: 0, depth: depth} = png) do
     top = Bitwise.bsl(1, depth) - 1
 
-    for(<<value::size(depth) <- row>>,
+    for(<<value::size(^depth) <- row>>,
       into: <<>>,
       do: <<grey(value, top), grey(value, top), grey(value, top), key_alpha(png, value)>>
     )
@@ -172,7 +172,7 @@ defmodule Linocut.Png do
     palette = List.to_tuple(Map.get(png, :palette, []))
     alphas = Map.get(png, :trns, <<>>)
 
-    for(<<index::size(depth) <- row>>, into: <<>>, do: palette_pixel(palette, alphas, index))
+    for(<<index::size(^depth) <- row>>, into: <<>>, do: palette_pixel(palette, alphas, index))
     |> take_pixels(png.width)
   end
 

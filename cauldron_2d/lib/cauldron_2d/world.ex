@@ -6,10 +6,17 @@ defmodule Cauldron2D.World do
 
   Players join from their own processes with `Cauldron2D.Player.join/3`; each tick the
   world applies the input they sent, steps the game once per due step, and sends every
-  player `{:cauldron_frame, %{tick: n, view: view, events: events}}`. A player whose
+  player whose frame is due `{:cauldron_frame, %{tick: n, view: view, events: events}}`
+  — every tick, or as often as the player asked (`join/4`'s `:frames`, `frames/3`),
+  the view built only for those frames. A player whose
   process exits is removed. Every join and leave is told to the subscribers of
   `Cauldron2D.World.Presence`, and each tick's events to those of
   `Cauldron2D.World.Events`. `stats/1` says how the world is keeping up.
+
+  The next tick is timed only once the last has run, for when the next step falls due,
+  so the world's mailbox never holds more than one tick: input sent while a slow tick
+  runs is applied before the next step, however far the world falls behind. Steps
+  more than `Cauldron2D.Loop`'s `:max_steps` behind are dropped, not owed.
 
   A world started with `tick: :on_input` has no clock: it runs one step, with `dt` of
   `1 / hz`, each time a player's input arrives, and sends views after it. That is the
@@ -62,9 +69,22 @@ defmodule Cauldron2D.World do
     GenServer.start_link(__MODULE__, opts, gen_opts)
   end
 
-  @doc "Add the calling process as player `id`. `{:error, reason}` is the game's refusal."
-  @spec join(GenServer.server(), player_id(), map()) :: :ok | {:error, term()}
-  def join(world, id, props), do: GenServer.call(world, {:join, id, props, self()})
+  @doc """
+  Add the calling process as player `id`. `{:error, :taken}` when another process plays
+  as `id`; any other `{:error, reason}` is the game's refusal.
+
+  `:frames` is how often the player is sent a frame: `true` (default) after every tick
+  that steps, a number for that many frames a second at most, or `false` for none — a
+  second seat played from a process that already receives frames as another player. A
+  frame carries the events of every step since the player's last frame.
+  """
+  @spec join(GenServer.server(), player_id(), map(), keyword()) :: :ok | {:error, term()}
+  def join(world, id, props, opts \\ []),
+    do: GenServer.call(world, {:join, id, props, self(), Keyword.get(opts, :frames, true)})
+
+  @doc "Change how often player `id` is sent frames, as `join/4`'s `:frames` takes it."
+  @spec frames(GenServer.server(), player_id(), boolean() | number()) :: :ok
+  def frames(world, id, rate), do: GenServer.call(world, {:frames, id, rate})
 
   @doc "Remove player `id`."
   @spec leave(GenServer.server(), player_id()) :: :ok
@@ -112,7 +132,7 @@ defmodule Cauldron2D.World do
     hz = Keyword.get(opts, :hz, 50)
     tick = Keyword.get(opts, :tick, :fixed)
     loop = Loop.new(hz)
-    if tick == :fixed, do: :timer.send_interval(max(1, round(1000 / hz)), :tick)
+    if tick == :fixed, do: send(self(), :tick)
 
     {:ok,
      %{
@@ -132,20 +152,21 @@ defmodule Cauldron2D.World do
   end
 
   @impl GenServer
-  def handle_call({:join, id, props, pid}, _from, world) do
-    case world.game.join(world.state, id, props) do
-      {:ok, state} ->
-        monitor = Process.monitor(pid)
-        players = Map.put(world.players, id, %{pid: pid, monitor: monitor})
-        Presence.broadcast(self(), :joined, id)
-        {:reply, :ok, %{world | state: state, players: players} |> record({:join, id, props})}
-
-      {:error, reason} ->
-        {:reply, {:error, reason}, world}
-    end
+  def handle_call({:join, id, props, pid, frames?}, _from, world) do
+    if taken?(world, id, pid),
+      do: {:reply, {:error, :taken}, world},
+      else: joined(world, id, props, pid, frames?)
   end
 
   def handle_call({:leave, id}, _from, world), do: {:reply, :ok, remove(world, id)}
+
+  def handle_call({:frames, id, rate}, _from, world) do
+    case Map.fetch(world.players, id) do
+      {:ok, player} -> {:reply, :ok, put_in(world.players[id], paced(player, rate, world))}
+      :error -> {:reply, :ok, world}
+    end
+  end
+
   def handle_call(:players, _from, world), do: {:reply, Map.keys(world.players), world}
   def handle_call(:snapshot, _from, world), do: {:reply, world.state, world}
   def handle_call(:game, _from, world), do: {:reply, world.game, world}
@@ -157,6 +178,28 @@ defmodule Cauldron2D.World do
     do: {:reply, :ok, %{world | paused?: false, loop: Loop.new(world.hz)}}
 
   def handle_call(:paused?, _from, world), do: {:reply, world.paused?, world}
+
+  defp taken?(world, id, pid) do
+    case Map.get(world.players, id) do
+      %{pid: ^pid} -> false
+      %{pid: _held_by} -> true
+      nil -> false
+    end
+  end
+
+  defp joined(world, id, props, pid, frames?) do
+    case world.game.join(world.state, id, props) do
+      {:ok, state} ->
+        monitor = Process.monitor(pid)
+        player = paced(%{pid: pid, monitor: monitor, events: []}, frames?, world)
+        players = Map.put(world.players, id, player)
+        Presence.broadcast(self(), :joined, id)
+        {:reply, :ok, %{world | state: state, players: players} |> record({:join, id, props})}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, world}
+    end
+  end
 
   @impl GenServer
   def handle_cast({:input, id, input}, world) do
@@ -178,20 +221,16 @@ defmodule Cauldron2D.World do
   @impl GenServer
   def handle_info(:tick, %{paused?: true} = world) do
     {_due, loop} = Loop.advance(world.loop, Loop.now())
+    Process.send_after(self(), :tick, max(1, round(Loop.dt(loop) * 1000)))
     {:noreply, %{world | loop: loop}}
   end
 
   def handle_info(:tick, world) do
     {due, loop} = Loop.advance(world.loop, Loop.now())
     world = %{world | loop: loop} |> apply_pending()
-
-    if due > 0 do
-      started = System.monotonic_time(:microsecond)
-      world = world |> run(due, Loop.dt(loop)) |> broadcast()
-      {:noreply, timed(world, System.monotonic_time(:microsecond) - started, due)}
-    else
-      {:noreply, world}
-    end
+    world = if due > 0, do: stepped(world, due), else: world
+    Process.send_after(self(), :tick, Loop.wait(world.loop, Loop.now()))
+    {:noreply, world}
   end
 
   def handle_info({:DOWN, monitor, :process, _pid, _reason}, world) do
@@ -199,6 +238,12 @@ defmodule Cauldron2D.World do
       {id, _player} -> {:noreply, remove(world, id)}
       nil -> {:noreply, world}
     end
+  end
+
+  defp stepped(world, due) do
+    started = System.monotonic_time(:microsecond)
+    world = world |> run(due, Loop.dt(world.loop)) |> broadcast()
+    timed(world, System.monotonic_time(:microsecond) - started, due)
   end
 
   defp timed(world, elapsed_us, due) do
@@ -246,18 +291,36 @@ defmodule Cauldron2D.World do
     %{world | state: state, steps: world.steps + due}
   end
 
+  defp paced(player, false, _world), do: Map.merge(player, %{frames?: false, every: nil, next: 0})
+  defp paced(player, true, _world), do: Map.merge(player, %{frames?: true, every: 1, next: 0})
+
+  defp paced(player, rate, world) when is_number(rate) and rate > 0,
+    do: Map.merge(player, %{frames?: true, every: max(1, round(world.hz / rate)), next: 0})
+
   defp broadcast(world) do
     {events, state} = world.game.drain_events(world.state)
 
-    Enum.each(world.players, fn {id, %{pid: pid}} ->
-      send(
-        pid,
-        {:cauldron_frame, %{tick: world.steps, view: world.game.view(state, id), events: events}}
-      )
-    end)
+    players =
+      Map.new(world.players, fn {id, player} -> {id, framed(world, state, id, player, events)} end)
 
     Events.broadcast(self(), world.steps, events)
-    %{world | state: state}
+    %{world | state: state, players: players}
+  end
+
+  defp framed(_world, _state, _id, %{frames?: false} = player, _events), do: player
+
+  defp framed(world, _state, _id, %{next: next} = player, events) when world.steps < next,
+    do: %{player | events: player.events ++ events}
+
+  defp framed(world, state, id, player, events) do
+    frame = %{
+      tick: world.steps,
+      view: world.game.view(state, id),
+      events: player.events ++ events
+    }
+
+    send(player.pid, {:cauldron_frame, frame})
+    %{player | events: [], next: world.steps + player.every}
   end
 
   defp remove(world, id) do

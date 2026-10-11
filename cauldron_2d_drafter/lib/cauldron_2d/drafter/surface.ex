@@ -65,6 +65,27 @@ defmodule Cauldron2D.Drafter.Surface do
       from images the terminal stores between frames rather than one image composited
       every  frame; see below
     * `:projection` — `:top` (default), `:iso` or `:first_person`; see below
+    * `:picture` — `fn {width, height}, aspect -> raster end`: a picture the game draws
+      itself, in place of the atlas world, at the pane's size in pixels; `aspect` is how
+      wide each pixel is on screen against its height. Given, the surface draws it in
+      every mode — through the terminal's pixel protocol, or as block glyphs — and
+      `:projection` is `:picture`; `:focus`, `:cell` and `:movers` are not read
+    * `:native` — `{width, height}`, the picture's own size in pixels. Given, on a kitty or
+      iTerm2 terminal the picture is asked for at that size times a whole number
+      (`:native_scale`), widened or heightened to the pane's shape, and the terminal
+      scales it to the pane, in place of the pane's cells times the density. Default
+      `nil`
+    * `:native_scale` — `:fit`, the largest whole number at which the picture fits the
+      pane's pixels (the terminal's cell size times the pane's cells, where the terminal
+      reports one, else the cells times the density), or a positive integer. Default
+      `:fit`
+    * `:picture_format` — `:rgba` (default), deflated raw pixels; or `:png`, a PNG,
+      palette when the frame has at most 256 colours
+      (`FrenchCurve.Backend.Kitty.encode/2`), on a kitty terminal that keeps images
+    * `:swap` — `true` stores each frame under the one of two kitty image ids not on
+      screen, places it and only then deletes the other, as one synchronized update, so
+      the pane is never blank between frames, on a kitty terminal that keeps images.
+      Default `false`
     * `:facing` — which step of a turn the isometric view is at, `0` to `facings - 1`.
       A fraction is allowed and turns the view by part of a step. Default `0`
     * `:facings` — how many steps make a full turn, as a number for the isometric view or
@@ -183,7 +204,13 @@ defmodule Cauldron2D.Drafter.Surface do
     pitch: 0.0,
     facings: 4,
     density: nil,
-    eye: nil
+    eye: nil,
+    picture: nil,
+    native: nil,
+    native_scale: :fit,
+    picture_format: :rgba,
+    swap: false,
+    frame: nil
   ]
 
   @projections [:top, :oblique, :iso, :mode7, :first_person]
@@ -192,7 +219,7 @@ defmodule Cauldron2D.Drafter.Surface do
   @braille_luminance 64
   @cell_sets [:half, :quad, :sextant, :octant]
   @fitted [:kitty, :iterm2]
-  @sampled [:first_person, :mode7]
+  @sampled [:first_person, :mode7, :picture]
   @sampled_density 4
   @panned [:iso, :oblique]
   @zoom_in [4, 2]
@@ -214,6 +241,7 @@ defmodule Cauldron2D.Drafter.Surface do
 
   @doc "The zoom levels the surface draws `projection` at exactly, largest first; see `zoom_levels/2`."
   @spec zoom_levels(Atlas.name(), atom() | nil, atom()) :: [number()]
+  def zoom_levels(_atlas, _mode, :picture), do: [1]
   def zoom_levels(_atlas, _mode, :iso), do: [2, 1, 0.5, 0.25]
   def zoom_levels(_atlas, _mode, :oblique), do: [2, 1, 0.5]
 
@@ -277,7 +305,12 @@ defmodule Cauldron2D.Drafter.Surface do
       :heading,
       :pitch,
       :density,
-      :eye
+      :eye,
+      :picture,
+      :native,
+      :native_scale,
+      :picture_format,
+      :swap
     ])
     |> Map.new()
     |> Map.put(:id, Keyword.get(opts, :__widget_id__))
@@ -307,7 +340,12 @@ defmodule Cauldron2D.Drafter.Surface do
       placements: Map.get(props, :placements, :auto),
       layers: Map.get(props, :layers, []),
       on_geometry: Map.get(props, :on_geometry),
-      widget_id: Map.get(props, :id)
+      widget_id: Map.get(props, :id),
+      picture: Map.get(props, :picture),
+      native: Map.get(props, :native),
+      native_scale: Map.get(props, :native_scale) || :fit,
+      picture_format: Map.get(props, :picture_format) || :rgba,
+      swap: Map.get(props, :swap, false)
     }
     |> looking(props)
   end
@@ -315,7 +353,8 @@ defmodule Cauldron2D.Drafter.Surface do
   defp looking(state, props) do
     %{
       state
-      | projection: Map.get(props, :projection) || :top,
+      | projection:
+          if(Map.get(props, :picture), do: :picture, else: Map.get(props, :projection) || :top),
         facing: Map.get(props, :facing) || 0,
         facings: Map.get(props, :facings) || 4,
         tilt: Map.get(props, :tilt) || 1.0,
@@ -353,7 +392,12 @@ defmodule Cauldron2D.Drafter.Surface do
         placements: fold(props, :placements, state.placements),
         layers: fold(props, :layers, state.layers),
         on_geometry: fold(props, :on_geometry, state.on_geometry),
-        density: fold(props, :density, state.density)
+        density: fold(props, :density, state.density),
+        picture: fold(props, :picture, state.picture),
+        native: fold(props, :native, state.native),
+        native_scale: fold(props, :native_scale, state.native_scale) || :fit,
+        picture_format: fold(props, :picture_format, state.picture_format) || :rgba,
+        swap: fold(props, :swap, state.swap) || false
     }
     |> looked_at(props)
   end
@@ -361,7 +405,11 @@ defmodule Cauldron2D.Drafter.Surface do
   defp looked_at(state, props) do
     %{
       state
-      | projection: fold(props, :projection, state.projection) || :top,
+      | projection:
+          if(state.picture,
+            do: :picture,
+            else: fold(props, :projection, state.projection) || :top
+          ),
         facing: fold(props, :facing, state.facing) || 0,
         facings: fold(props, :facings, state.facings) || 4,
         tilt: fold(props, :tilt, state.tilt) || 1.0,
@@ -409,6 +457,15 @@ defmodule Cauldron2D.Drafter.Surface do
   end
 
   @impl true
+  def render(%__MODULE__{projection: :picture, picture: nil}, rect), do: blank(rect, {0, 0, 0})
+
+  def render(%__MODULE__{projection: :picture} = state, rect) do
+    case protocol(state) do
+      nil -> picture_cells(state, rect, if(state.mode in @cell_sets, do: state.mode, else: :half))
+      _pixel -> blank(rect, {0, 0, 0})
+    end
+  end
+
   def render(%__MODULE__{focus: nil}, rect), do: blank(rect, {0, 0, 0})
   def render(%__MODULE__{cell: nil}, rect), do: blank(rect, {0, 0, 0})
 
@@ -565,6 +622,16 @@ defmodule Cauldron2D.Drafter.Surface do
       |> Strip.new()
       |> Strip.fit_to_width(max(rect.width, 1))
     end)
+  end
+
+  defp picture_cells(state, rect, set) do
+    {across, down} = Cells.subpixels(set)
+    size = {max(rect.width, 1) * across, max(rect.height, 1) * down}
+
+    state
+    |> drawn(size, down / (2 * across))
+    |> FrenchCurve.render(:cells, set: set, background: {0, 0, 0})
+    |> Enum.map(fn row -> row |> Strip.from_cells() |> Strip.fit_to_width(max(rect.width, 1)) end)
   end
 
   defp cells(%__MODULE__{} = state, rect, set) do
@@ -824,6 +891,19 @@ defmodule Cauldron2D.Drafter.Surface do
   would never move.
   """
   @spec image(t(), map(), term()) :: {iodata(), iodata(), map()} | nil
+  def image(%__MODULE__{projection: :picture, picture: nil}, _rect, _id), do: nil
+
+  def image(%__MODULE__{projection: :picture} = state, rect, id) do
+    case protocol(state) do
+      nil -> nil
+      protocol -> encode(state, rect, id, protocol)
+    end
+  rescue
+    error ->
+      report(state, error, __STACKTRACE__)
+      nil
+  end
+
   def image(%__MODULE__{focus: nil}, _rect, _id), do: nil
   def image(%__MODULE__{cell: nil}, _rect, _id), do: nil
 
@@ -887,14 +967,73 @@ defmodule Cauldron2D.Drafter.Surface do
   defp whole_picture(state, id, protocol, columns, cells, density) do
     raster =
       if protocol in @fitted,
-        do: drawn(fitted(state), {columns * density, cells * density}, 1.0),
+        do: drawn(fitted(state), picture_size(state, columns, cells, density), 1.0),
         else: projected(state, {columns * density, cells * density}, 1.0)
 
-    {paint, clear, place} = serialize(raster, protocol, {columns * 2, cells}, id, state.compress)
     forget = forgotten(state, id)
+    box = %{dx: 0, dy: 0, cols: columns * 2, rows: cells}
 
-    {[forget, paint], [forget, clear],
-     %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: place}}
+    if stored_frame?(state, protocol) do
+      stored_frame(state, raster, id, forget, box)
+    else
+      {paint, clear, place} =
+        serialize(raster, protocol, {columns * 2, cells}, id, state.compress)
+
+      {[forget, paint], [forget, clear], Map.put(box, :place, place)}
+    end
+  end
+
+  defp picture_size(
+         %__MODULE__{projection: :picture, native: {width, height}} = state,
+         columns,
+         cells,
+         density
+       ) do
+    {pane_width, pane_height} = pane_pixels(columns, cells, density)
+    scale = native_scale(state.native_scale, {pane_width, pane_height}, {width, height})
+
+    if pane_width * height <= pane_height * width,
+      do: {width * scale, max(1, round(width * scale * pane_height / pane_width))},
+      else: {max(1, round(height * scale * pane_width / pane_height)), height * scale}
+  end
+
+  defp picture_size(_state, columns, cells, density), do: {columns * density, cells * density}
+
+  defp pane_pixels(columns, cells, density) do
+    case Context.cell_size() do
+      {cell_width, cell_height} -> {columns * 2 * cell_width, cells * cell_height}
+      nil -> {columns * density, cells * density}
+    end
+  end
+
+  defp native_scale(:fit, {pane_width, pane_height}, {width, height}),
+    do: max(1, trunc(min(pane_width / width, pane_height / height)))
+
+  defp native_scale(scale, _pane, _native) when is_integer(scale) and scale > 0, do: scale
+
+  defp stored_frame?(state, :kitty),
+    do:
+      (state.picture_format == :png or state.swap) and
+        Capability.placements?(Context.terminal_env())
+
+  defp stored_frame?(_state, _protocol), do: false
+
+  defp stored_frame(state, raster, id, forget, box) do
+    image = FrenchCurve.image_id(id)
+    {width, height} = Raster.dimensions(raster)
+    encoded = Kitty.encode(raster, format: state.picture_format, compress: state.compress)
+    crop = %{image: image, width: width, height: height}
+    prelude = [forget, unplace_sprites()]
+
+    if state.swap do
+      spare = FrenchCurve.image_id({id, :spare})
+      clear = [prelude, Kitty.delete(id: image), Kitty.delete(id: spare)]
+      {prelude, clear, Map.put(box, :crop, Map.merge(crop, %{spare: spare, encoded: encoded}))}
+    else
+      unplace = Kitty.delete(id: image, placement: 1)
+      paint = [prelude, unplace, Kitty.transmit_encoded(encoded, image)]
+      {paint, [prelude, unplace], Map.put(box, :crop, crop)}
+    end
   end
 
   defp composed(state, rect, zoom, protocol, columns, cells) when zoom >= 1 do
@@ -945,15 +1084,28 @@ defmodule Cauldron2D.Drafter.Surface do
 
   defp tile(state), do: Atlas.fetch(state.atlas).tile
 
-  @doc "The projections a surface draws: `:top`, `:iso` and `:first_person`."
+  @doc """
+  The projections a surface draws the atlas world in: `:top`, `:oblique`, `:iso`, `:mode7`
+  and `:first_person`. A surface given a `:picture` draws that instead, as `:picture`.
+  """
   @spec projections() :: [atom()]
   def projections, do: @projections
 
   @doc """
   The world point under pane cell `{column, row}`, on the ground, for the view the
-  surface draws; `nil` in first person, where a cell is not a place.
+  surface draws; `nil` in first person, where a cell is not a place. A `:picture` surface
+  gives the point of its picture there instead — the cell's centre for whole cells, the
+  point itself for fractional ones (a pixel-precise pointer) — as fractions of the
+  picture's width and height (`{0.0, 0.0}` the top-left corner); with a `:frame` it gives
+  the point of the frame `Cauldron2D.Fit.letterbox/3` places in the picture, `nil` on
+  the bars around it.
   """
   @spec world_at(t(), map(), {number(), number()}) :: {float(), float()} | nil
+  def world_at(%__MODULE__{projection: :picture} = state, rect, {column, row}) do
+    fraction = {centred(column) / max(rect.width, 1), centred(row) / max(rect.height, 1)}
+    in_frame(state, rect, fraction)
+  end
+
   def world_at(%__MODULE__{projection: projection} = state, rect, cell)
       when projection != :top do
     case picture(state, rect) do
@@ -963,6 +1115,18 @@ defmodule Cauldron2D.Drafter.Surface do
   end
 
   def world_at(%__MODULE__{} = state, rect, cell), do: from_above(state, rect, cell)
+
+  defp centred(cell) when is_integer(cell), do: cell + 0.5
+  defp centred(point), do: point
+
+  defp in_frame(%__MODULE__{frame: nil}, _rect, fraction), do: fraction
+
+  defp in_frame(%__MODULE__{frame: frame} = state, rect, fraction) do
+    case picture(state, rect) do
+      nil -> fraction
+      {size, _per_cell, aspect} -> Cauldron2D.Fit.within(fraction, size, aspect, frame)
+    end
+  end
 
   defp from_above(%__MODULE__{} = state, rect, {column, row}) do
     zoom = drawn_zoom(state)
@@ -994,7 +1158,9 @@ defmodule Cauldron2D.Drafter.Surface do
   projection cannot show. Round-trips with `world_at/3`.
   """
   @spec cell_at(t(), map(), {number(), number()}) :: {float(), float()} | nil
-  def cell_at(%__MODULE__{projection: :first_person}, _rect, _world), do: nil
+  def cell_at(%__MODULE__{projection: projection}, _rect, _world)
+      when projection in [:first_person, :picture],
+      do: nil
 
   def cell_at(%__MODULE__{projection: projection} = state, rect, world)
       when projection != :top do
@@ -1136,6 +1302,9 @@ defmodule Cauldron2D.Drafter.Surface do
     |> Enum.find(List.last(levels), &(height / &1 >= room))
   end
 
+  defp projected(%__MODULE__{projection: :picture} = state, size, aspect),
+    do: drawn(state, size, aspect)
+
   defp projected(state, {width, height}, aspect) do
     zoom = fitting_zoom(state, height)
     state = %{state | zoom: zoom}
@@ -1154,6 +1323,9 @@ defmodule Cauldron2D.Drafter.Surface do
 
   defp projection_zoom(%__MODULE__{} = state),
     do: nearest(state.zoom, zoom_levels(state.atlas, drawn_mode(state), state.projection))
+
+  defp drawn(%__MODULE__{projection: :picture, picture: draw}, size, aspect),
+    do: draw.(size, aspect)
 
   defp drawn(%__MODULE__{projection: :iso} = state, size, aspect) do
     Iso.compose(state.atlas, iso_opts(state, size, aspect))

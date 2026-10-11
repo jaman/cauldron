@@ -37,6 +37,15 @@ defmodule Cauldron2D.Client.Game do
   along it, and a client whose scene gives none turns the eye itself. `:movers` may
   carry a heading as a third element, `{art, {x, y}, heading}`, for the projections
   that pose them.
+  A scene with a `:picture` — `fn {width, height}, aspect -> raster end` — is drawn by
+  the game itself rather than from the atlas: the client hands it to
+  `Cauldron2D.Drafter.Surface` as the `:picture` projection, at the pane's size in pixels,
+  and the focus, cell and movers then serve only the listener and the pointer. Three
+  more scene keys change how such a picture reaches a kitty terminal, each on its own and
+  none by default (`Cauldron2D.Drafter.Surface`'s options of the same names): `:native`
+  `{width, height}` asks for the picture at the game's own size times a whole number
+  (`:native_scale`, `:fit` or a number), `picture_format: :png` sends it as a PNG, and
+  `swap: true` replaces it without the pane going blank between frames.
 
   `worlds/1` is given the client's props and read whenever a lobby draws, so it may
   answer differently each time. A world is `%{id, name, world, players, humans, map,
@@ -73,6 +82,12 @@ defmodule Cauldron2D.Client.Game do
       client's props like `worlds/1` (so a game may keep a player's own bindings in
       their account). Default `Cauldron2D.Input.Pad.default_map(actions())`: the d-pad
       and left stick steer `:left`, `:right`, `:up` and `:down`, nothing else is bound
+    * `local_seats/1` — further players on the same machine, given the client's props with
+      `:settings`, the player's settings (its `:options` the game's own, as saved): a
+      `Cauldron2D.Input` keymap for each, the keys that play that seat. Each joins the
+      world as `"<username> 2"`, `"<username> 3"`, … with `frames: false`; every key
+      reaches every seat and counts where it is mapped; controllers go to the seats, the
+      player's own first, in the order they first report. Default `[]`, one player
     * `outcome/1` — `nil` while play goes on, or `%{title, lines, next}` when it is over
       for this player; `next` is `:next_world`, `:same_world` or `:lobby` (the default)
     * `join_props/1` — extra props for the world's join, from `%{username, settings,
@@ -82,8 +97,17 @@ defmodule Cauldron2D.Client.Game do
       `scene/1`'s bounds and cell, the topmost art of each tile
     * `guide/0` — sections of entries, each `%{art, name, text}`
     * `sink/1` — the `TuningFork.Sink` this player's audio plays through, from the props
+    * `audio/0` — sound settings, any of `:voices` (most sounds at once, default 12),
+      `:earshot` (tiles at which a placed sound falls silent, default 30.0) and `:master`
+      (`:sfx` for the effects level to scale the music too, `Cauldron2D.Audio`'s)
+    * `recordings/0` — the function `Cauldron2D.Audio`'s `:recordings` takes: an event
+      name to its recording in its own channels, for music the world sends as keyed
+      sounds with `music: true`
     * `pages/1` — extra pages reachable from the title, from the props: `[%{key, hint,
       title, render}]`, `render` a function returning rows of runs
+    * `opening/1` — rows of runs a client shows, centred, from the moment it asks to
+      join a world until that world's first frame arrives, given the world as `worlds/1`
+      listed it. Default `[]`: nothing is drawn until the first frame
     * `refusal_text/1` — the words a refused join is reported with
     * `player_label/1` — how a player id is written in a lobby and signed in chat; the
       lobby header shows the player their own id and, when this differs, this after it
@@ -111,6 +135,39 @@ defmodule Cauldron2D.Client.Game do
     * `chat?/0` — whether the lobby and world carry a chat; `true` without it
     * `frame_rates/0` — the frame rates a settings screen offers
     * `lobby?/0` — the older way of saying `start/0`: `false` is `{:play, :first, title: true}`
+    * `options/0` — the game's own player options and their defaults, as a map. A client
+      keeps them in the player's settings under `:options`, saves them with the rest,
+      puts them on the look given to `scene/2` as `:options` and sends them with every
+      input as `:options`
+    * `open_menu/1` — the game's own menu, opened by the client's `menu` key during play:
+      given the player's settings, the menu's state. While it is open the look carries
+      it as `:menu`, the player's held actions are let go, a world of the player's own
+      is paused, and every key press, mouse
+      button press and wheel notch goes to `menu_event/3` instead of the world; the
+      look's `:menu_frame` counts up ten times a second, so the scene is drawn again
+      for a menu's animations while the world stands still; a
+      controller's d-pad arrives as the keys `:up`, `:down`, `:left` and `:right`, `A` as
+      `:enter`, and `B` and `Start` as `:escape`
+    * `open_menu/2` — `(settings, arg)`, the game's menu opened because the world asked
+      for it with `{:menu, arg}` (see `ask/1`); a game without it gets `open_menu/1`
+    * `menu_event/3` — `(menu, event, settings)`, one event while the menu is open. Returns
+      `%{menu: menu_or_nil, settings: settings}`, with any of `:sounds` (sound events to
+      play, as `sounds/0`'s table knows them), `:request` (a term for the world, sent once
+      with the next input as `:request`, as `{number, term}` numbered from 1 so the world
+      can act on each once) and `:leave` (`true` to leave the world). A `nil` menu closes
+      it; settings that changed are saved and take effect at once. The settings are a
+      map with at least `:bindings` (the keymap in force), `:preset`, `:sfx` and `:music`
+      (`0.0..1.0`) and `:options`
+    * `ask/1` — what the world asks of this player's client, read from each view: `nil`,
+      or `{number, ask}` with `ask` `:menu` (open the game's menu, as the `menu` key does),
+      `{:menu, arg}` (open the game's menu given `arg`, `open_menu/2`),
+      `:quit` (end the client), or `{:enter, props}` (leave this world, merge `props` into
+      the client's mount props and join the first world `worlds/1` then gives; should
+      that world go down, the client takes its earlier props back and joins the first of
+      their worlds again). The client acts on each number once, so the game keeps an ask
+      in its views only for the few steps the client needs to see it
+    * `input_options/1` — extra `Cauldron2D.Input.new/2` options for the player's
+      `:options`, such as `:gesture_ms`
     * `home/0` — the name the game keeps its files under, as `Cauldron2D.Paths` takes it:
       rendered music goes to `Cauldron2D.Paths.cache(home, "music")`. Without it, the
       game's module name underscored, up to its first dot: `MyGame.Client` is `:my_game`
@@ -141,7 +198,9 @@ defmodule Cauldron2D.Client.Game do
           optional(:volumes) => list(),
           optional(:layers) => [Cauldron2D.Parallax.Layer.t()],
           optional(:subject) => String.t() | atom() | number(),
-          optional(:heading) => number()
+          optional(:heading) => number(),
+          optional(:picture) => ({pos_integer(), pos_integer()}, number() ->
+                                   FrenchCurve.Raster.t())
         }
   @type page :: %{key: atom(), hint: String.t(), title: String.t(), render: (-> [Hud.row()])}
 
@@ -163,6 +222,7 @@ defmodule Cauldron2D.Client.Game do
   @callback holds() :: [{action(), pos_integer()}]
   @callback steering() :: [action()]
   @callback padmap(map()) :: Cauldron2D.Input.Pad.padmap()
+  @callback local_seats(map()) :: [Cauldron2D.Input.keymap()]
   @callback outcome(term()) ::
               nil
               | %{
@@ -179,11 +239,14 @@ defmodule Cauldron2D.Client.Game do
             }
   @callback guide() :: [{String.t(), [%{art: term(), name: String.t(), text: String.t()}]}]
   @callback sink(map()) :: module() | {module(), keyword()}
+  @callback audio() :: keyword()
+  @callback recordings() :: (term() -> map() | nil)
   @callback pages(map()) :: [page()]
+  @callback opening(world()) :: [Hud.row()]
   @callback refusal_text(term()) :: String.t()
   @callback player_label(term()) :: String.t()
-  @callback client_keys() :: %{atom() => atom() | [atom()] | nil}
-  @callback client_pad() :: %{atom() => atom() | [atom()] | nil}
+  @callback client_keys() :: %{(atom() | {:look, atom()}) => atom() | [atom()] | nil}
+  @callback client_pad() :: %{(atom() | {:look, atom()}) => atom() | [atom()] | nil}
   @callback look() :: map()
   @callback start() ::
               :lobby
@@ -195,17 +258,33 @@ defmodule Cauldron2D.Client.Game do
   @callback frame_rates() :: [:auto | pos_integer()]
   @callback lobby?() :: boolean()
   @callback home() :: atom()
+  @callback options() :: map()
+  @callback open_menu(map()) :: term()
+  @callback menu_event(term(), term(), map()) :: %{
+              required(:menu) => term(),
+              required(:settings) => map(),
+              optional(:sounds) => [term()],
+              optional(:request) => term(),
+              optional(:leave) => boolean()
+            }
+  @callback input_options(map()) :: keyword()
+  @callback open_menu(map(), term()) :: term()
+  @callback ask(term()) :: {term(), :menu | {:menu, term()} | :quit | {:enter, map()}} | nil
 
   @optional_callbacks scene: 2,
                       holds: 0,
                       steering: 0,
                       padmap: 1,
+                      local_seats: 1,
                       outcome: 1,
                       join_props: 1,
                       map: 1,
                       guide: 0,
                       sink: 1,
+                      audio: 0,
+                      recordings: 0,
                       pages: 1,
+                      opening: 1,
                       refusal_text: 1,
                       player_label: 1,
                       client_keys: 0,
@@ -215,7 +294,13 @@ defmodule Cauldron2D.Client.Game do
                       client_pad: 0,
                       look: 0,
                       start: 0,
-                      home: 0
+                      home: 0,
+                      options: 0,
+                      open_menu: 1,
+                      open_menu: 2,
+                      menu_event: 3,
+                      input_options: 1,
+                      ask: 1
 
   @doc "Call an optional callback of `game` with `args`, or `default` when it has none."
   @spec optional(module(), atom(), [term()], term()) :: term()
@@ -223,6 +308,17 @@ defmodule Cauldron2D.Client.Game do
     if Code.ensure_loaded?(game) and function_exported?(game, callback, length(args)),
       do: apply(game, callback, args),
       else: default
+  end
+
+  @doc "The `Cauldron2D.Audio.start_link/1` options the game sets through `audio/0` — `:voices`, `:earshot` and `:master` — and `recordings/0`."
+  @spec audio_options(module()) :: keyword()
+  def audio_options(game) do
+    settings = game |> optional(:audio, [], []) |> Keyword.take([:voices, :earshot, :master])
+
+    case optional(game, :recordings, [], nil) do
+      nil -> settings
+      recordings -> [{:recordings, recordings} | settings]
+    end
   end
 
   @doc "The static layer for `view`: the game's `map/1`, else read from its scene's bounds and cell."

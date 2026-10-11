@@ -1,11 +1,11 @@
 PRIV_DIR = priv
 
-all: $(PRIV_DIR) plane_nif volume_nif blend_nif
+all: $(PRIV_DIR) plane_nif volume_nif blend_nif sector_nif
 
 $(PRIV_DIR):
 	if not exist $(PRIV_DIR) mkdir $(PRIV_DIR)
 
-plane_nif volume_nif blend_nif:
+plane_nif volume_nif blend_nif sector_nif:
 	-cl /nologo /LD /O2 /fp:strict /I"$(ERTS_INCLUDE_DIR)" c_src\$@.c /Fe:$(PRIV_DIR)\$@.dll
 	if exist $@.obj del /Q $@.obj
 	if not exist $(PRIV_DIR)\$@.dll echo cauldron_2d: c_src\$@.c did not build, its work will be done in Elixir

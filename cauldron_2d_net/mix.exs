@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Net.MixProject do
   use Mix.Project
 
-  @version "0.1.4"
+  @version "0.2.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "A Cauldron2D world over the network: served to browsers, desktops and terminals over a WebSocket or from node to node, and the links a client joins it by."
 
@@ -29,10 +29,10 @@ defmodule Cauldron2D.Net.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.1.4", "../cauldron_2d", []),
-      family(:french_curve, "~> 0.1.4", "../../french_curve", override: true),
+      family(:cauldron_2d, "~> 0.2.0", "../cauldron_2d", []),
+      family(:french_curve, "~> 0.2.0", "../../french_curve", override: true),
       family(:gamepad, "~> 0.1.0", "../../gamepad", []),
-      family(:tuning_fork, "~> 0.1.11", "../../tuning_fork/tuning_fork", []),
+      family(:tuning_fork, "~> 0.1.12", "../../tuning_fork/tuning_fork", []),
       {:phoenix, "~> 1.8"},
       {:mint, "~> 1.6"},
       {:mint_web_socket, "~> 1.0"},

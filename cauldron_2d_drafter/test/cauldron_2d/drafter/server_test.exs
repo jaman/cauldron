@@ -58,8 +58,13 @@ defmodule Cauldron2D.Drafter.ServerTest do
     assert {:ok, _socket} =
              :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 2_000)
 
+    accounts = Process.monitor(server.accounts)
     assert :ok = Server.stop(server)
-    refute Process.alive?(server.accounts)
+
+    assert {:error, :econnrefused} =
+             :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 2_000)
+
+    assert_receive {:DOWN, ^accounts, :process, _pid, _reason}, 5_000
     Cauldron2D.Worlds.close(:served_pit)
     File.rm_rf!(dir)
   end

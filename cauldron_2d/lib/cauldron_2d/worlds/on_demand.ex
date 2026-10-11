@@ -3,6 +3,9 @@ defmodule Cauldron2D.Worlds.OnDemand do
   The name registry behind `Cauldron2D.Worlds.world_name/1`:
   `{:via, Cauldron2D.Worlds.OnDemand, id}` resolves to world `id`, starting the
   world when it is not running. An id no world is registered for resolves to `:undefined`.
+  `{:on, node, id}` (`Cauldron2D.Worlds.world_name/2`) resolves to world `id` of a
+  connected `node` the same way, started there; `:undefined` when the node cannot be
+  reached.
   """
 
   alias Cauldron2D.Worlds
@@ -18,7 +21,14 @@ defmodule Cauldron2D.Worlds.OnDemand do
     do: Registry.unregister_name({Cauldron2D.Worlds.Registry, {:world, id}})
 
   @doc false
-  @spec whereis_name(Worlds.id()) :: pid() | :undefined
+  @spec whereis_name(Worlds.id() | {:on, node(), Worlds.id()}) :: pid() | :undefined
+  def whereis_name({:on, node, id}) do
+    :erpc.call(node, __MODULE__, :whereis_name, [id])
+  catch
+    :error, {:erpc, _reason} -> :undefined
+    :exit, _reason -> :undefined
+  end
+
   def whereis_name(id) do
     case Worlds.running(id) do
       nil -> started(id)

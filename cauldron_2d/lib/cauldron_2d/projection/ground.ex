@@ -48,20 +48,15 @@ defmodule Cauldron2D.Projection.Ground do
 
   @doc false
   def load_nif do
-    :cauldron_2d
-    |> :code.priv_dir()
-    |> Path.join("plane_nif")
-    |> to_charlist()
+    "plane_nif"
+    |> Cauldron2D.Native.path()
     |> :erlang.load_nif(0)
-    |> case do
-      :ok -> :ok
-      {:error, _reason} -> :ok
-    end
+    |> then(&:persistent_term.put({__MODULE__, :native}, &1 == :ok))
   end
 
   @doc "Whether the NIF is loaded and the sampling is done in C."
   @spec available?() :: boolean()
-  def available?, do: false
+  def available?, do: :persistent_term.get({__MODULE__, :native}, false)
 
   @doc """
   The picture's rows as a map of row index to that row's pixels, the rows at and above

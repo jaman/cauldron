@@ -1,0 +1,7 @@
+/_build/
+/cover/
+/deps/
+/doc/
+erl_crash.dump
+*.ez
+cauldron_3d_formats-*.tar

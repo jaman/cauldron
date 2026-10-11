@@ -1,7 +1,12 @@
 defmodule Cauldron2D.Drafter.Client.Settings do
   @moduledoc """
   A player's settings: which keys do what, whether the pointer steers, how loud things
-  are, how the world is drawn.
+  are, how the world is drawn, and the game's own options (`Cauldron2D.Client.Game`'s
+  `options/0`, its defaults under whatever was saved), and which player each game
+  controller plays: `pads`, a map from a controller's name to a player number or `:none`
+  (`Cauldron2D.Drafter.Client.Controllers`). `controllers` lists the controllers
+  connected now, each `%{name, player}`; the client keeps it up to date for the game's
+  menus to show, and it is not saved.
 
   Kept per kind of client — the terminal, a desktop, a browser, a phone: a kind is any
   atom, `:terminal` the default — on disk under
@@ -17,6 +22,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
       Cauldron2D.Drafter.Client.Settings.load(MyGame.Client, "alice", account_props, kind: :desktop)
   """
 
+  alias Cauldron2D.Client.Game
   alias Cauldron2D.Input
 
   @type t :: %__MODULE__{
@@ -26,7 +32,10 @@ defmodule Cauldron2D.Drafter.Client.Settings do
           sfx: float(),
           music: float(),
           display: display(),
-          fps: fps()
+          fps: fps(),
+          options: map(),
+          pads: %{String.t() => pos_integer() | :none},
+          controllers: [%{name: String.t(), player: pos_integer() | nil}]
         }
 
   defstruct preset: nil,
@@ -35,7 +44,10 @@ defmodule Cauldron2D.Drafter.Client.Settings do
             sfx: 0.85,
             music: 0.35,
             display: :auto,
-            fps: :auto
+            fps: :auto,
+            options: %{},
+            pads: %{},
+            controllers: []
 
   @typedoc "How the world is drawn: pixels where the terminal has them, else glyphs; braille; block characters of a glyph set; or glyphs."
   @type display :: :auto | :braille | :half | :quad | :sextant | :octant | :glyphs
@@ -47,10 +59,16 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   @displays [:auto, :braille | @cell_sets] ++ [:glyphs]
   @frame_rates [:auto, 15, 30, 50, 60]
 
-  @doc "Settings for `game` with `overrides` applied over the game's first preset."
+  @doc """
+  Settings for `game` with `overrides` applied over the game's first preset.
+
+  An override naming a preset the game no longer has starts from the first preset, and
+  its bindings are dropped with it.
+  """
   @spec new(module(), map()) :: t()
   def new(game, overrides \\ %{}) do
     presets = presets(game)
+    overrides = current(overrides, presets)
     preset = Map.get(overrides, :preset, List.first(presets))
     base = keymap(game, preset)
     levels = Cauldron2D.Audio.default_levels()
@@ -62,7 +80,13 @@ defmodule Cauldron2D.Drafter.Client.Settings do
       sfx: Map.get(overrides, :sfx, levels.sfx) / 1,
       music: Map.get(overrides, :music, levels.music) / 1,
       display: overrides |> Map.get(:display, :auto) |> display_option(),
-      fps: Map.get(overrides, :fps, :auto)
+      options:
+        Map.merge(
+          Game.optional(game, :options, [], %{}),
+          Map.get(overrides, :options, %{})
+        ),
+      fps: Map.get(overrides, :fps, :auto),
+      pads: Map.get(overrides, :pads, %{})
     }
   end
 
@@ -98,14 +122,20 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   @doc """
   The frame rate to draw at: the setting, or for `:auto` the terminal's best — 12 where
   every frame is an inline image (iTerm2's own, sixel), 20 where every frame is a kitty
-  picture sent whole (a terminal without placements), 30 elsewhere.
+  picture sent whole (a terminal without placements) or the session is served over ssh
+  (`link` `:ssh`), 30 elsewhere.
   """
-  @spec frame_rate(t(), atom() | nil | :unprobed, boolean()) :: pos_integer()
-  def frame_rate(settings, protocol, placements? \\ true)
-  def frame_rate(%__MODULE__{fps: :auto}, protocol, _) when protocol in [:iterm2, :sixel], do: 12
-  def frame_rate(%__MODULE__{fps: :auto}, :kitty, false), do: 20
-  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?), do: 30
-  def frame_rate(%__MODULE__{fps: fps}, _protocol, _placements?), do: fps
+  @spec frame_rate(t(), atom() | nil | :unprobed, boolean(), :local | :ssh) :: pos_integer()
+  def frame_rate(settings, protocol, placements? \\ true, link \\ :local)
+
+  def frame_rate(%__MODULE__{fps: :auto}, protocol, _placements?, _link)
+      when protocol in [:iterm2, :sixel],
+      do: 12
+
+  def frame_rate(%__MODULE__{fps: :auto}, :kitty, false, _link), do: 20
+  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?, :ssh), do: 20
+  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?, :local), do: 30
+  def frame_rate(%__MODULE__{fps: fps}, _protocol, _placements?, _link), do: fps
 
   @doc "The surface mode for the display setting: `nil` lets the terminal decide."
   @spec surface_mode(t()) :: nil | :braille | :half | :quad | :sextant | :octant | :text
@@ -121,6 +151,12 @@ defmodule Cauldron2D.Drafter.Client.Settings do
       keymaps -> Keyword.keys(keymaps)
     end
   end
+
+  defp current(%{preset: preset} = overrides, presets) do
+    if preset in presets, do: overrides, else: Map.drop(overrides, [:preset, :bindings])
+  end
+
+  defp current(overrides, _presets), do: overrides
 
   defp keymap(game, preset) do
     case game.keymaps() do
@@ -175,7 +211,8 @@ defmodule Cauldron2D.Drafter.Client.Settings do
 
   @doc "The map kept in account props and on disk."
   @spec to_props(t()) :: map()
-  def to_props(%__MODULE__{} = settings), do: Map.from_struct(settings)
+  def to_props(%__MODULE__{} = settings),
+    do: settings |> Map.from_struct() |> Map.delete(:controllers)
 
   @doc "Settings for `player` of `game` on a `:kind` of client (default `:terminal`): the file on disk over `account_props` over the defaults."
   @spec load(module(), String.t(), map(), keyword()) :: t()
@@ -229,7 +266,8 @@ defmodule Cauldron2D.Drafter.Client.Settings do
     bindings |> Map.get(action, []) |> Enum.map_join(", ", &key_text/1)
   end
 
-  defp key_text({:mouse, button}), do: "mouse " <> Atom.to_string(button)
+  defp key_text({:mouse, button}),
+    do: "mouse " <> String.replace(Atom.to_string(button), "_", " ")
 
   defp key_text({key, mods}),
     do: Enum.map_join(mods, "+", &Atom.to_string/1) <> "+" <> key_text(key)

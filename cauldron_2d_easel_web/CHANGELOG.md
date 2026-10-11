@@ -1,5 +1,5 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0]
 
-* No changes of its own; released alongside the cauldron family at the new version with its requirements on the family updated.
+* No changes of its own. Requires `cauldron_2d_easel ~> 0.2`.

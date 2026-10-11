@@ -135,6 +135,15 @@ defmodule Cauldron2D.Worlds do
   @spec world_name(id()) :: GenServer.name()
   def world_name(id), do: {:via, __MODULE__.OnDemand, id}
 
+  @doc """
+  The name world `id` of `node` runs under, for a node this one is connected to; using
+  it starts the world there when it is not running. A node that cannot be reached names
+  no process.
+  """
+  @spec world_name(id(), node()) :: GenServer.name()
+  def world_name(id, node) when node == node(), do: world_name(id)
+  def world_name(id, node), do: {:via, __MODULE__.OnDemand, {:on, node, id}}
+
   @doc "The pid of world `id` while it runs, else `nil`."
   @spec running(id()) :: pid() | nil
   def running(id), do: whereis({:world, id})

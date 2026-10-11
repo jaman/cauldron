@@ -69,6 +69,18 @@ defmodule Cauldron2D.Loop do
     {steps, %{loop | accumulator: remainder, last: now_ms}}
   end
 
+  @doc """
+  The whole milliseconds from `now_ms` until `advance/2` would next return a step: 0 when
+  one is already due, or when the loop has no baseline yet.
+  """
+  @spec wait(t(), integer()) :: non_neg_integer()
+  def wait(%__MODULE__{last: nil}, _now_ms), do: 0
+
+  def wait(%__MODULE__{} = loop, now_ms) do
+    accumulated = loop.accumulator + max(0, now_ms - loop.last)
+    max(0, ceil(loop.step_ms - accumulated))
+  end
+
   @doc "The duration of one step, in seconds — the `dt` a simulation should use."
   @spec dt(t()) :: float()
   def dt(%__MODULE__{step_ms: step_ms}), do: step_ms / 1000

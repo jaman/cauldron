@@ -58,7 +58,7 @@ defmodule Cauldron2D.Parallax.Bands do
   defp roll_row(row, 0), do: row
 
   defp roll_row(row, cut) do
-    <<head::binary-size(cut), tail::binary>> = row
+    <<head::binary-size(^cut), tail::binary>> = row
     [tail, head]
   end
 end

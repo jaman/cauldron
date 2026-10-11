@@ -2,14 +2,13 @@
 
 A `cauldron_2d` world in a wx window, joined over the web wire (a Phoenix channel on a
 WebSocket), through a process on this or a connected node, or in the same app.
-`CAULDRON_WX_DESIGN.md` at the repository root is the design.
 
 ## Installation
 
 ```elixir
 def deps do
   [
-    {:cauldron_2d_wx, "~> 0.1"}
+    {:cauldron_2d_wx, "~> 0.2"}
   ]
 end
 ```
@@ -41,8 +40,11 @@ A game implements `Cauldron2D.Client.Game` once and `Cauldron2D.Wx.Client` runs 
 a game with screens of its own draws them on `Cauldron2D.Wx.Text`, which draws whatever
 items it is given and reports keys, with the world on `Cauldron2D.Wx.View`. The
 view's sizes, hud placement and colours are options; the canvas clears to the sheet's
-void colour. Needs an Erlang built with wx. Tests cover the wire, the input, the painter and the local link; the window itself
-is exercised by hand.
+void colour.
+
+## Requirements
+
+Needs an Erlang built with wx.
 
 ## License
 

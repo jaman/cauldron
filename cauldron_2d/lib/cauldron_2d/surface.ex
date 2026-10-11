@@ -58,7 +58,7 @@ defmodule Cauldron2D.Surface do
   they used to look.
   """
 
-  alias Cauldron2D.{Atlas, Blend}
+  alias Cauldron2D.{Atlas, Blend, Render}
   alias Cauldron2D.Projection.Volume
   alias FrenchCurve.Raster
 
@@ -189,17 +189,49 @@ defmodule Cauldron2D.Surface do
   end
 
   defp paint(atlas, grid, movers, labels, volumes, {width, height, tile}, scale, at) do
-    lines =
-      grid
-      |> Enum.flat_map(fn tile_row -> Enum.map(tile_row, &IO.iodata_to_binary/1) end)
-      |> Enum.with_index()
-      |> Map.new(fn {line, index} -> {index, line} end)
+    operations =
+      Enum.map(movers, &mover_operation(atlas, &1, scale, at)) ++
+        Enum.map(labels, &label_operation(&1, scale))
 
-    lines = Enum.reduce(movers, lines, &blit_sprite(atlas, &1, &2, width, height, scale, at))
-    lines = Enum.reduce(labels, lines, &blit_label(&1, &2, width, height, scale))
-    lines = Enum.reduce(volumes, lines, &blit_volume(&1, &2, {width, height}, tile))
+    background = {width, height, IO.iodata_to_binary(grid)}
 
-    for y <- 0..(height - 1)//1, do: Map.fetch!(lines, y)
+    rgba =
+      {width, height}
+      |> Render.render(operations, background: background)
+      |> Raster.to_rgba_binary()
+
+    case volumes do
+      [] ->
+        [rgba]
+
+      _ ->
+        lines =
+          for y <- 0..(height - 1)//1,
+              into: %{},
+              do: {y, binary_part(rgba, y * width * 4, width * 4)}
+
+        lines = Enum.reduce(volumes, lines, &blit_volume(&1, &2, {width, height}, tile))
+        for y <- 0..(height - 1)//1, do: Map.fetch!(lines, y)
+    end
+  end
+
+  defp mover_operation(atlas, {art, position}, scale, at),
+    do: mover_operation(atlas, {art, position, nil, nil, false}, scale, at)
+
+  defp mover_operation(atlas, {art, position, tint}, scale, at),
+    do: mover_operation(atlas, {art, position, tint, nil, false}, scale, at)
+
+  defp mover_operation(atlas, {art, {x, y}, tint, pose, flip}, scale, at) do
+    {binary, width, height} = sprite_binary(atlas, art, tint, {pose, flip}, scale, at)
+    {:raster, {width, height, binary}, {round(x / scale), round(y / scale)}}
+  end
+
+  defp label_operation({text, position, colour}, scale),
+    do: label_operation({text, position, colour, []}, scale)
+
+  defp label_operation({text, {x, y}, colour, opts}, scale) do
+    raster = label_raster(text, colour, opts)
+    {:raster, {raster.width, raster.height, raster.rgba}, {round(x / scale), round(y / scale)}}
   end
 
   defp blit_volume(volume, lines, {width, height}, tile) do
@@ -222,21 +254,6 @@ defmodule Cauldron2D.Surface do
 
     blit_binary(
       {binary, sprite_width, sprite_height},
-      {round(x / scale), round(y / scale)},
-      lines,
-      width,
-      height
-    )
-  end
-
-  defp blit_label({text, position, colour}, lines, width, height, scale),
-    do: blit_label({text, position, colour, []}, lines, width, height, scale)
-
-  defp blit_label({text, {x, y}, colour, opts}, lines, width, height, scale) do
-    raster = label_raster(text, colour, opts)
-
-    blit_binary(
-      {raster.rgba, raster.width, raster.height},
       {round(x / scale), round(y / scale)},
       lines,
       width,
@@ -330,7 +347,7 @@ defmodule Cauldron2D.Surface do
 
   def magnify(%Raster{width: width, height: height} = raster, times)
       when is_integer(times) and times > 1 do
-    rows = for <<row::binary-size(width * 4) <- Raster.to_rgba_binary(raster)>>, do: row
+    rows = for <<row::binary-size(^width * 4) <- Raster.to_rgba_binary(raster)>>, do: row
 
     wide =
       for row <- rows,

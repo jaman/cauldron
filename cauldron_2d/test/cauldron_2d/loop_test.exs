@@ -48,6 +48,20 @@ defmodule Cauldron2D.LoopTest do
     assert Loop.dt(advanced) == Loop.dt(loop)
   end
 
+  test "wait is the time left until the next step falls due, never negative" do
+    loop = Loop.new(50)
+
+    assert Loop.wait(loop, 0) == 0
+
+    started = elem_loop(loop, 1000)
+    assert Loop.wait(started, 1000) == 20
+    assert Loop.wait(started, 1013) == 7
+    assert Loop.wait(started, 1045) == 0
+
+    {1, advanced} = Loop.advance(started, 1030)
+    assert Loop.wait(advanced, 1030) == 10
+  end
+
   defp elem_loop(loop, at) do
     {0, started} = Loop.advance(loop, at)
     started

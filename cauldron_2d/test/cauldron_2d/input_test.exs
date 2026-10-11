@@ -78,6 +78,12 @@ defmodule Cauldron2D.InputTest do
       assert held(Input.expire(input, 101)) == []
     end
 
+    test "a press lets go after the tap window on a clock that reads below zero", %{input: input} do
+      input = Input.handle(input, {:key, :left}, -5_000)
+      assert held(Input.expire(input, -4_910)) == [:turn_left]
+      assert held(Input.expire(input, -4_899)) == []
+    end
+
     test "repeats keep it held", %{input: input} do
       input =
         input

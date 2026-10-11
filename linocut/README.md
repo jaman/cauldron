@@ -9,7 +9,7 @@ render functions, a disk cache, and a way to look at the result.
 ```elixir
 def deps do
   [
-    {:linocut, "~> 0.1"}
+    {:linocut, "~> 0.2"}
   ]
 end
 ```
@@ -38,6 +38,16 @@ spin = Linocut.Strip.new(headings, 30)
 | `Linocut.Strip` | frames at a rate, looping |
 | `Linocut.Cache` | rasters rendered once, kept under `~/.cache/linocut` |
 | `Linocut.Preview` | a sheet of many rasters, terminal output, PNG |
+| `Linocut.Quantise` | a picture reduced to a small palette, chosen by median cut over its opaque pixels |
+| `Linocut.Sheet` | a sprite sheet cut into frames, found as bands of rows and runs of columns between blank ones |
+| `Linocut.Frames` | frames of one animation lined up on one canvas, standing on the same floor, and written as a `.pic` with a shared palette |
+| `Linocut.Pose` | a figure's joints, and the OpenPose skeleton a ControlNet reads them as |
+| `Linocut.Resample` | a picture redrawn at another size, by area or nearest pixel |
+| `Linocut.Seam` | a picture made to repeat without a visible join, its far edge faded into the near one |
+| `mix linocut.import` | turns an image file into a `.pic` at a chosen size and palette |
+| `mix linocut.sheet` | cuts a sprite sheet into the frames of one `.pic` |
+| `mix linocut.join` | joins separately drawn pictures into the frames of one `.pic` |
+| `mix linocut.pose` | writes OpenPose skeletons for an animation cycle, one PNG a frame |
 
 Every result is a `FrenchCurve.Raster`, which `Cauldron2D.Atlas.put/4` takes as it is.
 
@@ -62,11 +72,13 @@ rendered until the atlas is built, and a derived picture is a picture like any o
 ## Looking at it
 
 ```bash
-mix linocut.view examples/ship.exs                   # in this terminal, pixels or braille
-mix linocut.view examples/ship.exs --scale 3 --columns 8
+mix linocut.view ship.exs
+mix linocut.view ship.exs --scale 3 --columns 8
 ```
 
-The script's last expression is a raster, a list of them, or a strip.
+`mix linocut.view` takes a script whose last expression is a raster, a list of them, or a
+strip, and shows it in this terminal as pixels or braille. The example scripts are in
+the [repository](https://github.com/jaman/cauldron/tree/main/linocut/examples).
 
 ## License
 

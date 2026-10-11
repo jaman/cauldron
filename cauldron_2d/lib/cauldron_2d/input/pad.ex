@@ -117,6 +117,11 @@ defmodule Cauldron2D.Input.Pad do
     }
   end
 
+  @doc "Whether the padmap binds either direction of `axis` to an action."
+  @spec binds_axis?(t(), atom()) :: boolean()
+  def binds_axis?(%__MODULE__{bindings: bindings}, axis),
+    do: Enum.any?(Map.keys(bindings), &match?({:axis, ^axis, _direction}, &1))
+
   @doc "The stick bound to `:aim`, or `nil`."
   @spec aim_stick(t()) :: :left | :right | nil
   def aim_stick(%__MODULE__{aim_stick: stick}), do: stick

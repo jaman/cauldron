@@ -20,6 +20,19 @@ defmodule Cauldron2D.WorldModesTest do
     end
   end
 
+  test "a player asking for fewer frames gets every nth step's view, with every step's events" do
+    {:ok, world} = World.start_link(game: Race, hz: 60, tick: :on_input)
+    :ok = Player.join(world, :alice, %{}, frames: 20)
+
+    for _step <- 1..13, do: Player.input(world, :alice, %{held: MapSet.new(), aim: nil})
+
+    frames = for _frame <- 1..5, do: frame()
+    no_frame(150)
+
+    assert Enum.map(frames, & &1.tick) == [1, 4, 7, 10, 13]
+    assert Enum.map(frames, & &1.events) == [[{:beep, 0}], [], [], [], [{:beep, 10}]]
+  end
+
   test "a world stepping on input runs one step per input and none otherwise" do
     {:ok, world} = World.start_link(game: Race, hz: 10, tick: :on_input)
     :ok = Player.join(world, :alice, %{speed: 10.0})

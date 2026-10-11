@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Easel.Kino.MixProject do
   use Mix.Project
 
-  @version "0.1.4"
+  @version "0.2.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "Cauldron2D art in Livebook: pictures, sheets and animations as Kino images."
 
@@ -29,10 +29,10 @@ defmodule Cauldron2D.Easel.Kino.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.1.4", "../cauldron_2d", []),
-      family(:cauldron_2d_easel, "~> 0.1.4", "../cauldron_2d_easel", []),
-      family(:linocut, "~> 0.1.4", "../linocut", []),
-      family(:french_curve, "~> 0.1.4", "../../french_curve", override: true),
+      family(:cauldron_2d, "~> 0.2.0", "../cauldron_2d", []),
+      family(:cauldron_2d_easel, "~> 0.2.0", "../cauldron_2d_easel", []),
+      family(:linocut, "~> 0.2.0", "../linocut", []),
+      family(:french_curve, "~> 0.2.0", "../../french_curve", override: true),
       {:kino, "~> 0.12"}
     ]
   end

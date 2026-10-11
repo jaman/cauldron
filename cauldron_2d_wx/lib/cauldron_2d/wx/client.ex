@@ -409,7 +409,7 @@ defmodule Cauldron2D.Wx.Client do
       |> Map.merge(Map.new(extra, fn {key, value} -> {Atom.to_string(key), value} end))
 
     link = {kind, opts |> Keyword.put(:props, props) |> Keyword.put(:params, params)}
-    :ok = View.join(state.play, link)
+    :ok = View.join(state.play, link, opening: Game.optional(state.game, :opening, [world], []))
     View.levels(state.play, state.settings.sfx, state.settings.music)
     %{state | chosen: world, status: ""} |> show_play()
   end

@@ -8,7 +8,7 @@ gets the arts of a directory and an editor for each, with its own layout and scr
 ```elixir
 def deps do
   [
-    {:cauldron_2d_easel_web, "~> 0.1", only: :dev}
+    {:cauldron_2d_easel_web, "~> 0.2", only: :dev}
   ]
 end
 ```

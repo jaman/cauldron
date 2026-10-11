@@ -1,9 +1,15 @@
 # Changelog
 
-## [Unreleased]
+## [0.2.0]
 
 ### Breaking changes
 
+* `Cauldron2D.Grid.Coarse` routes through regions of open tiles instead of whole
+  blocks: a path is tile centres ending at the goal point, placed continuously across
+  a wrapping grid's edges, and covers the next `:ahead` regions (default 3) of a longer
+  way. `find/4` takes options (`:ahead`) where it took a search limit, `:block` defaults
+  to 8, and `passable?/2`, `block_of/2` and `centre/2` are gone. `waypoint/4` takes the
+  body's radius (default 0.0) and looks at the first 16 points.
 * `Cauldron2D.Arenas`, `Arenas.Table`, `Arenas.OnDemand` and `Arenas.Sweeper` are now
   `Cauldron2D.Worlds`, `Worlds.Table`, `Worlds.OnDemand` and `Worlds.Sweeper`, with the
   same functions. Rename the module in every call.
@@ -28,7 +34,122 @@
   match `board/4`'s `world:`.
 * `Cauldron2D.Ledger.Recorder` takes `:label` for the name results are kept under;
   `:arena` is still read when `:label` is absent.
+
 ### Added
+
+* `Cauldron2D.Grid.Coarse.reachable?/3` and `spots/1`, and
+  `Cauldron2D.Grid.Coarse.Space`, which measures positions across joined edges.
+* A host is named `<name>@cauldron.host`, a name tied to none of its addresses, and
+  `Cauldron2D.Distribution.join/3` points that name at the address given in its own
+  host table, so a host is joined through any of its addresses (its home network's, a
+  VPN's, `127.0.0.1` from the same machine).
+* `Cauldron2D.Distribution.addresses/0`: every address of the machine's interfaces,
+  private networks first and physical interfaces before virtual ones (a VPN's, a virtual
+  machine's bridge). `address/0` is its first, so a host names itself on its home
+  network rather than on whichever interface the system lists first.
+
+* A player can ask for fewer frames than the world ticks: `Cauldron2D.World.join/4`'s
+  `:frames` takes a number a second, and `Cauldron2D.World.frames/3`
+  (`Cauldron2D.Player.frames/3`) changes it. The world builds a view only for a frame it
+  sends, and each frame carries the events of every step since the last.
+
+* `Cauldron2D.Distribution.join/3` says why a join failed: `:bad_address`,
+  `:unreachable` (nothing answers at the address), `:not_hosting` (no such node there) or
+  `:refused` (the node refused the code), where it said `:unreachable` for all.
+* `Cauldron2D.Client.Game`: an `ask` of `{:menu, arg}` and the optional `open_menu/2`
+  callback, so a world can ask a client to open a particular menu of the game's.
+* `Cauldron2D.Audio.keyed/4` takes `music: true`: the sound's recording from the new
+  `:recordings` option, played in its own channels as a looping stage music layer from
+  its start, at the music level; `moved/2` sets its gain and `stopped/2` drops it.
+* `Cauldron2D.Client.Game`'s optional `recordings/0`, passed to the audio by
+  `audio_options/1`.
+* `Cauldron2D.Audio`'s `:master` option, `:sfx` for the effects level to scale the music
+  too; a game sets it through `Cauldron2D.Client.Game`'s `audio/0`.
+* `Cauldron2D.Audio.muted/1`: the event that silences everything until another lets it
+  sound again.
+
+* `Cauldron2D.Loop.wait/2`: the milliseconds until the next step falls due.
+* `Cauldron2D.DrawList.extent/2`: the rectangle an item's picture can cover.
+
+* `{:gamemaker, mode}` drawing: a blend with GameMaker's factors applied to the alpha
+  channel as well as the colours, as GameMaker draws onto a surface.
+
+* `Cauldron2D.Blend` and `Cauldron2D.DrawList` draw with `mode: :subtract`, GameMaker's
+  `bm_subtract`: each canvas channel times one less the picture's colour times its
+  alpha.
+
+* `Cauldron2D.Distribution`: play across machines over BEAM distribution. `host/2`
+  names the VM `<name>@<address>` with a fresh join code as its cookie and calls on the
+  local network; `join/3` connects to a host with its code; `stop/1`, `address/0`,
+  `code/0`.
+* `Cauldron2D.Worlds.world_name/2`: the name of a world on a connected node, started
+  there on first use.
+
+* Additive drawing: a draw item's or placement's `mode: :add` adds the picture's colour
+  times its alpha to what is beneath (`Cauldron2D.Blend.draw/6`, `Cauldron2D.DrawList`).
+* `Cauldron2D.Audio.keyed/4` takes `loop: true`: a voice playing a recording goes round
+  it — its own loop, or the whole of it — until `stopped/2` lets it go.
+* `Cauldron2D.Client.Game`'s optional `ask/1`: what the world asks of a player's client,
+  `{number, :menu}` to open the game's menu or `{number, :quit}` to end the client,
+  each number acted on once.
+* `Cauldron2D.Audio.Music`: a piece with `render: :on_cue` renders a section only when it
+  is cued and keeps only the playing section in memory, for pieces of whole recorded
+  tracks.
+* `Cauldron2D.Fit`: a frame of a fixed shape fitted into a picture of another, with
+  bars, and the point of the frame under a picture fraction.
+* `Cauldron2D.World.join/4` and `Cauldron2D.Player.join/4` take `frames: false` for a
+  player that sends input and is sent no frames.
+* `Cauldron2D.Client.Game` optional callback `local_seats/1`: further players on the
+  same machine, a keymap each.
+
+* `Cauldron2D.Blend.draw/6` draws a picture onto an RGBA canvas at a pixel position,
+  with an origin, a scale per axis (negative mirrors), an angle, a blend colour and an
+  alpha, in C where the library loaded and in Elixir where it did not.
+* `Cauldron2D.Render.render/3`: a frame drawn once from a list of operations, each drawn
+  by its shape (`{:sprite, picture, placement}`, `{:raster, picture, {x, y}}`), in
+  bands of rows across the schedulers, in C where the library loaded. `:format` is
+  `:rgba` or `:rgb`; `:background` is a colour or a picture the frame's size.
+* `Cauldron2D.DrawList`: a frame as a list of pictures placed in world pixels, drawn
+  greatest depth first through a view and a zoom into a raster for a `:picture` scene,
+  leaving out items that cannot reach the frame.
+* Collision by pixels: `Cauldron2D.Mask` (solid pixels, one bit each, from bits or from a
+  raster's alpha), `Cauldron2D.Shape` (a rectangle or a mask placed with an origin, a
+  scale and an angle), and `Cauldron2D.Overlap` testing shapes against each other, a
+  point, a rectangle, a circle or a line.
+* `Cauldron2D.Turn.cos_sin/1`, exact for whole quarter turns.
+* Keyed sound events: `Cauldron2D.Audio.keyed/4` sounds a name under a key, replacing
+  what sounds there; `moved/2` moves it and `stopped/2` lets it go. A keyed sound is
+  placed again when the listener moves and when the effects level changes, and one past
+  earshot keeps sounding at no level. They go to `Cauldron2D.Audio.play/2` with other
+  events, as `Cauldron2D.Audio.Keyed` structs. A keyed sound given `{:level, gain, pan}`
+  instead of a position plays at the game's own level, scaled by the effects level, and
+  only `moved/2` changes it.
+* `Cauldron2D.Client.Game` optional callback `audio/0`: `:voices` and `:earshot` for the
+  game's sound, read with `Cauldron2D.Client.Game.audio_options/1`.
+* A game's own menu, through optional `Cauldron2D.Client.Game` callbacks: `options/0` (the game's player options and defaults), `open_menu/1` and `menu_event/3` (the menu's state and its keys, mouse and controller buttons; it changes settings, plays sounds, sends the world numbered requests, or leaves), and `input_options/1` (`Cauldron2D.Input` options from the player's options). `Cauldron2D.Input.spec_of/1` turns a press into the key spec it binds.
+* `Cauldron2D.Input` binds the wheel and the pointer's movement like tapped keys:
+  `{:mouse, :wheel_up | :wheel_down}` and `{:mouse, :move_left | :move_right | :move_up |
+  :move_down}`, each holding its actions for `:gesture_ms`. `Input.binds?/2` says whether
+  a key spec is bound, and `Input.Pad.binds_axis?/2` whether a padmap binds a stick axis.
+* Sector maps: `Cauldron2D.Sectors.Map` (rooms of any shape with their own floor and
+  ceiling heights, joined by lines), `Sectors.Bsp` (front-to-back order and point
+  location, read from a level or built from its lines), and `Sectors.View`, which draws one
+  from inside it — walls with upper, lower and see-through middle pictures, perspective
+  floors and ceilings, sky, and sprites clipped against the walls in front of them.
+* `Cauldron2D.Sectors.Frame`: an indexed-colour picture drawn a column, a plane or a line
+  at a time, in C with an Elixir fallback that draws the same
+  picture; `Sectors.Pictures` holds the textures and light tables it draws from.
+* `Cauldron2D.Sectors.Light`: light tables built from a palette, and which table a surface
+  is drawn through at a light level and distance.
+* Movement and sight through sector maps: `Sectors.Blockmap` (lines and bodies filed by
+  block), `Sectors.Trace` (what a straight line crosses, nearest first), `Sectors.Move`
+  (fitting, stepping up, drop-offs, sliding along walls), `Sectors.Sight`,
+  `Sectors.Noise` (how far a sound carries through open doors) and `Sectors.Automap`.
+* `Sectors.Overlay`, a picture drawn flat over the view, for a held weapon or a status bar.
+* `Cauldron2D.States` (state tables: a picture, a duration, an action and the next state),
+  `Cauldron2D.Thinkers` (things that change by themselves each tick, in a fixed order) and
+  `Cauldron2D.Steer` (choosing one of eight directions toward a target round obstacles).
+* `Cauldron2D.Client.Game` scenes take a `:picture`, a raster the game draws itself.
 
 * Five projections of the same world, each taking the atlas, a `:focus` or `:position`
   and the scene's `:cell`:
@@ -99,6 +220,18 @@
 
 ### Changed
 
+* The compiled native code is built into and loaded from
+  `priv/native/<system architecture>` (`Cauldron2D.Native`) instead of `priv/`, so builds
+  for macOS and Linux in one checkout no longer overwrite each other.
+
+* `Cauldron2D.Surface.compose/4` draws its grid, movers and labels, and
+  `Cauldron2D.Parallax.compose/3` its layers, through `Cauldron2D.Render.render/3`;
+  the pictures are the same.
+* `available?/0` of `Blend`, `Projection.Ground`, `Projection.Volume.Native` and
+  `Sectors.Frame` reports whether the C library loaded.
+* Effects reach the stage through `TuningFork.Stage.play_pcm/3`: a process standing in
+  for the stage in a test receives `{:play_pcm, pcm, opts}`, `opts` empty for an
+  unkeyed sound.
 * An art may be any size. A cell's base must still be one tile; a larger overlay stands
   on its cell, bottom edge on the cell's bottom and centred across it, and a mover is
   drawn at its own size. All frames of one art must be the same size.
@@ -111,3 +244,33 @@
   `elixir_make` (`c_src/`, `Makefile`, and `Makefile.win` for `nmake` and `cl` on Windows;
   `elixir_make` is a new dependency). Without a C
   compiler the build still succeeds and the Elixir code does the same work.
+
+### Fixed
+
+* `Cauldron2D.Distribution.join/3` accepts a host's code through any of the host's
+  addresses, not only the one in its name.
+* `Cauldron2D.World.join/4` refuses an id another process already plays as, with
+  `{:error, :taken}`, where it gave that id to the newcomer and left the first process
+  without its player.
+
+* `Cauldron2D.World` times its next tick once the last has run, for when the next step
+  falls due, so its mailbox never holds more than one tick. A world whose steps take
+  longer than their time no longer queues ticks ahead of input; input waits at most one
+  tick, and steps past `Cauldron2D.Loop`'s `:max_steps` are dropped.
+
+* `Cauldron2D.Input` without key releases: a tapped key lets go after its tap window
+  on a clock that reads below zero, as the BEAM's monotonic clock does. A tapped key
+  stayed held for good.
+* `Cauldron2D.Blend` and `Cauldron2D.Render` never write or read outside a picture: a
+  placement with a huge or non-finite position, origin, scale or angle draws nothing
+  beyond the frame's edges, negative and zero sizes are refused, and sizes are checked
+  without overflowing.
+* `:alpha` is held to `0.0`–`1.0` and each `:blend` channel to `0`–`255`, the same in C
+  and in Elixir.
+* `Cauldron2D.Render.render/3` raises `ArgumentError` for a picture or background of
+  the wrong size and for a colour that is not four values in `0..255`.
+* `Cauldron2D.DrawList` keeps a picture whose origin lies outside it when the picture
+  lands in the frame.
+* `Cauldron2D.Surface.compose/4` keeps the colour of the grid's see-through pixels.
+* `-ffp-contract=off` is kept when `CFLAGS` is set in the environment, so C and Elixir
+  draw the same pixels.
