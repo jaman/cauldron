@@ -80,7 +80,7 @@ defmodule Cauldron3D.Formats.Spr do
         case format do
           :index_alpha -> <<lr, lg, lb, index>>
           :alpha_test when index == 255 -> <<0, 0, 0, 0>>
-          _ -> elem(colours, index)
+          _ -> Texture.colour(colours, index)
         end
       end
 

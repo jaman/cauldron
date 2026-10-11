@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.2]
+
+### Added
+
+* `Cauldron2D.Drafter.Client.Picture`: how a game's picture reaches a terminal that
+  keeps images (`native`, `native:N`, `size:WxH`, `png`, `swap`, `none`), read from the
+  client's `:picture` mount prop, the application env `config :cauldron_2d_drafter,
+  picture:`, the `CAULDRON_PICTURE` environment variable or the game's look, with
+  `parse/1` for a mix task's `--picture`. Default `native:2,swap`.
+* A look's `:native` and `:picture` keys: a picture's own size, and the game's default
+  picture options.
+* The client's `:mute` mount prop, `config :cauldron_2d_drafter, mute: true` and
+  `CAULDRON_MUTE=1`: no sound, whatever sink the game or session would have had.
+
+### Breaking changes
+
+* A scene's `:native_scale`, `:picture_format` and `:swap` keys are no longer read; the
+  client's picture options decide them. A scene's `:native` still declares the
+  picture's own size.
+
 ## [0.2.0]
 
 ### Breaking changes

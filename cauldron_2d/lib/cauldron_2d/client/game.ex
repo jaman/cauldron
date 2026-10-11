@@ -40,12 +40,10 @@ defmodule Cauldron2D.Client.Game do
   A scene with a `:picture` — `fn {width, height}, aspect -> raster end` — is drawn by
   the game itself rather than from the atlas: the client hands it to
   `Cauldron2D.Drafter.Surface` as the `:picture` projection, at the pane's size in pixels,
-  and the focus, cell and movers then serve only the listener and the pointer. Three
-  more scene keys change how such a picture reaches a kitty terminal, each on its own and
-  none by default (`Cauldron2D.Drafter.Surface`'s options of the same names): `:native`
-  `{width, height}` asks for the picture at the game's own size times a whole number
-  (`:native_scale`, `:fit` or a number), `picture_format: :png` sends it as a PNG, and
-  `swap: true` replaces it without the pane going blank between frames.
+  and the focus, cell and movers then serve only the listener and the pointer. A scene's
+  `:native` (`{width, height}`), over the look's, is the picture's own size in pixels:
+  the size the client's picture options (`Cauldron2D.Drafter.Client.Picture`) draw it at
+  times a whole number, for a terminal that keeps images to scale.
 
   `worlds/1` is given the client's props and read whenever a lobby draws, so it may
   answer differently each time. A world is `%{id, name, world, players, humans, map,
@@ -120,7 +118,9 @@ defmodule Cauldron2D.Client.Game do
       `:oblique`, `:iso`, `:mode7` or `:first_person`), `:projections` (a list of
       those), `:facing` (a step), `:facings` (steps in a turn), `:tilt` (`0.5..1.5`),
       `:heading` (radians), `:pitch` (`-1.0..1.0`), `:zoom` (how many times native a
-      tile is drawn when a world opens) and `:mouse_look?` (a boolean).
+      tile is drawn when a world opens), `:mouse_look?` (a boolean), `:native`
+      (`{width, height}`, a picture's own size in pixels) and `:picture` (the picture
+      options `Cauldron2D.Drafter.Client.Picture` uses when the player gives none).
       `projections` lists the views the projection key cycles through, in order;
       `density` is `Cauldron2D.Drafter.Surface`'s, the pixels a cell is drawn with.
       Default top-down, cycling all three. Any other key is the game's own, kept on
@@ -200,7 +200,8 @@ defmodule Cauldron2D.Client.Game do
           optional(:subject) => String.t() | atom() | number(),
           optional(:heading) => number(),
           optional(:picture) => ({pos_integer(), pos_integer()}, number() ->
-                                   FrenchCurve.Raster.t())
+                                   FrenchCurve.Raster.t()),
+          optional(:native) => {pos_integer(), pos_integer()}
         }
   @type page :: %{key: atom(), hint: String.t(), title: String.t(), render: (-> [Hud.row()])}
 

@@ -7,6 +7,8 @@ defmodule Cauldron3D.Frame do
       Cauldron3D.Frame.rgba(frame, palette)
   """
 
+  alias Cauldron3D.Frame.Pixels
+
   @enforce_keys [:width, :height, :pixels]
   defstruct [:width, :height, :pixels, format: :indexed]
 
@@ -83,7 +85,7 @@ defmodule Cauldron3D.Frame do
 
           [
             binary_part(row, 0, first_col * 4),
-            lay(under, above),
+            Pixels.lay(under, above),
             binary_part(row, (last_col + 1) * 4, (frame.width - last_col - 1) * 4)
           ]
         end
@@ -166,25 +168,6 @@ defmodule Cauldron3D.Frame do
     |> Enum.chunk_by(& &1)
     |> Enum.map(&{hd(&1), length(&1)})
   end
-
-  defp lay(under, above) do
-    for {<<ur, ug, ub, ua>>, <<r, g, b, a>>} <- Enum.zip(words(under), words(above)),
-        into: <<>> do
-      case a do
-        255 ->
-          <<r, g, b, 255>>
-
-        0 ->
-          <<ur, ug, ub, ua>>
-
-        _ ->
-          <<div(r * a + ur * (255 - a), 255), div(g * a + ug * (255 - a), 255),
-            div(b * a + ub * (255 - a), 255), ua>>
-      end
-    end
-  end
-
-  defp words(binary), do: for(<<word::binary-4 <- binary>>, do: word)
 
   defp merge(_under, above, nil), do: above
 

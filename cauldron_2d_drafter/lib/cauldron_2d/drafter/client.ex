@@ -49,6 +49,13 @@ defmodule Cauldron2D.Drafter.Client do
       `Cauldron2D.Drafter.Client.Settings`). Default `:terminal`
     * `:start` — the flow, as the Flow section describes it, over the game's `start/0`.
       Default: the game's, else `:lobby`
+    * `:picture` — how a game's picture reaches a terminal that keeps images, as
+      `Cauldron2D.Drafter.Client.Picture` reads it. Default: the application env
+      `config :cauldron_2d_drafter, picture: ...`, else `CAULDRON_PICTURE`, else the
+      game's look, else `Cauldron2D.Drafter.Client.Picture.default/0`
+    * `:mute` — `true` plays no sound, whatever sink the game or the session would have
+      had. Default: the application env `config :cauldron_2d_drafter, mute: true`, else
+      `CAULDRON_MUTE` set to `1` or `true`, else `false`
 
   Every other mount prop is the game's, read by its `sink/1`, `pages/1` and `worlds/1`.
 
@@ -145,7 +152,7 @@ defmodule Cauldron2D.Drafter.Client do
   alias Cauldron2D.Audio.Music
   alias Cauldron2D.Client.Game
   alias Cauldron2D.Drafter.{Chat, Surface}
-  alias Cauldron2D.Drafter.Client.{Controllers, Screens, Seats, Settings}
+  alias Cauldron2D.Drafter.Client.{Controllers, Picture, Screens, Seats, Settings}
   alias Cauldron2D.Input.Pad
   alias Cauldron2D.Projection.Iso
   alias Cauldron2D.World.Presence
@@ -227,6 +234,7 @@ defmodule Cauldron2D.Drafter.Client do
 
     Chat.ensure_started()
     Sessions.track(username, kind)
+    look = Map.merge(@look, optional(game, :look, [], %{}))
 
     %{
       game: game,
@@ -258,7 +266,8 @@ defmodule Cauldron2D.Drafter.Client do
       view: nil,
       geometry: nil,
       zoom: initial_zoom(game),
-      look: Map.merge(@look, optional(game, :look, [], %{})),
+      look: look,
+      picture: Picture.options(props, look),
       pad_aim: nil,
       stick_aim?: false,
       looked_at: nil,
@@ -1985,7 +1994,10 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp start_audio(game, props, settings) do
-    sink = Map.get(props, :sink) || optional(game, :sink, [props], default_sink(props))
+    sink =
+      if muted?(props),
+        do: TuningFork.Sink.Silent,
+        else: Map.get(props, :sink) || optional(game, :sink, [props], default_sink(props))
 
     {:ok, audio} =
       Audio.start_link(
@@ -2002,6 +2014,20 @@ defmodule Cauldron2D.Drafter.Client do
 
     for {name, spec} <- game.music(), do: Music.piece(audio, name, spec)
     audio
+  end
+
+  defp muted?(props) do
+    case Map.get(props, :mute) do
+      nil ->
+        Application.get_env(
+          :cauldron_2d_drafter,
+          :mute,
+          System.get_env("CAULDRON_MUTE") in ["1", "true"]
+        )
+
+      mute ->
+        mute == true
+    end
   end
 
   defp default_sink(%{served_by: _server, pulse_port: port}) when is_integer(port),

@@ -76,11 +76,17 @@ defmodule Cauldron2D.World do
   `:frames` is how often the player is sent a frame: `true` (default) after every tick
   that steps, a number for that many frames a second at most, or `false` for none — a
   second seat played from a process that already receives frames as another player. A
-  frame carries the events of every step since the player's last frame.
+  frame carries the events of every step since the player's last frame. `:timeout` is how
+  many milliseconds the world is given to take the player in, default `10_000`.
   """
   @spec join(GenServer.server(), player_id(), map(), keyword()) :: :ok | {:error, term()}
   def join(world, id, props, opts \\ []),
-    do: GenServer.call(world, {:join, id, props, self(), Keyword.get(opts, :frames, true)})
+    do:
+      GenServer.call(
+        world,
+        {:join, id, props, self(), Keyword.get(opts, :frames, true)},
+        Keyword.get(opts, :timeout, 10_000)
+      )
 
   @doc "Change how often player `id` is sent frames, as `join/4`'s `:frames` takes it."
   @spec frames(GenServer.server(), player_id(), boolean() | number()) :: :ok

@@ -65,17 +65,18 @@ defmodule Cauldron3D.Bsp.Surfaces do
   @spec fetch(cache(), Bsp.t(), non_neg_integer(), 0..3, map()) :: Texture.t()
   def fetch(cache, %Bsp{} = bsp, index, mip, light) do
     case cached(cache, bsp, index, mip, light) do
-      {:ok, surface} -> surface
+      {:ok, _key, surface} -> surface
       {:missing, job} -> make(cache, job)
     end
   end
 
   @doc """
-  The cached surface, or `{:missing, job}`: everything `make/2` needs to make it, without
-  the world, so it can be handed to another process.
+  The cached surface as `{:ok, {index, mip}, surface}`, or `{:missing, job}`: everything
+  `make/2` needs to make it, without the world, so it can be handed to another process;
+  `job.key` is `{index, mip}`.
   """
   @spec cached(cache(), Bsp.t(), non_neg_integer(), 0..3, map()) ::
-          {:ok, Texture.t()} | {:missing, map()}
+          {:ok, {non_neg_integer(), 0..3}, Texture.t()} | {:missing, map()}
   def cached(cache, %Bsp{} = bsp, index, mip, light) do
     face = elem(bsp.faces, index)
 
@@ -87,8 +88,8 @@ defmodule Cauldron3D.Bsp.Surfaces do
       |> then(&[{:scroll, Map.get(light, :scroll, 0)} | &1])
 
     case :ets.lookup(cache, {index, mip}) do
-      [{_key, ^scales, surface}] ->
-        {:ok, surface}
+      [{key, ^scales, surface}] ->
+        {:ok, key, surface}
 
       _missing ->
         entry = elem(bsp.textures, face.texture)
@@ -148,7 +149,7 @@ defmodule Cauldron3D.Bsp.Surfaces do
         for i <- 0..(width - 1), into: <<>> do
           index = :binary.at(texels, rem(first_column + i, across))
           multipliers = shade.(luxel_sample(row, (i + 0.5) * step))
-          rgba_texel(elem(colours, index), multipliers, mask? and index == 255)
+          rgba_texel(Texture.colour(colours, index), multipliers, mask? and index == 255)
         end
       end
 

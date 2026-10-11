@@ -14,7 +14,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
   alias Cauldron2D.Client.{Game, Hud}
   alias Cauldron2D.Drafter.Client
-  alias Cauldron2D.Drafter.Client.Settings
+  alias Cauldron2D.Drafter.Client.{Picture, Settings}
   alias Cauldron2D.Drafter.Surface
 
   @doc "The title screen: the game's name, its tagline and the menu."
@@ -514,15 +514,11 @@ defmodule Cauldron2D.Drafter.Client.Screens do
          density: Map.get(look, :density),
          eye: Client.eye_height(game, scene),
          picture: Map.get(scene, :picture),
-         native: Map.get(scene, :native),
-         native_scale: Map.get(scene, :native_scale, :fit),
-         picture_format: Map.get(scene, :picture_format, :rgba),
-         swap: Map.get(scene, :swap, false),
          on_geometry: :play_geometry,
          image_throttle: {1, :tick},
          image_priority: :normal,
          flex: 1
-       ]}
+       ] ++ Picture.surface_props(state.picture, scene, look)}
 
     vertical(
       hud_layout(Hud.layout(game.hud(view)), surface) ++

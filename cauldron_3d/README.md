@@ -61,7 +61,17 @@ equally near; a polygon is cut into the row's runs where it is in front, in any 
 Each pixel is then painted once, by the polygon that owns it, with its texture position
 divided through for perspective. There is no depth buffer and nothing is drawn twice.
 
-A frame is cut into bands of rows that are drawn at the same time, one per scheduler.
+A frame is cut into bands of rows that are drawn at the same time, one per scheduler;
+each band is handed only the polygons that cross its rows, since everything a band is
+given is copied to it.
+
+The pixels of a textured or lit-surface run, and the tint over one, are filled in C
+(`Cauldron3D.Paint.Spans`), as are laying one RGBA picture over another and putting a
+picture through a 256-entry table (`Cauldron3D.Frame.Pixels`). The C is built by
+`elixir_make` with the package and needs a C compiler; where it is missing the same
+bytes are made in Elixir, several times slower. A texture's colours are one 1024-byte
+binary rather than a tuple, so the C reads them directly and a band's copy of a
+polygon carries no per-colour terms.
 Lit surfaces of a BSP world are made in parallel too, each from the face's own texture,
 lightmap samples and styles, and kept in an ETS table until a style's light changes.
 

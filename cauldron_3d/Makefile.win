@@ -1,0 +1,16 @@
+PRIV_DIR = priv
+
+all: $(PRIV_DIR) span_nif pixels_nif
+
+$(PRIV_DIR):
+	if not exist $(PRIV_DIR) mkdir $(PRIV_DIR)
+
+span_nif pixels_nif:
+	-cl /nologo /LD /O2 /fp:strict /I"$(ERTS_INCLUDE_DIR)" c_src\$@.c /Fe:$(PRIV_DIR)\$@.dll
+	if exist $@.obj del /Q $@.obj
+	if not exist $(PRIV_DIR)\$@.dll echo cauldron_3d: c_src\$@.c did not build, its work will be done in Elixir
+
+clean:
+	if exist $(PRIV_DIR)\*.dll del /Q $(PRIV_DIR)\*.dll
+	if exist $(PRIV_DIR)\*.lib del /Q $(PRIV_DIR)\*.lib
+	if exist $(PRIV_DIR)\*.exp del /Q $(PRIV_DIR)\*.exp

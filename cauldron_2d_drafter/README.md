@@ -101,6 +101,38 @@ by `Cauldron2D.Drafter.Sprites.transmit/2` — about forty bytes per mover per f
 sub-cell pixel offsets. Elsewhere the movers are composited into one image per frame, as
 below.
 
+## The picture
+
+A game whose scene is a `:picture` draws its own frame, and on a terminal that keeps
+images (kitty, Ghostty, WezTerm, iTerm2) the client decides what size to ask for and how
+to send it, through `Cauldron2D.Drafter.Client.Picture`. With `native` the frame is
+drawn at the game's own size (the look's or the scene's `:native`) times a whole
+number and the terminal scales it to the pane, so the font size and the picture's
+resolution are independent; without it the frame is drawn at the pane's cells times
+the surface's density, which at the usual four pixels a cell is a small, blurry picture
+with a large font and an expensive one with a small font. `png` sends each frame as a
+PNG, a third smaller when the frame has at most 256 colours but several times the CPU
+to encode, so it suits play over ssh rather than a local terminal. `swap` keeps two
+image ids and replaces one frame with the next in a single synchronized update, so the
+pane never blanks.
+
+The options come from the client's `:picture` mount prop, else the application env
+`config :cauldron_2d_drafter, picture: "native:2,swap"`, else the environment
+variable `CAULDRON_PICTURE`, else the game's own default in its look, else
+`native:2,swap`. A mix task passes the player's `--picture` through `Picture.parse/1`.
+
+The client's `:mute` mount prop, the application env `config :cauldron_2d_drafter,
+mute: true` or `CAULDRON_MUTE=1` plays no sound at all, for a game run headless or on a
+machine whose speakers are in use.
+
+The cost of a frame grows with its pixels: a software renderer's drawing time and the
+deflate of the raw pixels both scale with the picture's area, so a game whose frame is
+expensive at its own size (Quake, at 12 ms for 320×200) defaults to `native:1`, and one
+that is cheap (Doom at 1 ms, a 2D game well under that) to `native:2`; `native` with
+no multiplier fits the pane and on a 1920×1080 window asks for five times 320×200,
+which is 24 ms to draw and 24 ms to deflate for Doom and 97 ms for Quake, past any
+frame budget.
+
 ## Two renderings, one view
 
 * **pixel** — `image/3` composites the viewport and hands drafter one image as a kitty /

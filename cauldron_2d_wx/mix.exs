@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Wx.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "0.2.2"
   @source_url "https://github.com/jaman/cauldron"
   @description "A Cauldron2D game in a wx window: the desktop front end."
 
@@ -29,8 +29,8 @@ defmodule Cauldron2D.Wx.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.2.1", "../cauldron_2d", []),
-      family(:cauldron_2d_net, "~> 0.2.1", "../cauldron_2d_net", []),
+      family(:cauldron_2d, "~> 0.2.2", "../cauldron_2d", []),
+      family(:cauldron_2d_net, "~> 0.2.2", "../cauldron_2d_net", []),
       family(:french_curve, "~> 0.2.0", "../../french_curve", override: true),
       family(:tuning_fork, "~> 0.1.12", "../../tuning_fork/tuning_fork", []),
       {:jason, "~> 1.4"}

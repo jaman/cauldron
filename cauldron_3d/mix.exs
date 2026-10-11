@@ -1,7 +1,7 @@
 defmodule Cauldron3D.MixProject do
   use Mix.Project
 
-  @version "0.2.1"
+  @version "0.2.2"
   @source_url "https://github.com/jaman/cauldron"
   @description "A 3D software renderer and collision for terminals, in Elixir: cameras, polygons, meshes, BSP worlds and hull tracing."
 
@@ -10,6 +10,10 @@ defmodule Cauldron3D.MixProject do
       app: :cauldron_3d,
       version: @version,
       elixir: "~> 1.18",
+      compilers: [:elixir_make | Mix.compilers()],
+      make_targets: ["all"],
+      make_clean: ["clean"],
+      make_env: %{"PRIV_DIR" => "priv/native/#{:erlang.system_info(:system_architecture)}"},
       description: @description,
       start_permanent: Mix.env() == :prod,
       elixirc_options: [warnings_as_errors: true],
@@ -26,6 +30,7 @@ defmodule Cauldron3D.MixProject do
   defp deps do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:elixir_make, "~> 0.9", runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]
   end
@@ -34,7 +39,7 @@ defmodule Cauldron3D.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib mix.exs README.md CHANGELOG.md)
+      files: ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md)
     ]
   end
 

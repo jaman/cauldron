@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.2.2]
+
+### Added
+
+* `Cauldron3D.Paint.Spans`: textured, shaded, lit-surface and tinted runs filled in C,
+  with the same bytes made in Elixir where the C did not build.
+* `Cauldron3D.Frame.Pixels`: `lay/2` and `through/2` over whole RGBA runs, in C likewise.
+* `Cauldron3D.Texture.colour/2`: one colour of a colour table.
+
+### Changed
+
+* Each band of `Cauldron3D.Render.draw_setups/3` is given only the setups crossing its
+  rows.
+* `Cauldron3D.Bsp.Draw.polygons/3` looks each face's surface up once a frame and
+  dedups faces by face and mip.
+
+### Breaking changes
+
+* `Cauldron3D.Texture.colours/1` and a texture's `colours` are a 1024-byte RGBA binary,
+  not a tuple of 256 binaries; read a colour with `Cauldron3D.Texture.colour/2`.
+* `Cauldron3D.Bsp.Surfaces.cached/5` answers `{:ok, {index, mip}, surface}`.
+* The package builds C with `elixir_make`.
+
 ## [0.2.0]
 
 ### Added

@@ -64,10 +64,10 @@ defmodule Cauldron3D.Bsp.Draw do
         facing?(bsp, elem(bsp.faces, index), local(place, view.origin))
       end)
 
-    make_missing(bsp, view, seen, opts)
+    made = surfaces(bsp, view, seen, opts)
 
     Enum.flat_map(seen, fn {index, place} ->
-      List.wrap(polygon(bsp, view, index, place, opts))
+      List.wrap(polygon(bsp, view, {index, place}, made, opts))
     end)
   end
 
@@ -120,10 +120,10 @@ defmodule Cauldron3D.Bsp.Draw do
       |> Vec.madd(y_axis, y * scale)
       |> Vec.madd(z_axis, z * scale)
 
-  defp make_missing(bsp, view, seen, opts) do
+  defp surfaces(bsp, view, seen, opts) do
     case Keyword.get(opts, :surfaces) do
       nil ->
-        :ok
+        %{}
 
       cache ->
         bias = Keyword.get(opts, :mip_bias, 1.0)
@@ -133,21 +133,27 @@ defmodule Cauldron3D.Bsp.Draw do
         |> Enum.map(fn {index, place} ->
           {index, mip(view, elem(bsp.faces, index), place, bias), place.light}
         end)
-        |> Enum.uniq()
-        |> Enum.flat_map(fn {index, mip, light} -> missing(cache, bsp, {index, mip}, light) end)
-        |> Task.async_stream(&Surfaces.make(cache, &1), timeout: :infinity, ordered: false)
-        |> Stream.run()
+        |> Enum.uniq_by(fn {index, mip, _light} -> {index, mip} end)
+        |> Enum.map(fn {index, mip, light} -> Surfaces.cached(cache, bsp, index, mip, light) end)
+        |> Enum.split_with(&match?({:ok, _key, _surface}, &1))
+        |> then(fn {found, missing} ->
+          Map.new(found, &found/1) |> Map.merge(made(cache, missing))
+        end)
     end
   end
 
   defp solid?(bsp, index),
     do: elem(bsp.textures, elem(bsp.faces, index).texture).kind in [:solid, :masked]
 
-  defp missing(cache, bsp, {index, mip}, light) do
-    case Surfaces.cached(cache, bsp, index, mip, light) do
-      {:ok, _} -> []
-      {:missing, job} -> [job]
-    end
+  defp found({:ok, key, surface}), do: {key, surface}
+
+  defp made(cache, missing) do
+    missing
+    |> Task.async_stream(fn {:missing, job} -> {job.key, Surfaces.make(cache, job)} end,
+      timeout: :infinity,
+      ordered: false
+    )
+    |> Map.new(fn {:ok, made} -> made end)
   end
 
   @doc "The world faces seen from `point`: those of every leaf its leaf can see, each once."
@@ -174,12 +180,12 @@ defmodule Cauldron3D.Bsp.Draw do
     if face.back?, do: side < 0, else: side > 0
   end
 
-  defp polygon(bsp, view, index, place, opts) do
+  defp polygon(bsp, view, {index, place}, made, opts) do
     face = elem(bsp.faces, index)
     texture = elem(bsp.textures, face.texture)
     points = Enum.map(face.points, &place(place, &1))
 
-    case paint(texture.kind, bsp, view, {index, face, texture, points, place}, opts) do
+    case paint(texture.kind, bsp, view, {index, face, texture, points, place}, made, opts) do
       nil ->
         nil
 
@@ -267,9 +273,9 @@ defmodule Cauldron3D.Bsp.Draw do
     }
   end
 
-  defp paint(:hidden, _bsp, _view, _face, _opts), do: nil
+  defp paint(:hidden, _bsp, _view, _face, _made, _opts), do: nil
 
-  defp paint(:sky, _bsp, _view, {_index, _face, texture, points, _place}, opts) do
+  defp paint(:sky, _bsp, _view, {_index, _face, texture, points, _place}, _made, opts) do
     case Keyword.get(opts, :skybox) do
       nil ->
         sky_opts = [time: Keyword.get(opts, :time, 0.0)] ++ Keyword.get(opts, :sky, [])
@@ -280,20 +286,21 @@ defmodule Cauldron3D.Bsp.Draw do
     end
   end
 
-  defp paint(:liquid, _bsp, _view, {_index, face, texture, points, _place}, opts) do
+  defp paint(:liquid, _bsp, _view, {_index, face, texture, points, _place}, _made, opts) do
     uvs = Enum.map(face.points, &Face.st(face, &1))
     mip = hd(texture.mips)
     warp = [time: Keyword.get(opts, :time, 0.0)] ++ liquid(Keyword.get(opts, :liquid, []), mip)
     %Polygon{points: points, uvs: uvs, paint: {:warp, mip, warp}}
   end
 
-  defp paint(:masked, bsp, view, face, opts), do: paint(:solid, bsp, view, face, opts)
+  defp paint(:masked, bsp, view, face, made, opts), do: paint(:solid, bsp, view, face, made, opts)
 
-  defp paint(:solid, bsp, view, {index, face, _texture, points, place}, opts) do
+  defp paint(:solid, bsp, view, {index, face, _texture, points, place}, made, opts) do
     mip = mip(view, face, place, Keyword.get(opts, :mip_bias, 1.0))
 
     surface =
-      Surfaces.fetch(Keyword.fetch!(opts, :surfaces), bsp, index, mip, place.light)
+      Map.get(made, {index, mip}) ||
+        Surfaces.fetch(Keyword.fetch!(opts, :surfaces), bsp, index, mip, place.light)
 
     {s_min, t_min} = face.mins
     size = Bitwise.bsl(1, mip)

@@ -26,3 +26,4 @@ cauldron_2d-*.tar
 # The NIF the Makefile builds.
 /priv/*.so
 /priv/*.dSYM/
+/priv/native/

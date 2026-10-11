@@ -56,10 +56,8 @@ defmodule Cauldron3D.Render do
 
     pixels =
       0..(height - 1)//per_band
-      |> Task.async_stream(
-        fn first ->
-          Raster.rows(setups, first..min(first + per_band - 1, height - 1), width, context)
-        end,
+      |> Enum.map(&band(&1..min(&1 + per_band - 1, height - 1), setups))
+      |> Task.async_stream(fn {rows, crossing} -> Raster.rows(crossing, rows, width, context) end,
         timeout: :infinity
       )
       |> Enum.map(fn {:ok, rows} -> rows end)
@@ -68,6 +66,9 @@ defmodule Cauldron3D.Render do
     format = if Map.has_key?(context, :rgba), do: :rgba, else: :indexed
     %Frame{width: width, height: height, pixels: pixels, format: format}
   end
+
+  defp band(first..last//1 = rows, setups),
+    do: {rows, Enum.filter(setups, &(&1.bottom >= first and &1.top <= last))}
 
   defp context(view, opts) do
     {known, rest} =

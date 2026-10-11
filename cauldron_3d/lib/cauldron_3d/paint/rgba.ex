@@ -33,6 +33,7 @@ defmodule Cauldron3D.Paint.Rgba do
       it) times the colour times the texel's alpha, each light's share held at 0 or above
   """
 
+  alias Cauldron3D.Paint.Spans
   alias Cauldron3D.{Setup, Texture, Vec, View}
 
   @clear <<0, 0, 0, 0>>
@@ -73,58 +74,33 @@ defmodule Cauldron3D.Paint.Rgba do
     {b0, bx} = row_plane(bp, y)
     {a0, ax} = row_plane(ap, y)
     threshold = if setup.alpha_test, do: setup.alpha_test * 255, else: 0
-
-    for {<<r, g, b, a>>, x} <- Enum.with_index(words(base), first), into: <<>> do
-      xc = x + 0.5
-      w = w0 + wx * xc
-
-      if a < threshold,
-        do: @clear,
-        else:
-          <<channel(r * (r0 + rx * xc) / w), channel(g * (g0 + gx * xc) / w),
-            channel(b * (b0 + bx * xc) / w), channel(a * (a0 + ax * xc) / w)>>
-    end
+    Spans.tint(base, first, {w0, wx, r0, rx, g0, gx, b0, bx, a0, ax}, threshold)
   end
 
   def span({:flat, colour}, _setup, first, stop, _y, context),
     do: :binary.copy(flat(colour, context), stop - first)
 
   def span({:texture, %Texture{} = texture, light}, setup, first, stop, y, context) do
-    {w, uw, vw} = row_planes(setup, y)
-    colours = colours(texture, context)
-    clear = setup.clear
-    scale = light_scale(light)
+    planes = span_planes(setup, y)
 
-    for x <- first..(stop - 1)//1, into: <<>> do
-      {u, v} = uv(w, uw, vw, x)
-      texel(texture, colours, floor(u), floor(v), clear, scale)
-    end
+    Spans.texture(
+      source(texture, context),
+      setup.clear,
+      light_scale(light),
+      planes,
+      {first, stop}
+    )
   end
 
   def span({:shaded, %Texture{} = texture}, setup, first, stop, y, context) do
-    {w, uw, vw} = row_planes(setup, y)
     {l0, lx, ly} = setup.light
-    light_origin = l0 + ly * (y + 0.5)
-    colours = colours(texture, context)
-    clear = setup.clear
-
-    for x <- first..(stop - 1)//1, into: <<>> do
-      {u, v} = uv(w, uw, vw, x)
-      texel(texture, colours, floor(u), floor(v), clear, (light_origin + lx * (x + 0.5)) / 128)
-    end
+    light = {:plane, l0 + ly * (y + 0.5), lx}
+    planes = span_planes(setup, y)
+    Spans.texture(source(texture, context), setup.clear, light, planes, {first, stop})
   end
 
   def span({:surface, %Texture{} = texture}, setup, first, stop, y, context) do
-    {w, uw, vw} = row_planes(setup, y)
-    {right, bottom} = {texture.width - 1, texture.height - 1}
-    colours = colours(texture, context)
-
-    for x <- first..(stop - 1)//1, into: <<>> do
-      {u, v} = uv(w, uw, vw, x)
-      column = u |> floor() |> max(0) |> min(right)
-      row = v |> floor() |> max(0) |> min(bottom)
-      pixel(texture, colours, column, row)
-    end
+    Spans.surface(source(texture, context), span_planes(setup, y), {first, stop})
   end
 
   def span({:warp, %Texture{} = texture, opts}, setup, first, stop, y, context) do
@@ -168,7 +144,13 @@ defmodule Cauldron3D.Paint.Rgba do
   @doc "A colour, a palette index or `{r, g, b}`, as RGBA bytes in `context`'s palette."
   @spec flat(byte() | {byte(), byte(), byte()}, map()) :: binary()
   def flat({r, g, b}, _context), do: <<r, g, b, 255>>
-  def flat(index, context), do: elem(context.rgba, index)
+  def flat(index, context), do: Texture.colour(context.rgba, index)
+
+  defp source(%Texture{format: :rgba} = texture, _context),
+    do: {texture.pixels, texture.width, texture.height, nil}
+
+  defp source(texture, context),
+    do: {texture.pixels, texture.width, texture.height, colours(texture, context)}
 
   defp colours(%Texture{colours: nil}, context), do: context.rgba
   defp colours(%Texture{colours: colours}, _context), do: colours
@@ -183,14 +165,14 @@ defmodule Cauldron3D.Paint.Rgba do
   defp texel(texture, colours, u, v, clear, scale) do
     %Texture{width: width, height: height, pixels: pixels} = texture
     index = :binary.at(pixels, Integer.mod(v, height) * width + Integer.mod(u, width))
-    if index == clear, do: @clear, else: lit(elem(colours, index), scale)
+    if index == clear, do: @clear, else: lit(Texture.colour(colours, index), scale)
   end
 
   defp pixel(%Texture{format: :rgba, width: width, pixels: pixels}, _colours, column, row),
     do: binary_part(pixels, (row * width + column) * 4, 4)
 
   defp pixel(%Texture{width: width, pixels: pixels}, colours, column, row),
-    do: elem(colours, :binary.at(pixels, row * width + column))
+    do: Texture.colour(colours, :binary.at(pixels, row * width + column))
 
   defp lit(colour, nil), do: colour
 
@@ -224,7 +206,7 @@ defmodule Cauldron3D.Paint.Rgba do
 
     if index == clear,
       do: sky(deeper, u, v, time, clear, context),
-      else: elem(colours(texture, context), index)
+      else: Texture.colour(colours(texture, context), index)
   end
 
   defp box(faces, direction) do
@@ -301,6 +283,11 @@ defmodule Cauldron3D.Paint.Rgba do
   end
 
   defp spot(_light, _place), do: 1.0
+
+  defp span_planes(setup, y) do
+    {{w0, wx}, {u0, ux}, {v0, vx}} = row_planes(setup, y)
+    {w0, wx, u0, ux, v0, vx}
+  end
 
   defp row_planes(%Setup{w: w, uw: uw, vw: vw}, y),
     do: {row_plane(w, y), row_plane(uw, y), row_plane(vw, y)}

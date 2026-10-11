@@ -709,7 +709,8 @@ defmodule Cauldron2D.Drafter.ClientTest do
         talk: [],
         talking?: false,
         help?: false,
-        local_world: nil
+        local_world: nil,
+        picture: []
       }
     end
 

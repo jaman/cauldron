@@ -9,8 +9,8 @@ defmodule Cauldron3D.Texture do
       Cauldron3D.Texture.at(texture, 3, 7)
 
   `palette` is 768 bytes of red, green and blue, or `nil` for an indexed texture whose
-  indices are into the palette of whatever it is drawn on; `colours` is that palette as a
-  tuple of 256 RGBA binaries. An RGBA texture's alpha is 0 where it is see-through.
+  indices are into the palette of whatever it is drawn on; `colours` is that palette as
+  1024 bytes of RGBA, four a colour (`colour/2` reads one). An RGBA texture's alpha is 0 where it is see-through.
   """
 
   @enforce_keys [:width, :height, :pixels]
@@ -21,7 +21,7 @@ defmodule Cauldron3D.Texture do
           height: pos_integer(),
           pixels: binary(),
           palette: binary() | nil,
-          colours: tuple() | nil,
+          colours: binary() | nil,
           format: :indexed | :rgba
         }
 
@@ -56,9 +56,13 @@ defmodule Cauldron3D.Texture do
         "a #{width}x#{height} RGBA texture takes #{width * height * 4} bytes, not #{byte_size(pixels)}"
       )
 
-  @doc "A 768-byte palette as a tuple of 256 opaque RGBA binaries."
-  @spec colours(binary()) :: tuple()
-  def colours(palette), do: List.to_tuple(for(<<r, g, b <- palette>>, do: <<r, g, b, 255>>))
+  @doc "A 768-byte palette as 1024 bytes of opaque RGBA, four a colour."
+  @spec colours(binary()) :: binary()
+  def colours(palette), do: for(<<r, g, b <- palette>>, into: <<>>, do: <<r, g, b, 255>>)
+
+  @doc "Colour `index` of `colours/1`'s table, as four bytes of RGBA."
+  @spec colour(binary(), byte()) :: binary()
+  def colour(colours, index), do: binary_part(colours, index * 4, 4)
 
   @doc "The colour index at `{x, y}` of an indexed texture, wrapping both ways."
   @spec at(t(), integer(), integer()) :: byte()
