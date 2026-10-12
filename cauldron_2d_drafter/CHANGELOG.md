@@ -2,9 +2,22 @@
 
 ## Unreleased
 
+### Changed
+
+* A world the client starts for a game (an entry's `world: {module, opts}`) is started
+  unlinked and linked once it runs; one that cannot start, such as a follower whose host
+  cannot be reached, is a "could not join" note instead of a crash.
+
+### Removed
+
+* The client no longer passes frames through a game's `received/3`.
+
+## [0.2.5]
+
 ### Added
 
-* The client passes each frame's view and events through the game's `received/3`
+* The client passes each frame's
+ view and events through the game's `received/3`
   (`Cauldron2D.Client.Game`) and keeps what it returns for the next frame, from a
   world's first frame on.
 

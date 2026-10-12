@@ -19,128 +19,46 @@ defmodule Cauldron2D.GameMaker.Surfaces do
   `lookup/2` also gives `Cauldron2D.GameMaker.Shapes`' pictures, such as
   `{:ellipse, {width, height}, :filled}`, and a tile layer's picture
   (`Cauldron2D.GameMaker.TileLayers`).
-
-  Every change to a surface is kept as an operation until `take_ops/1` takes them, oldest
-  first: `{:create, id, width, height}`, `{:free, id}`, `{:clear, id, colour, alpha}`,
-  `{:copy, destination, {x, y}, source}` and `{:draw, id, items, opts}`. `replay/2`
-  applies them to a `Cauldron2D.GameMaker.Surfaces.Mirror`, which then holds the same
-  rasters as the world, and `snapshot/1` is the one operation, `{:rasters, rasters,
-  next}`, that sets a mirror to a world's surfaces as they are. The functions here that
-  read or change surfaces take a mirror in place of a world.
-
-      {ops, world} = Surfaces.take_ops(world)
-      mirror = Surfaces.replay(mirror, ops)
   """
 
   alias Cauldron2D.DrawList
   alias Cauldron2D.GameMaker.{Shapes, TileLayers, World}
-  alias Cauldron2D.GameMaker.Surfaces.Mirror
   alias FrenchCurve.Raster
 
   @type id :: non_neg_integer()
-  @type holder :: World.t() | Mirror.t()
-  @type op ::
-          {:create, id(), pos_integer(), pos_integer()}
-          | {:free, id()}
-          | {:clear, id(), {byte(), byte(), byte()}, number()}
-          | {:copy, id(), {integer(), integer()}, id()}
-          | {:draw, id(), [DrawList.item()], keyword()}
-          | {:rasters, %{id() => Raster.t()}, non_neg_integer()}
-
-  defguardp holder?(value) when is_struct(value, World) or is_struct(value, Mirror)
 
   @doc "The world with a new surface `width` × `height`, clear; `{world, id}`."
-  @spec create(holder(), pos_integer(), pos_integer()) :: {holder(), id()}
-  def create(%{surfaces: %{next: id}} = world, width, height) when holder?(world) do
-    {created(world, id, round(width), round(height)), id}
-  end
-
-  defp created(world, id, width, height) do
-    raster = Raster.new(width, height, background: {0, 0, 0, 0})
-
-    world
-    |> put_rasters(Map.put(rasters(world), id, raster))
-    |> put_in([Access.key!(:surfaces), :next], max(world.surfaces.next, id + 1))
-    |> recorded({:create, id, width, height})
+  @spec create(World.t(), pos_integer(), pos_integer()) :: {World.t(), id()}
+  def create(%World{surfaces: %{rasters: surfaces, next: id}} = world, width, height) do
+    raster = Raster.new(round(width), round(height), background: {0, 0, 0, 0})
+    {%{world | surfaces: %{rasters: Map.put(surfaces, id, raster), next: id + 1}}, id}
   end
 
   @doc "Every surface's raster, by id."
-  @spec rasters(holder()) :: %{id() => Raster.t()}
-  def rasters(%{surfaces: %{rasters: surfaces}} = world) when holder?(world), do: surfaces
+  @spec rasters(World.t()) :: %{id() => Raster.t()}
+  def rasters(%World{surfaces: %{rasters: surfaces}}), do: surfaces
 
   @doc "Whether surface `id` exists."
-  @spec exists?(holder(), id() | nil) :: boolean()
-  def exists?(%{surfaces: %{rasters: surfaces}} = world, id) when holder?(world),
-    do: Map.has_key?(surfaces, id)
+  @spec exists?(World.t(), id() | nil) :: boolean()
+  def exists?(%World{surfaces: %{rasters: surfaces}}, id), do: Map.has_key?(surfaces, id)
 
   @doc "The world without surface `id`."
-  @spec free(holder(), id()) :: holder()
-  def free(%{surfaces: %{rasters: surfaces}} = world, id) when holder?(world),
-    do: world |> put_rasters(Map.delete(surfaces, id)) |> recorded({:free, id})
+  @spec free(World.t(), id()) :: World.t()
+  def free(%World{surfaces: %{rasters: surfaces}} = world, id),
+    do: put_rasters(world, Map.delete(surfaces, id))
 
   @doc "Surface `id`'s size `{width, height}`."
-  @spec size(holder(), id()) :: {pos_integer(), pos_integer()}
-  def size(%{surfaces: %{rasters: surfaces}} = world, id) when holder?(world),
+  @spec size(World.t(), id()) :: {pos_integer(), pos_integer()}
+  def size(%World{surfaces: %{rasters: surfaces}}, id),
     do: Raster.dimensions(Map.fetch!(surfaces, id))
 
   @doc "The world with surface `id` filled with `colour` `{r, g, b}` at `alpha` (`draw_clear_alpha`)."
-  @spec clear(holder(), id(), {byte(), byte(), byte()}, number()) :: holder()
-  def clear(world, id, {red, green, blue} = colour, alpha) when holder?(world) do
+  @spec clear(World.t(), id(), {byte(), byte(), byte()}, number()) :: World.t()
+  def clear(%World{} = world, id, {red, green, blue}, alpha) do
     {width, height} = size(world, id)
     raster = Raster.new(width, height, background: {red, green, blue, round(alpha * 255)})
-
-    world
-    |> put_rasters(Map.put(rasters(world), id, raster))
-    |> recorded({:clear, id, colour, alpha})
+    put_rasters(world, Map.put(rasters(world), id, raster))
   end
-
-  @doc "The operations made on the surfaces since they were last taken, oldest first, and the world without them."
-  @spec take_ops(holder()) :: {[op()], holder()}
-  def take_ops(%{surfaces: surfaces} = world) when holder?(world) do
-    {Enum.reverse(Map.get(surfaces, :ops, [])), put_in(world.surfaces[:ops], [])}
-  end
-
-  @doc "The operation that sets a mirror's surfaces to these, as they are now."
-  @spec snapshot(holder()) :: op()
-  def snapshot(%{surfaces: %{rasters: surfaces, next: next}} = world) when holder?(world),
-    do: {:rasters, surfaces, next}
-
-  @doc """
-  `mirror` with `ops` applied in order, and none kept to be taken. An operation on a
-  surface the mirror does not hold is passed over, as are those before the first
-  `{:rasters, _, _}` of a mirror that has not yet had one.
-  """
-  @spec replay(holder(), [op()]) :: holder()
-  def replay(mirror, ops) when holder?(mirror) and is_list(ops) do
-    ops
-    |> Enum.reduce(mirror, &replayed(&2, &1))
-    |> put_in([Access.key!(:surfaces), :ops], [])
-  end
-
-  defp replayed(mirror, {:rasters, surfaces, next}),
-    do: put_in(mirror.surfaces, %{rasters: surfaces, next: next, ops: []})
-
-  defp replayed(mirror, {:create, id, width, height}), do: created(mirror, id, width, height)
-
-  defp replayed(mirror, operation) do
-    if Enum.all?(named(operation), &exists?(mirror, &1)),
-      do: applied(mirror, operation),
-      else: mirror
-  end
-
-  defp named({:copy, destination, _at, source}), do: [destination, source]
-  defp named(operation), do: [elem(operation, 1)]
-
-  defp applied(mirror, {:free, id}), do: free(mirror, id)
-  defp applied(mirror, {:clear, id, colour, alpha}), do: clear(mirror, id, colour, alpha)
-
-  defp applied(mirror, {:copy, destination, at, source}),
-    do: copy(mirror, destination, at, source)
-
-  defp applied(mirror, {:draw, id, items, opts}), do: draw(mirror, id, items, opts)
-
-  defp recorded(%{surfaces: surfaces} = world, operation),
-    do: %{world | surfaces: Map.update(surfaces, :ops, [operation], &[operation | &1])}
 
   @doc """
   The world with surface `source`'s pixels put on surface `destination` with their
@@ -148,10 +66,8 @@ defmodule Cauldron2D.GameMaker.Surfaces do
   (`surface_copy(destination, x, y, source)`); what falls outside `destination` is
   left out.
   """
-  @spec copy(holder(), id(), {integer(), integer()}, id()) :: holder()
-  def copy(%{surfaces: %{rasters: surfaces}} = world, destination, {x, y} = at, source)
-      when holder?(world) do
-    world = recorded(world, {:copy, destination, at, source})
+  @spec copy(World.t(), id(), {integer(), integer()}, id()) :: World.t()
+  def copy(%World{surfaces: %{rasters: surfaces}} = world, destination, {x, y}, source) do
     target = Map.fetch!(surfaces, destination)
     from = Map.fetch!(surfaces, source)
     {width, height} = Raster.dimensions(target)
@@ -206,13 +122,12 @@ defmodule Cauldron2D.GameMaker.Surfaces do
   drawing changes; the others keep what the surface held
   (`draw_set_colour_write_enable`). Default: all four.
   """
-  @spec draw(holder(), id(), [DrawList.item()], keyword()) :: holder()
+  @spec draw(World.t(), id(), [DrawList.item()], keyword()) :: World.t()
   def draw(world, id, items, opts \\ [])
 
-  def draw(world, _id, [], _opts) when holder?(world), do: world
+  def draw(%World{} = world, _id, [], _opts), do: world
 
-  def draw(%{surfaces: %{rasters: surfaces}} = world, id, items, opts) when holder?(world) do
-    world = recorded(world, {:draw, id, items, opts})
+  def draw(%World{surfaces: %{rasters: surfaces}} = world, id, items, opts) do
     target = Map.fetch!(surfaces, id)
     blended = Enum.map(items, &Map.put(&1, :mode, {:gamemaker, Map.get(&1, :mode, :over)}))
     pictures = Map.new(blended, &{&1.picture, lookup(world, &1.picture)})
@@ -331,36 +246,33 @@ defmodule Cauldron2D.GameMaker.Surfaces do
   end
 
   @doc "The raster for draw list picture `key`: a surface of the world's or part of one, a shape, or the world's own pictures."
-  @spec lookup(holder(), term()) :: Raster.t() | nil
-  def lookup(%{surfaces: %{rasters: surfaces}} = world, {:surface, id}) when holder?(world),
-    do: Map.get(surfaces, id)
+  @spec lookup(World.t(), term()) :: Raster.t() | nil
+  def lookup(%World{surfaces: %{rasters: surfaces}}, {:surface, id}), do: Map.get(surfaces, id)
 
   def lookup(
-        %{surfaces: %{rasters: surfaces}} = world,
+        %World{surfaces: %{rasters: surfaces}},
         {:surface_part, id, {left, top, width, height}}
-      )
-      when holder?(world) do
+      ) do
     case Map.get(surfaces, id) do
       nil -> nil
       raster -> Raster.crop(raster, {left, top}, {width, height})
     end
   end
 
-  def lookup(world, {:ellipse, _size, _fill} = shape) when holder?(world),
-    do: Shapes.raster(shape)
+  def lookup(%World{}, {:ellipse, _size, _fill} = shape), do: Shapes.raster(shape)
 
-  def lookup(world, {:tile_layer, _room, _layer, _blend} = key) when holder?(world),
+  def lookup(%World{} = world, {:tile_layer, _room, _layer, _blend} = key),
     do: TileLayers.raster(world.data, key, &lookup(world, &1))
 
-  def lookup(world, {:part, key, {left, top, width, height}}) when holder?(world) do
+  def lookup(%World{} = world, {:part, key, {left, top, width, height}}) do
     case lookup(world, key) do
       nil -> nil
       raster -> Raster.crop(raster, {left, top}, {width, height})
     end
   end
 
-  def lookup(%{pictures: nil} = world, _key) when holder?(world), do: nil
-  def lookup(%{pictures: pictures} = world, key) when holder?(world), do: pictures.(key)
+  def lookup(%World{pictures: nil}, _key), do: nil
+  def lookup(%World{pictures: pictures}, key), do: pictures.(key)
 
   defp put_rasters(world, surfaces), do: put_in(world.surfaces.rasters, surfaces)
 end

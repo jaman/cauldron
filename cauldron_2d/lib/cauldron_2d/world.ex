@@ -34,12 +34,27 @@ defmodule Cauldron2D.World do
     * `:tick` — `:fixed`, stepping on the clock, or `:on_input`. Default `:fixed`
     * `:record` — keep a `Cauldron2D.Replay` of joins, leaves and input. Default `false`
     * `:name` — a GenServer name. Default none
+    * `:follow` — another world, on this machine or another, to follow instead of
+      running one of its own. Default none
+
+  ## Following
+
+  A world started with `follow: host` runs the host's game on its own copy of the host's
+  state (`Cauldron2D.World.Lockstep`): it has no clock, and after each of the host's
+  ticks applies the joins, leaves and input the host applied and runs the steps the host
+  ran, then sends its own players their frames. Its players' joins, leaves and input go
+  to the host, which takes them into its next tick as its own players', so only those
+  cross between the machines, never views. `pause/1` and `resume/1` do nothing on a
+  follower and `paused?/1` is `false`: only the host's own players pause the game. A
+  follower stops, with reason `:normal`, when the host does. Starting one fails with
+  `{:error, {:host, reason}}` when the host cannot be reached within `:timeout`
+  milliseconds (default `10_000`).
   """
 
   use GenServer
 
   alias Cauldron2D.{Loop, Replay}
-  alias Cauldron2D.World.{Events, Presence}
+  alias Cauldron2D.World.{Events, Lockstep, Presence}
 
   @type player_id :: term()
 
@@ -60,6 +75,15 @@ defmodule Cauldron2D.World do
         }
 
   @window 256
+  @host_call_ms 9_000
+
+  @doc "Start a world not linked to the caller, as `start_link/1` does otherwise."
+  @spec start(keyword()) :: GenServer.on_start()
+  def start(opts) do
+    {name, opts} = Keyword.pop(opts, :name)
+    gen_opts = if name, do: [name: name], else: []
+    GenServer.start(__MODULE__, opts, gen_opts)
+  end
 
   @doc "Start a world; see the module documentation for the options."
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -134,30 +158,79 @@ defmodule Cauldron2D.World do
 
   @impl GenServer
   def init(opts) do
-    game = Keyword.fetch!(opts, :game)
-    hz = Keyword.get(opts, :hz, 50)
-    tick = Keyword.get(opts, :tick, :fixed)
-    loop = Loop.new(hz)
-    if tick == :fixed, do: send(self(), :tick)
+    case Keyword.get(opts, :follow) do
+      nil -> {:ok, hosting(opts)}
+      host -> following(opts, host)
+    end
+  end
 
-    {:ok,
-     %{
-       game: game,
-       state:
-         Keyword.get_lazy(opts, :state, fn -> game.init(Keyword.get(opts, :game_opts, [])) end),
-       loop: loop,
-       hz: hz,
-       tick: tick,
-       paused?: false,
-       players: %{},
-       pending: %{},
-       steps: 0,
-       timings: [],
-       replay: if(Keyword.get(opts, :record, false), do: Replay.new())
-     }}
+  defp hosting(opts) do
+    game = Keyword.fetch!(opts, :game)
+    tick = Keyword.get(opts, :tick, :fixed)
+    if tick == :fixed, do: send(self(), :tick)
+    state = Keyword.get_lazy(opts, :state, fn -> game.init(Keyword.get(opts, :game_opts, [])) end)
+    world(game, state, Keyword.get(opts, :hz, 50), tick, Keyword.get(opts, :record, false))
+  end
+
+  defp following(opts, host) do
+    {host_pid, start} =
+      GenServer.call(host, {:follow, self()}, Keyword.get(opts, :timeout, 10_000))
+
+    world = world(Keyword.fetch!(opts, :game), nil, start.hz, :follow, false)
+    host = %{pid: host_pid, monitor: Process.monitor(host_pid)}
+    {:ok, Lockstep.started(%{world | host: host}, start)}
+  catch
+    :exit, reason -> {:stop, {:host, reason}}
+  end
+
+  defp world(game, state, hz, tick, record?) do
+    %{
+      game: game,
+      state: state,
+      loop: Loop.new(hz),
+      hz: hz,
+      tick: tick,
+      paused?: false,
+      players: %{},
+      pending: %{},
+      steps: 0,
+      timings: [],
+      replay: if(record?, do: Replay.new()),
+      host: nil,
+      followers: %{},
+      applied: [],
+      drained: []
+    }
   end
 
   @impl GenServer
+  def handle_call({:join, id, props, pid, frames?}, _from, %{host: %{pid: host}} = world) do
+    case GenServer.call(host, {:join, id, props, pid, false}, @host_call_ms) do
+      :ok -> {:reply, :ok, put_in(world.players[id], unready(player(world, id, pid, frames?)))}
+      refused -> {:reply, refused, world}
+    end
+  end
+
+  def handle_call({:leave, id}, _from, %{host: %{pid: host}} = world) do
+    :ok = GenServer.call(host, {:leave, id}, @host_call_ms)
+    {:reply, :ok, unfollowed(world, id)}
+  end
+
+  def handle_call(:pause, _from, %{host: %{}} = world), do: {:reply, :ok, world}
+  def handle_call(:resume, _from, %{host: %{}} = world), do: {:reply, :ok, world}
+  def handle_call(:paused?, _from, %{host: %{}} = world), do: {:reply, false, world}
+
+  def handle_call({:follow, pid}, _from, world) do
+    {world, start} = Lockstep.start(world)
+    followers = Map.put(world.followers, pid, Process.monitor(pid))
+    {:reply, {self(), start}, %{world | followers: followers}}
+  end
+
+  def handle_call({:follow_again, _pid}, _from, world) do
+    {world, start} = Lockstep.start(world)
+    {:reply, start, world}
+  end
+
   def handle_call({:join, id, props, pid, frames?}, _from, world) do
     if taken?(world, id, pid),
       do: {:reply, {:error, :taken}, world},
@@ -196,18 +269,31 @@ defmodule Cauldron2D.World do
   defp joined(world, id, props, pid, frames?) do
     case world.game.join(world.state, id, props) do
       {:ok, state} ->
-        monitor = Process.monitor(pid)
-        player = paced(%{pid: pid, monitor: monitor, events: []}, frames?, world)
-        players = Map.put(world.players, id, player)
-        Presence.broadcast(self(), :joined, id)
-        {:reply, :ok, %{world | state: state, players: players} |> record({:join, id, props})}
+        players = Map.put(world.players, id, player(world, id, pid, frames?))
+
+        {:reply, :ok,
+         %{world | state: state, players: players}
+         |> record({:join, id, props})
+         |> Lockstep.logged({:join, id, props})}
 
       {:error, reason} ->
         {:reply, {:error, reason}, world}
     end
   end
 
+  defp unready(player), do: Map.put(player, :ready, false)
+
+  defp player(world, id, pid, frames?) do
+    Presence.broadcast(self(), :joined, id)
+    paced(%{pid: pid, monitor: Process.monitor(pid), events: []}, frames?, world)
+  end
+
   @impl GenServer
+  def handle_cast({:input, id, input}, %{host: %{pid: host}} = world) do
+    if Map.has_key?(world.players, id), do: GenServer.cast(host, {:input, id, input})
+    {:noreply, world}
+  end
+
   def handle_cast({:input, id, input}, world) do
     if Map.has_key?(world.players, id) do
       {:noreply, %{world | pending: Map.put(world.pending, id, input)} |> step_on_input()}
@@ -218,7 +304,10 @@ defmodule Cauldron2D.World do
 
   defp step_on_input(%{tick: :on_input} = world) do
     started = System.monotonic_time(:microsecond)
-    world = world |> apply_pending() |> run(1, Loop.dt(world.loop)) |> broadcast()
+    base = world.steps
+    world = world |> apply_pending() |> run(1, Loop.dt(world.loop))
+    check = Lockstep.check(world, base, 1)
+    world = world |> broadcast() |> Lockstep.flushed(base, 1, check)
     timed(world, System.monotonic_time(:microsecond) - started, 1)
   end
 
@@ -233,22 +322,62 @@ defmodule Cauldron2D.World do
 
   def handle_info(:tick, world) do
     {due, loop} = Loop.advance(world.loop, Loop.now())
+    base = world.steps
     world = %{world | loop: loop} |> apply_pending()
-    world = if due > 0, do: stepped(world, due), else: world
+    world = if due > 0, do: stepped(world, due), else: Lockstep.flushed(world, base, 0, nil)
     Process.send_after(self(), :tick, Loop.wait(world.loop, Loop.now()))
     {:noreply, world}
   end
 
+  def handle_info(
+        {:cauldron_steps, host, base, actions, due, check},
+        %{host: %{pid: host}} = world
+      ) do
+    case Lockstep.followed(world, {base, actions, due, check}) do
+      {world, true} -> {:noreply, broadcast(world)}
+      {world, false} -> {:noreply, world}
+    end
+  end
+
+  def handle_info(
+        {:DOWN, monitor, :process, _pid, _reason},
+        %{host: %{monitor: monitor}} = world
+      ),
+      do: {:stop, :normal, world}
+
+  def handle_info({:DOWN, _monitor, :process, pid, _reason}, world)
+      when is_map_key(world.followers, pid) do
+    {:noreply, %{world | followers: Map.delete(world.followers, pid)}}
+  end
+
   def handle_info({:DOWN, monitor, :process, _pid, _reason}, world) do
     case Enum.find(world.players, fn {_id, player} -> player.monitor == monitor end) do
-      {id, _player} -> {:noreply, remove(world, id)}
+      {id, _player} -> {:noreply, gone(world, id)}
       nil -> {:noreply, world}
+    end
+  end
+
+  defp gone(%{host: %{}} = world, id), do: unfollowed(world, id)
+  defp gone(world, id), do: remove(world, id)
+
+  defp unfollowed(world, id) do
+    case Map.pop(world.players, id) do
+      {nil, _players} ->
+        world
+
+      {%{monitor: monitor}, players} ->
+        Process.demonitor(monitor, [:flush])
+        Presence.broadcast(self(), :left, id)
+        %{world | players: players}
     end
   end
 
   defp stepped(world, due) do
     started = System.monotonic_time(:microsecond)
-    world = world |> run(due, Loop.dt(world.loop)) |> broadcast()
+    base = world.steps
+    world = run(world, due, Loop.dt(world.loop))
+    check = Lockstep.check(world, base, due)
+    world = world |> broadcast() |> Lockstep.flushed(base, due, check)
     timed(world, System.monotonic_time(:microsecond) - started, due)
   end
 
@@ -289,6 +418,9 @@ defmodule Cauldron2D.World do
         log(replay, world.steps, {:input, id, input})
       end)
 
+    world =
+      Enum.reduce(world.pending, world, &Lockstep.logged(&2, {:input, elem(&1, 0), elem(&1, 1)}))
+
     %{world | state: state, pending: %{}, replay: replay}
   end
 
@@ -305,6 +437,8 @@ defmodule Cauldron2D.World do
 
   defp broadcast(world) do
     {events, state} = world.game.drain_events(world.state)
+    events = world.drained ++ events
+    world = %{world | drained: []}
 
     players =
       Map.new(world.players, fn {id, player} -> {id, framed(world, state, id, player, events)} end)
@@ -314,6 +448,7 @@ defmodule Cauldron2D.World do
   end
 
   defp framed(_world, _state, _id, %{frames?: false} = player, _events), do: player
+  defp framed(_world, _state, _id, %{ready: false} = player, _events), do: player
 
   defp framed(world, _state, _id, %{next: next} = player, events) when world.steps < next,
     do: %{player | events: player.events ++ events}
@@ -345,6 +480,7 @@ defmodule Cauldron2D.World do
             pending: Map.delete(world.pending, id)
         }
         |> record({:leave, id})
+        |> Lockstep.logged({:leave, id})
     end
   end
 

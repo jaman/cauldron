@@ -24,6 +24,17 @@ defmodule Cauldron2D.Game do
   packages pass `:username` (the player's name as a string) and whatever the game's own
   `join_props` callback adds; a game that wants teams, spectators or anything else names
   those props itself and reads them here.
+
+  A world on another machine can follow this one (`Cauldron2D.World`'s `:follow`),
+  running the same calls on its own copy of the state. Three optional callbacks serve it:
+
+    * `export/1` — what of the state a follower starts from, with what the follower's
+      machine has of its own (the game's data, its pictures) left out. Default: the
+      whole state
+    * `restore/1` — the state a follower runs, from what `export/1` gave, filled in
+      from this machine. Default: as it came
+    * `checksum/1` — what host and follower compare to know their states agree, the
+      parts the steps decide. Default: `:erlang.phash2/1` of the whole state
   """
 
   @type state :: term()
@@ -48,4 +59,9 @@ defmodule Cauldron2D.Game do
   @callback step(state(), float()) :: state()
   @callback view(state(), player_id()) :: term()
   @callback drain_events(state()) :: {[term()], state()}
+  @callback export(state()) :: term()
+  @callback restore(term()) :: state()
+  @callback checksum(state()) :: term()
+
+  @optional_callbacks export: 1, restore: 1, checksum: 1
 end

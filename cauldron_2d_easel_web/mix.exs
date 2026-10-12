@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Easel.Web.MixProject do
   use Mix.Project
 
-  @version "0.2.5"
+  @version "0.2.6"
   @source_url "https://github.com/jaman/cauldron"
   @description "Edits a Cauldron2D atlas in a browser, with LiveView."
 
@@ -33,9 +33,9 @@ defmodule Cauldron2D.Easel.Web.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.2.5", "../cauldron_2d", []),
-      family(:cauldron_2d_easel, "~> 0.2.5", "../cauldron_2d_easel", []),
-      family(:linocut, "~> 0.2.5", "../linocut", []),
+      family(:cauldron_2d, "~> 0.2.6", "../cauldron_2d", []),
+      family(:cauldron_2d_easel, "~> 0.2.6", "../cauldron_2d_easel", []),
+      family(:linocut, "~> 0.2.6", "../linocut", []),
       family(:french_curve, "~> 0.2.0", "../../french_curve", override: true),
       {:phoenix, "~> 1.8"},
       {:phoenix_live_view, "~> 1.2"},

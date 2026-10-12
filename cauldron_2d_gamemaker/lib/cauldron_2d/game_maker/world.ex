@@ -20,9 +20,8 @@ defmodule Cauldron2D.GameMaker.World do
   the changes code has made to the room's layers, by layer name (`layers/1` applies
   them), and `hidden_tiles` the depths of the GameMaker Studio 1 tiles code has hidden
   (`hide_tiles/3`); `added_tiles` the tiles code has added (`add_tile/5`). `particles` are those `Cauldron2D.GameMaker.Particles` has set loose; `surfaces`
-  the rasters code draws onto, by id, with the next id to give and the operations made on
-  them since `Surfaces.take_ops/1` last took them (`Cauldron2D.GameMaker.Surfaces` keeps
-  them; `Surfaces.rasters/1` reads them), drawn with the picture lookup `pictures`. `outbox` collects what the step sends
+  the rasters code draws onto, by id, with the next id to give (`Cauldron2D.GameMaker.Surfaces`
+  keeps them; `Surfaces.rasters/1` reads them), drawn with the picture lookup `pictures`. `outbox` collects what the step sends
   out — sounds to play and the like — in the order it was sent; `take_outbox/1` empties
   it. `random` is the game's random number generator (`Cauldron2D.GameMaker.Random`),
   seeded with the `:seed` option. `object_depths` are the depths code creates objects
@@ -35,6 +34,7 @@ defmodule Cauldron2D.GameMaker.World do
   alias Cauldron2D.GameMaker.Object
   alias Cauldron2D.GameMaker.Random
   alias Cauldron2D.GameMaker.Rooms
+  alias FrenchCurve.Raster
 
   @enforce_keys [:data, :code, :objects, :sprites, :owners, :descendants]
   defstruct [
@@ -62,7 +62,7 @@ defmodule Cauldron2D.GameMaker.World do
     hidden_tiles: MapSet.new(),
     added_tiles: [],
     particles: [],
-    surfaces: %{rasters: %{}, next: 0, ops: []},
+    surfaces: %{rasters: %{}, next: 0},
     pictures: nil,
     drawing: [],
     outbox: [],
@@ -105,8 +105,7 @@ defmodule Cauldron2D.GameMaker.World do
           particles: [map()],
           surfaces: %{
             rasters: %{non_neg_integer() => FrenchCurve.Raster.t()},
-            next: non_neg_integer(),
-            ops: list()
+            next: non_neg_integer()
           },
           pictures: (term() -> FrenchCurve.Raster.t() | nil) | nil,
           drawing: list(),
@@ -144,6 +143,51 @@ defmodule Cauldron2D.GameMaker.World do
     }
 
     Rooms.enter(world, Keyword.get_lazy(opts, :room, fn -> hd(data.general.room_order) end))
+  end
+
+  @doc """
+  `world` without what its data file gives it (`data`, `objects`, `sprites`, `owners`,
+  `descendants`), its `pictures` lookup or its surfaces' pixels, each surface kept as its
+  `{width, height}`: what another machine with the same data file needs to go on from
+  this world, given back there by `attached/3`.
+  """
+  @spec detached(t()) :: map()
+  def detached(%__MODULE__{surfaces: surfaces} = world) do
+    sizes = Map.new(surfaces.rasters, fn {id, raster} -> {id, Raster.dimensions(raster)} end)
+
+    %{
+      world
+      | data: nil,
+        objects: nil,
+        sprites: nil,
+        owners: nil,
+        descendants: nil,
+        pictures: nil,
+        surfaces: %{surfaces | rasters: sizes}
+    }
+  end
+
+  @doc """
+  A world from `detached/1`'s, with what `data` gives it, the picture lookup `pictures`,
+  and its surfaces clear at their sizes.
+  """
+  @spec attached(map(), Data.t(), (term() -> Raster.t() | nil) | nil) :: t()
+  def attached(%__MODULE__{surfaces: surfaces} = world, %Data{} = data, pictures) do
+    rasters =
+      Map.new(surfaces.rasters, fn {id, {width, height}} ->
+        {id, Raster.new(width, height, background: {0, 0, 0, 0})}
+      end)
+
+    %{
+      world
+      | data: data,
+        objects: List.to_tuple(data.objects),
+        sprites: List.to_tuple(data.sprites),
+        owners: owners(data.objects),
+        descendants: descendants(data.objects),
+        pictures: pictures,
+        surfaces: %{surfaces | rasters: rasters}
+    }
   end
 
   defp object_depths(%Data{objects: objects}, by_name) do

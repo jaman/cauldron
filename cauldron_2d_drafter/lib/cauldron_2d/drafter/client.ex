@@ -248,7 +248,6 @@ defmodule Cauldron2D.Drafter.Client do
       chat?: optional(game, :chat?, [], true),
       flow: flow(props, game),
       local_world: nil,
-      received: nil,
       settings: settings,
       screen: first_screen(flow(props, game)),
       return: :title,
@@ -538,21 +537,10 @@ defmodule Cauldron2D.Drafter.Client do
   def on_message({:cauldron_frame, frame}, %{joined: joined} = state) when joined != nil do
     Trace.write(:frame, tick: frame.tick)
 
-    {view, events, received} =
-      Game.optional(
-        state.game,
-        :received,
-        [frame.view, frame.events, state.received],
-        {frame.view, frame.events, state.received}
-      )
-
-    frame = %{frame | view: view, events: events}
-
     state =
       %{
         state
         | view: frame.view,
-          received: received,
           input: Input.expire(state.input, now()),
           seats: Seats.expire(state.seats, now()),
           fps: counted(state.fps, now())
@@ -828,8 +816,14 @@ defmodule Cauldron2D.Drafter.Client do
       )
 
     props = %{username: state.username} |> Map.merge(game_props) |> Map.merge(extra)
-    {entry, local} = local_world(entry)
 
+    case local_world(entry) do
+      {:ok, entry, local} -> entered(state, entry, local, props, extra)
+      {:error, reason} -> refused(state, entry, reason)
+    end
+  end
+
+  defp entered(state, entry, local, props, extra) do
     case join_as(entry.world, state.username, props, frame_rate(state)) do
       {:ok, player_id} ->
         Chat.join({:world, entry.id})
@@ -842,7 +836,6 @@ defmodule Cauldron2D.Drafter.Client do
             world_ref: watch(entry.world),
             screen: :play,
             view: nil,
-            received: nil,
             last_input: nil,
             talk: Chat.history({:world, entry.id}),
             talking?: false,
@@ -857,11 +850,7 @@ defmodule Cauldron2D.Drafter.Client do
 
       {:error, reason} ->
         if local, do: GenServer.stop(local)
-
-        noted(state, %{
-          from: entry.name,
-          text: "could not join: " <> Game.refusal_text(state.game, reason)
-        })
+        refused(state, entry, reason)
     end
   end
 
@@ -877,11 +866,24 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   defp local_world(%{world: {module, opts}} = entry) do
-    {:ok, pid} = World.start_link([game: module] ++ Keyword.drop(opts, [:name]))
-    {%{entry | world: pid}, pid}
+    case World.start([game: module] ++ Keyword.drop(opts, [:name])) do
+      {:ok, pid} ->
+        Process.link(pid)
+        {:ok, %{entry | world: pid}, pid}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
-  defp local_world(entry), do: {entry, nil}
+  defp local_world(entry), do: {:ok, entry, nil}
+
+  defp refused(state, entry, reason),
+    do:
+      noted(state, %{
+        from: entry.name,
+        text: "could not join: " <> Game.refusal_text(state.game, reason)
+      })
 
   defp leave_world(%{joined: nil} = state), do: state
 
@@ -923,7 +925,6 @@ defmodule Cauldron2D.Drafter.Client do
         world_ref: nil,
         local_world: nil,
         view: nil,
-        received: nil,
         input: nil,
         seats: [],
         devices: %{},

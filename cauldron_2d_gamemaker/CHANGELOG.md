@@ -4,7 +4,21 @@
 
 ### Added
 
-- `Surfaces.take_ops/1`: every change made to the surfaces (create, free, clear, copy,
+- `World.detached/1` and `World.attached/3`: a world without what its data file gives
+  it, its picture lookup or its surfaces' pixels, and that world filled in again on
+  another machine with the same data file, its surfaces clear at their sizes.
+
+### Removed
+
+- `Surfaces.take_ops/1`, `Surfaces.replay/2`, `Surfaces.snapshot/1`, `Surfaces.Mirror`
+  and a world's surfaces' `ops`.
+
+## [0.2.5]
+
+### Added
+
+- `Surfaces.take_ops/1`
+: every change made to the surfaces (create, free, clear, copy,
   draw) since they were last taken, as operations. `Surfaces.replay/2` applies them to a
   `Surfaces.Mirror`, a copy of a world's surfaces held apart from the world, and
   `Surfaces.snapshot/1` is the operation that sets a mirror to the surfaces as they are.

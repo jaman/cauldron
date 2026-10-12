@@ -4,9 +4,30 @@
 
 ### Added
 
-* `Cauldron2D.Client.Game.received/3`, optional: a game's view of each frame's view and
+* `Cauldron2D.World`'s `:follow`: a world on this machine or another that runs a host
+  world's game on its own copy of the state. The host sends it, after each tick, the
+  joins, leaves and input it applied and the steps it ran, with a checksum every 60
+  steps (`Cauldron2D.World.Lockstep`); the follower's players' joins, leaves and input
+  go to the host. Only those cross between machines, never views. A follower that falls
+  out of step takes the host's state again, and stops when the host does.
+* `Cauldron2D.Game`'s optional `export/1`, `restore/1` and `checksum/1`: what a follower
+  starts from, how its machine fills it in, and what host and follower compare.
+* `Cauldron2D.World.start/1`, a world not linked to the caller.
+
+### Removed
+
+* `Cauldron2D.Client.Game.received/3`.
+
+## [0.2.5]
+
+### Added
+
+* `Cauldron2D.Client.Game.received/3`
+, optional: a game's view of each frame's view and
   events, keeping what it learns between frames, for a world that sends a client part of
   what it shows as operations.
+
+## [0.2.4]
 
 ### Fixed
 
