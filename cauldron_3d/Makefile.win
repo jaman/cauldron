@@ -1,16 +1,20 @@
+!IFNDEF PRIV_DIR
 PRIV_DIR = priv
+!ENDIF
 
-all: $(PRIV_DIR) span_nif pixels_nif
+OUT = $(PRIV_DIR:/=\)
 
-$(PRIV_DIR):
-	if not exist $(PRIV_DIR) mkdir $(PRIV_DIR)
+all: $(OUT) span_nif pixels_nif
+
+$(OUT):
+	if not exist $(OUT) mkdir $(OUT)
 
 span_nif pixels_nif:
-	-cl /nologo /LD /O2 /fp:strict /I"$(ERTS_INCLUDE_DIR)" c_src\$@.c /Fe:$(PRIV_DIR)\$@.dll
+	-cl /nologo /LD /O2 /fp:strict /I"$(ERTS_INCLUDE_DIR)" c_src\$@.c /Fe:$(OUT)\$@.dll
 	if exist $@.obj del /Q $@.obj
-	if not exist $(PRIV_DIR)\$@.dll echo cauldron_3d: c_src\$@.c did not build, its work will be done in Elixir
+	if not exist $(OUT)\$@.dll echo cauldron_3d: c_src\$@.c did not build, its work will be done in Elixir
 
 clean:
-	if exist $(PRIV_DIR)\*.dll del /Q $(PRIV_DIR)\*.dll
-	if exist $(PRIV_DIR)\*.lib del /Q $(PRIV_DIR)\*.lib
-	if exist $(PRIV_DIR)\*.exp del /Q $(PRIV_DIR)\*.exp
+	if exist $(OUT)\*.dll del /Q $(OUT)\*.dll
+	if exist $(OUT)\*.lib del /Q $(OUT)\*.lib
+	if exist $(OUT)\*.exp del /Q $(OUT)\*.exp

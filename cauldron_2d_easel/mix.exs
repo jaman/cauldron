@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Easel.MixProject do
   use Mix.Project
 
-  @version "0.2.2"
+  @version "0.2.3"
   @source_url "https://github.com/jaman/cauldron"
   @description "Editing a Cauldron2D atlas: pictures, palettes and frames as a document with undo."
 
@@ -29,8 +29,8 @@ defmodule Cauldron2D.Easel.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.2.2", "../cauldron_2d", []),
-      family(:linocut, "~> 0.2.2", "../linocut", []),
+      family(:cauldron_2d, "~> 0.2.3", "../cauldron_2d", []),
+      family(:linocut, "~> 0.2.3", "../linocut", []),
       family(:french_curve, "~> 0.2.0", "../../french_curve", override: true)
     ]
   end

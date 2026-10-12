@@ -32,9 +32,9 @@ defmodule Cauldron2D.Drafter.ServerTest do
     def cue(_view, _screen), do: nil
   end
 
-  test "the server starts the ssh daemon and the accounts with sound ports, and stops again" do
-    dir = Path.join(System.tmp_dir!(), "cauldron_server_#{System.unique_integer([:positive])}")
-    File.mkdir_p!(dir)
+  @tag :tmp_dir
+  test "the server starts the ssh daemon and the accounts with sound ports, and stops again",
+       %{tmp_dir: dir} do
     :ok = Cauldron2D.Worlds.register(:served_pit, game: Dots)
     port = 39_000 + :rand.uniform(900)
 
@@ -66,6 +66,5 @@ defmodule Cauldron2D.Drafter.ServerTest do
 
     assert_receive {:DOWN, ^accounts, :process, _pid, _reason}, 5_000
     Cauldron2D.Worlds.close(:served_pit)
-    File.rm_rf!(dir)
   end
 end

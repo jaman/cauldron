@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+* On Windows the NIFs are built into `priv/native/<system architecture>`, where they are loaded from, instead of `priv/`.
+
 ## [0.2.0]
 
 ### Breaking changes
