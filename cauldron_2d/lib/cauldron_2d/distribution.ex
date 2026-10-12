@@ -15,7 +15,8 @@ defmodule Cauldron2D.Distribution do
   and `address`, this machine's first address (`addresses/0`). The code never goes over
   the air: the host shows it, and whoever joins types it.
 
-  `join/3` names this VM too when it is not yet distributed, points the host's name at
+  `join/3` names this VM too when it is not yet distributed, at this machine's address on
+  the host's network (`address_toward/1`), points the host's name at
   the address given, in this VM's own host table (looked up before the system's), and
   connects to the host's node with the code as the cookie for that node alone. Any of
   the host's addresses joins it — its home network's, a VPN's, or `127.0.0.1` from the
@@ -30,6 +31,11 @@ defmodule Cauldron2D.Distribution do
       the joining machine; without `:port` the host listens on any free port
     * a VM that is already distributed hosts under its own name, with its cookie as
       the code, and `stop/1` leaves its distribution running
+    * a node needs the node name service (`epmd`) on its own machine; when none answers
+      it is started the way `erl -sname` starts it: `epmd -daemon` on Unix, and on
+      Windows through a short-lived `erl -sname`, whose launcher starts it as a
+      detached process. It outlives this VM and its console, and starting it while one
+      already runs changes nothing
   """
 
   alias Cauldron2D.Beacon
@@ -38,6 +44,8 @@ defmodule Cauldron2D.Distribution do
   @code_length 8
   @host_name "cauldron.host"
   @lookup_ms 5_000
+  @name_service_waits 40
+  @name_service_wait_ms 50
 
   @type host :: %{
           node: node(),
@@ -101,7 +109,7 @@ defmodule Cauldron2D.Distribution do
     with {:ok, ip} <- parse_address(address),
          :ok <- running(name, ip),
          :ok <- point_host_at(ip),
-         {:ok, own} <- address(),
+         {:ok, own} <- address_toward(ip),
          {:ok, _node, _started?} <-
            distribute("#{name}_#{System.unique_integer([:positive])}", own, nil) do
       Node.set_cookie(node, String.to_atom(code))
@@ -150,6 +158,44 @@ defmodule Cauldron2D.Distribution do
       [address | _others] -> {:ok, address}
       [] -> {:error, :no_network}
     end
+  end
+
+  @doc """
+  This machine's IPv4 address on the network `peer` is on: the address of an interface
+  that is up and whose subnet holds `peer`, else `address/0`.
+  """
+  @spec address_toward(:inet.ip4_address()) :: {:ok, String.t()} | {:error, :no_network}
+  def address_toward(peer) do
+    case Enum.find(subnets(), fn {ip, mask} -> same_subnet?(ip, peer, mask) end) do
+      {ip, _mask} -> {:ok, ip |> :inet.ntoa() |> to_string()}
+      nil -> address()
+    end
+  end
+
+  defp subnets do
+    case :inet.getifaddrs() do
+      {:ok, interfaces} -> Enum.flat_map(interfaces, &interface_subnets/1)
+      {:error, _reason} -> []
+    end
+  end
+
+  defp interface_subnets({_name, opts}) do
+    if :up in Keyword.get(opts, :flags, []), do: with_masks(opts), else: []
+  end
+
+  defp with_masks([{:addr, {_, _, _, _} = ip}, {:netmask, {_, _, _, _} = mask} | rest]),
+    do: [{ip, mask} | with_masks(rest)]
+
+  defp with_masks([_other | rest]), do: with_masks(rest)
+  defp with_masks([]), do: []
+
+  defp same_subnet?(ip, peer, mask) do
+    [ip, peer, mask]
+    |> Enum.map(&Tuple.to_list/1)
+    |> Enum.zip_with(fn [own, theirs, bits] ->
+      Bitwise.band(own, bits) == Bitwise.band(theirs, bits)
+    end)
+    |> Enum.all?()
   end
 
   @doc """
@@ -207,15 +253,45 @@ defmodule Cauldron2D.Distribution do
   end
 
   defp start_name_service do
-    case epmd() do
-      nil -> :ok
-      path -> System.cmd(path, ["-daemon"])
+    with {:error, _reason} <- :erl_epmd.names() do
+      launch_name_service(:os.type())
+      await_name_service(@name_service_waits)
     end
   end
 
-  defp epmd do
-    System.find_executable("epmd") ||
-      [:code.root_dir(), "erts-*", "bin", "epmd"]
+  defp launch_name_service({:unix, _name}), do: run(epmd(), ["-daemon"])
+
+  defp launch_name_service({:win32, _name}),
+    do:
+      run(erl(), ["-sname", "cauldron_epmd_#{:os.getpid()}", "-noshell", "-s", "erlang", "halt"])
+
+  defp run(nil, _args), do: :ok
+
+  defp run(path, args) do
+    System.cmd(path, args, stderr_to_stdout: true)
+    :ok
+  end
+
+  defp await_name_service(0), do: :ok
+
+  defp await_name_service(waits) do
+    case :erl_epmd.names() do
+      {:ok, _names} ->
+        :ok
+
+      {:error, _reason} ->
+        Process.sleep(@name_service_wait_ms)
+        await_name_service(waits - 1)
+    end
+  end
+
+  defp epmd, do: installed("epmd", ["erts-*", "bin", "epmd"])
+
+  defp erl, do: installed("erl", ["bin", "erl{,.exe}"])
+
+  defp installed(name, under_root) do
+    System.find_executable(name) ||
+      [:code.root_dir() | under_root]
       |> Path.join()
       |> Path.wildcard()
       |> List.first()

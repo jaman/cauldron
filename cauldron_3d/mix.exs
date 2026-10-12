@@ -1,7 +1,7 @@
 defmodule Cauldron3D.MixProject do
   use Mix.Project
 
-  @version "0.2.3"
+  @version "0.2.4"
   @source_url "https://github.com/jaman/cauldron"
   @description "A 3D software renderer and collision for terminals, in Elixir: cameras, polygons, meshes, BSP worlds and hull tracing."
 

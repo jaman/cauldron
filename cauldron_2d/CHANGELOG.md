@@ -4,6 +4,22 @@
 
 ### Fixed
 
+* `Cauldron2D.Ledger.Lock` finds the holder with `tasklist` on Windows and `ps` on Unix,
+  where it ran `kill`, which Windows lacks, so a lock left by a crash stopped the ledger
+  from starting there. A lock whose process id now belongs to a program other than an
+  Erlang VM counts as free.
+* `Cauldron2D.Distribution.join/3` names the joining node at this machine's address on
+  the host's network (`address_toward/1`, new), not the first private address, which on
+  Windows could be a VPN's.
+* `Cauldron2D.Distribution` starts `epmd` on Windows when none answers, through a
+  short-lived `erl -sname` whose launcher starts it detached, so it outlives the game and
+  its console; it waits for `epmd` to answer before starting the node. Starting it while
+  one runs changes nothing.
+
+## [0.2.3]
+
+### Fixed
+
 * On Windows the NIFs are built into `priv/native/<system architecture>`, where they are loaded from, instead of `priv/`.
 
 ## [0.2.0]

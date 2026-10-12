@@ -1,8 +1,10 @@
 defmodule Cauldron2D.Ledger.Lock do
   @moduledoc """
   The lock that keeps a ledger file to one operating system process: `<path>.lock`,
-  holding the process id of the holder. A lock whose process is gone counts as free; a
-  file a DETS table of this process already has open is held.
+  holding the process id of the holder. A lock whose process is gone, or is no longer an
+  Erlang VM (its id since reused by another program), counts as free; a file a DETS
+  table of this process already has open is held. The process is looked up with `ps` on
+  Unix and `tasklist` on Windows.
   """
 
   @doc "The operating system process holding the file's lock, or nil."
@@ -63,10 +65,29 @@ defmodule Cauldron2D.Ledger.Lock do
     Enum.any?(:dets.all(), &(:dets.info(&1, :filename) == file))
   end
 
-  defp alive?(pid) do
-    case System.cmd("kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true) do
-      {_out, 0} -> true
-      {out, _status} -> String.contains?(out, "permitted")
+  defp alive?(pid), do: pid |> program(:os.type()) |> erlang_vm?()
+
+  defp program(pid, {:win32, _name}) do
+    id = Integer.to_string(pid)
+    {out, _status} = System.cmd("tasklist", ["/FI", "PID eq #{id}", "/FO", "CSV", "/NH"])
+
+    case String.split(String.trim(out), "\",\"") do
+      ["\"" <> image, ^id | _columns] -> image
+      _none -> ""
     end
+  end
+
+  defp program(pid, {:unix, _name}) do
+    case System.cmd("ps", ["-p", Integer.to_string(pid), "-o", "comm="], stderr_to_stdout: true) do
+      {out, 0} -> String.trim(out)
+      {_out, _status} -> ""
+    end
+  end
+
+  defp erlang_vm?(program) do
+    program
+    |> Path.basename()
+    |> String.downcase()
+    |> String.starts_with?(["beam", "erl", "werl"])
   end
 end
