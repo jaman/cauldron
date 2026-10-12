@@ -90,6 +90,12 @@ defmodule Cauldron2D.Client.Game do
       for this player; `next` is `:next_world`, `:same_world` or `:lobby` (the default)
     * `join_props/1` — extra props for the world's join, from `%{username, settings,
       params}` (`params` a browser's join params, absent elsewhere)
+    * `received/3` — called with each frame's view and events and what it returned for
+      the frame before (`nil` for a world's first frame), before anything else reads
+      them; returns `{view, events, kept}`, the view and events the client goes on with
+      and what to give it with the next frame. A game whose world sends a client part of
+      what it shows as operations keeps their result here and puts it in the view.
+      Default: both as they came, nothing kept
     * `map/1` — the static layer a browser or window draws once, `%{width, height, cell,
       wrap?}` with `cell` a tile to an art or `nil`; without it, the layer is read from
       `scene/1`'s bounds and cell, the topmost art of each tile
@@ -232,6 +238,7 @@ defmodule Cauldron2D.Client.Game do
                   optional(:next) => :next_world | :same_world | :lobby
                 }
   @callback join_props(map()) :: map()
+  @callback received(term(), [term()], term()) :: {term(), [term()], term()}
   @callback map(term()) :: %{
               required(:width) => pos_integer(),
               required(:height) => pos_integer(),
@@ -279,6 +286,7 @@ defmodule Cauldron2D.Client.Game do
                       local_seats: 1,
                       outcome: 1,
                       join_props: 1,
+                      received: 3,
                       map: 1,
                       guide: 0,
                       sink: 1,

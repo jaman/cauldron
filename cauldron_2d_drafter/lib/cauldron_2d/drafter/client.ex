@@ -248,6 +248,7 @@ defmodule Cauldron2D.Drafter.Client do
       chat?: optional(game, :chat?, [], true),
       flow: flow(props, game),
       local_world: nil,
+      received: nil,
       settings: settings,
       screen: first_screen(flow(props, game)),
       return: :title,
@@ -537,10 +538,21 @@ defmodule Cauldron2D.Drafter.Client do
   def on_message({:cauldron_frame, frame}, %{joined: joined} = state) when joined != nil do
     Trace.write(:frame, tick: frame.tick)
 
+    {view, events, received} =
+      Game.optional(
+        state.game,
+        :received,
+        [frame.view, frame.events, state.received],
+        {frame.view, frame.events, state.received}
+      )
+
+    frame = %{frame | view: view, events: events}
+
     state =
       %{
         state
         | view: frame.view,
+          received: received,
           input: Input.expire(state.input, now()),
           seats: Seats.expire(state.seats, now()),
           fps: counted(state.fps, now())
@@ -830,6 +842,7 @@ defmodule Cauldron2D.Drafter.Client do
             world_ref: watch(entry.world),
             screen: :play,
             view: nil,
+            received: nil,
             last_input: nil,
             talk: Chat.history({:world, entry.id}),
             talking?: false,
@@ -910,6 +923,7 @@ defmodule Cauldron2D.Drafter.Client do
         world_ref: nil,
         local_world: nil,
         view: nil,
+        received: nil,
         input: nil,
         seats: [],
         devices: %{},

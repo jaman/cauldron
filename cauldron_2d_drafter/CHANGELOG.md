@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+* The client passes each frame's view and events through the game's `received/3`
+  (`Cauldron2D.Client.Game`) and keeps what it returns for the next frame, from a
+  world's first frame on.
+
 ## [0.2.2]
 
 ### Added

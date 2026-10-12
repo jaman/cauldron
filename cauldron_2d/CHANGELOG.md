@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Added
+
+* `Cauldron2D.Client.Game.received/3`, optional: a game's view of each frame's view and
+  events, keeping what it learns between frames, for a world that sends a client part of
+  what it shows as operations.
+
 ### Fixed
 
 * `Cauldron2D.Ledger.Lock` finds the holder with `tasklist` on Windows and `ps` on Unix,

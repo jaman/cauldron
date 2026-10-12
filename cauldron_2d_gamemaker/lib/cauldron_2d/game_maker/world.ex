@@ -20,8 +20,9 @@ defmodule Cauldron2D.GameMaker.World do
   the changes code has made to the room's layers, by layer name (`layers/1` applies
   them), and `hidden_tiles` the depths of the GameMaker Studio 1 tiles code has hidden
   (`hide_tiles/3`); `added_tiles` the tiles code has added (`add_tile/5`). `particles` are those `Cauldron2D.GameMaker.Particles` has set loose; `surfaces`
-  the rasters code draws onto, by id, with the next id to give (`Cauldron2D.GameMaker.Surfaces`
-  keeps them; `Surfaces.rasters/1` reads them), drawn with the picture lookup `pictures`. `outbox` collects what the step sends
+  the rasters code draws onto, by id, with the next id to give and the operations made on
+  them since `Surfaces.take_ops/1` last took them (`Cauldron2D.GameMaker.Surfaces` keeps
+  them; `Surfaces.rasters/1` reads them), drawn with the picture lookup `pictures`. `outbox` collects what the step sends
   out — sounds to play and the like — in the order it was sent; `take_outbox/1` empties
   it. `random` is the game's random number generator (`Cauldron2D.GameMaker.Random`),
   seeded with the `:seed` option. `object_depths` are the depths code creates objects
@@ -61,7 +62,7 @@ defmodule Cauldron2D.GameMaker.World do
     hidden_tiles: MapSet.new(),
     added_tiles: [],
     particles: [],
-    surfaces: %{rasters: %{}, next: 0},
+    surfaces: %{rasters: %{}, next: 0, ops: []},
     pictures: nil,
     drawing: [],
     outbox: [],
@@ -104,7 +105,8 @@ defmodule Cauldron2D.GameMaker.World do
           particles: [map()],
           surfaces: %{
             rasters: %{non_neg_integer() => FrenchCurve.Raster.t()},
-            next: non_neg_integer()
+            next: non_neg_integer(),
+            ops: list()
           },
           pictures: (term() -> FrenchCurve.Raster.t() | nil) | nil,
           drawing: list(),

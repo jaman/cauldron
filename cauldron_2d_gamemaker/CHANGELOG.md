@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `Surfaces.take_ops/1`: every change made to the surfaces (create, free, clear, copy,
+  draw) since they were last taken, as operations. `Surfaces.replay/2` applies them to a
+  `Surfaces.Mirror`, a copy of a world's surfaces held apart from the world, and
+  `Surfaces.snapshot/1` is the operation that sets a mirror to the surfaces as they are.
+  A client on another machine keeps its surfaces this way instead of being sent their
+  pixels.
+
+### Changed
+
+- The `Surfaces` functions that read or change surfaces take a `Surfaces.Mirror` as well
+  as a `World`. A world's `surfaces` holds `ops`, the operations not yet taken.
+
 ## [0.2.0]
 
 ### Added
