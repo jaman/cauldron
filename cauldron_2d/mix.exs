@@ -1,7 +1,7 @@
 defmodule Cauldron2D.MixProject do
   use Mix.Project
 
-  @version "0.3.0"
+  @version "0.3.1"
   @source_url "https://github.com/jaman/cauldron"
   @description "A 2D tile engine for terminals: a grid of tile ids, cheaply, as pixels or glyphs."
 
@@ -39,7 +39,7 @@ defmodule Cauldron2D.MixProject do
       {:elixir_make, "~> 0.9", runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
-      family(:linocut, "~> 0.3.0", "../linocut", []),
+      family(:linocut, "~> 0.3.1", "../linocut", []),
       # Synthesis and mixing. Playing the result through a speaker is
       # `tuning_fork_speaker`, which a game adds if it wants to be heard — the engine works
       # without it and stays silent.

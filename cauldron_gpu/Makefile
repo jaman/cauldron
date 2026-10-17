@@ -5,8 +5,14 @@ SLANG_VERSION := 2026.19
 SLANGC := tools/slang/bin/slangc
 
 ERTS_INCLUDE_DIR ?= $(shell erl -noshell -eval 'io:format("~s/include", [code:root_dir() ++ "/erts-" ++ erlang:system_info(version)])' -s init stop)
-SDL_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags sdl3))
-SDL_LIBS := $(shell pkg-config --libs sdl3)
+PKG_CONFIG ?= pkg-config
+SDL_CFLAGS := $(patsubst -I%,-isystem %,$(shell $(PKG_CONFIG) --cflags sdl3))
+SDL_LIBS := $(shell $(PKG_CONFIG) --libs sdl3)
+SDL_LIBDIR := $(shell $(PKG_CONFIG) --variable=libdir sdl3)
+VULKAN_INCLUDE ?=
+VULKAN_FROM_HEADERS := $(if $(VULKAN_INCLUDE),$(if $(wildcard $(VULKAN_INCLUDE)/vulkan/vulkan.hpp),1,),)
+VULKAN_FROM_PKG_CONFIG := $(if $(VULKAN_FROM_HEADERS),,$(shell $(PKG_CONFIG) --exists vulkan && echo 1))
+VULKAN_AVAILABLE := $(or $(VULKAN_FROM_HEADERS),$(VULKAN_FROM_PKG_CONFIG))
 
 CORE_SOURCES := $(wildcard c_src/core/*.cpp)
 HOST_SOURCES := $(wildcard c_src/host/*.cpp)
@@ -24,7 +30,7 @@ CC := xcrun clang
 CXX := xcrun clang++
 SWIFTC := xcrun swiftc
 WITH_METAL := 1
-WITH_VULKAN ?= $(if $(CAULDRON_GPU_VULKAN),$(CAULDRON_GPU_VULKAN),$(shell pkg-config --exists vulkan && echo 1))
+WITH_VULKAN ?= $(if $(CAULDRON_GPU_VULKAN),$(CAULDRON_GPU_VULKAN),$(VULKAN_AVAILABLE))
 else
 WITH_METAL :=
 WITH_VULKAN := 1
@@ -42,22 +48,23 @@ endif
 
 ifeq ($(WITH_VULKAN),1)
 DEFINES += -DCG_HAVE_VULKAN
-VULKAN_CFLAGS := $(patsubst -I%,-isystem %,$(shell pkg-config --cflags vulkan)) -isystem c_src/vulkan/vma
+VULKAN_CFLAGS := $(if $(VULKAN_FROM_HEADERS),-isystem $(VULKAN_INCLUDE),$(patsubst -I%,-isystem %,$(shell $(PKG_CONFIG) --cflags vulkan))) -isystem c_src/vulkan/vma
 OBJECTS += $(patsubst c_src/vulkan/%.cpp,$(BUILD_DIR)/vulkan/%.o,$(VULKAN_SOURCES))
-LIBS += $(shell pkg-config --libs vulkan)
+LIBS += $(if $(VULKAN_FROM_PKG_CONFIG),$(shell $(PKG_CONFIG) --libs vulkan),)
 endif
 
 LIBRARY := $(PRIV_DIR)/cauldron_gpu.so
 HOST := $(PRIV_DIR)/cauldron_gpu_host
 HOST_OBJECTS := $(filter-out $(BUILD_DIR)/core/nif.o,$(OBJECTS)) $(patsubst c_src/host/%.cpp,$(BUILD_DIR)/host/%.o,$(HOST_SOURCES))
 
-NATIVE_READY := $(shell pkg-config --exists sdl3 $(if $(filter 1,$(WITH_VULKAN)),vulkan,) && echo yes)
+NATIVE_READY := $(if $(CAULDRON_GPU_SKIP),,$(if $(filter 1,$(WITH_VULKAN)),$(if $(VULKAN_AVAILABLE),$(shell $(PKG_CONFIG) --exists sdl3 && echo yes),),$(shell $(PKG_CONFIG) --exists sdl3 && echo yes)))
 
 ifeq ($(NATIVE_READY),yes)
 all: $(LIBRARY) $(HOST)
 else
 all:
-	@echo "cauldron_gpu: SDL3$(if $(filter 1,$(WITH_VULKAN)), or Vulkan,) not found by pkg-config; the renderer was not built and CauldronGPU.open/1 reports it"
+	$(if $(CAULDRON_GPU_SKIP),@rm -f $(LIBRARY) $(HOST),)
+	@echo "cauldron_gpu: $(if $(CAULDRON_GPU_SKIP),setup chose software drawing,SDL3$(if $(filter 1,$(WITH_VULKAN)), or Vulkan's headers,) not found); the renderer was not built, games draw in software, and mix cauldron_gpu.setup sets it up"
 endif
 
 ifeq ($(UNAME_S),Darwin)
@@ -68,10 +75,10 @@ $(HOST): $(HOST_OBJECTS) | $(PRIV_DIR)
 	$(CXX) -o $@ $(HOST_OBJECTS) $(LIBS) -L$(SDKROOT)/usr/lib/swift -L/usr/lib/swift -Wl,-rpath,/usr/lib/swift
 else
 $(LIBRARY): $(OBJECTS) | $(PRIV_DIR)
-	$(CXX) -shared -o $@ $(OBJECTS) $(LIBS)
+	$(CXX) -shared -o $@ $(OBJECTS) $(LIBS) -Wl,-rpath,$(SDL_LIBDIR)
 
 $(HOST): $(HOST_OBJECTS) | $(PRIV_DIR)
-	$(CXX) -pthread -o $@ $(HOST_OBJECTS) $(LIBS)
+	$(CXX) -pthread -o $@ $(HOST_OBJECTS) $(LIBS) -Wl,-rpath,$(SDL_LIBDIR)
 endif
 
 $(BUILD_DIR)/core/%.o: c_src/core/%.cpp c_src/core/*.h c_src/gpu.h

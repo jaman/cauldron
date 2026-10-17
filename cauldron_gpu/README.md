@@ -23,15 +23,38 @@ def deps do
 end
 ```
 
-Building the native renderer needs a C++20 compiler, SDL3 and, for Vulkan, the Vulkan
-headers and loader, all found through `pkg-config`. Shaders come compiled in `priv/shaders`.
-When the libraries are missing the package still compiles, prints what it skipped, and
-`CauldronGPU.open/1` answers `{:error, reason}`; check `CauldronGPU.backends/0` for what a
-build can open.
+The package always compiles. The native renderer is built when what it needs is on the
+machine; without it, `CauldronGPU.backends/0` answers `[]`, `CauldronGPU.open/1` answers
+`{:error, reason}`, and games draw in software. To set the renderer up, run:
 
-On macOS the Metal backend is always built. The Vulkan backend is built beside it when
-`pkg-config` finds Vulkan (MoltenVK). Metal is used first on a Mac; Vulkan there runs the
-same path as Linux and Windows. Set `CAULDRON_GPU_VULKAN=0` to leave Vulkan out.
+```sh
+mix cauldron_gpu.setup
+```
+
+It looks for what the build needs in the platform's usual places, offers to install what
+is missing (showing what it will run), builds the renderer and opens the graphics card to
+check it. Declining leaves software drawing; running it again starts over. `--check`
+only reports, `--yes` accepts everything, and `--software` builds no renderer.
+
+| Platform | What the build needs | What the setup installs |
+| --- | --- | --- |
+| macOS | Apple's command-line tools, SDL3 and `pkg-config`; for the Vulkan backend, Vulkan's loader and headers and MoltenVK | the command-line tools through Apple's installer, the rest through Homebrew (and Homebrew itself) |
+| Linux | a C++20 compiler, `make`, `pkg-config`, SDL3, Vulkan's headers, and a Vulkan driver to run it | packages through apt, dnf, pacman or zypper with `sudo`; Vulkan's headers by download; SDL3 built from source where the distribution has none |
+| Windows | MSVC's C++ Build Tools, SDL3's development files, Vulkan's headers, and a Vulkan driver | MSVC through `winget`; SDL3 and Vulkan's headers by download, with no administrator rights |
+
+The renderer loads Vulkan from the graphics driver when it runs, so only Vulkan's headers
+are needed to build it, not LunarG's SDK. Downloads go into
+`:filename.basedir(:user_cache, "cauldron_gpu")`, and the paths found are kept in
+`build.config` under `:filename.basedir(:user_config, "cauldron_gpu")`, which later builds
+read (`CauldronGPU.Setup`). Environment variables set by hand take precedence: `SDL3_DIR`,
+`VULKAN_INCLUDE` (or `VULKAN_SDK`), `PKG_CONFIG` and `PKG_CONFIG_PATH`.
+
+Shaders come compiled in `priv/shaders`; `make shaders` rebuilds them after a change in
+`shaders/`, which needs the Slang compiler (`make slang`) and, for Metal, Xcode.
+
+On macOS the Metal backend is always built, and Vulkan beside it when Vulkan is found.
+Metal is used first on a Mac; Vulkan there runs the same path as Linux and Windows. Set
+`CAULDRON_GPU_VULKAN=0` to leave Vulkan out.
 
 ## A first scene
 

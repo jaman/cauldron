@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1]
+
+### Added
+
+- The launcher's Drawing field says whether a graphics card renderer is built, and when
+  none is, that `mix cauldron_gpu.setup` sets one up.
+
 ## [0.3.0]
 
 ### Added

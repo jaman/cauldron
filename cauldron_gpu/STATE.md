@@ -557,6 +557,40 @@ at about 1.5 GB. The remaining 1.3 GB while busy is freed GPU memory the driver 
 reuse (`Owned physical footprint (unmapped)`), and it is returned when the renderer idles.
 Vulkan has no autorelease, so this does not apply to it.
 
+**D49. The card is set up by a mix task; every build reads its configuration.** (2026-10-18)
+`mix cauldron_gpu.setup` replaces asking players to set environment variables. Each
+platform module (`CauldronGPU.Setup.MacOS`, `.Linux`, `.Windows`) looks for what the build
+needs in that platform's usual places, installs what it can with the player's yes, and
+turns what it found into `build.config` (Erlang terms under
+`:filename.basedir(:user_config, "cauldron_gpu")`). `mix.exs` reads that file into
+`make_env`, so builds need no environment variables; variables set by hand still win.
+`{choice, software}` sets `CAULDRON_GPU_SKIP`, and the makefiles then build nothing and
+remove an earlier renderer.
+
+- **Vulkan needs only its headers to build.** The renderer already loaded Vulkan at run
+  time (`SDL_Vulkan_LoadLibrary`, Vulkan-Hpp's dynamic dispatcher, VMA with dynamic
+  functions), so `VULKAN_INCLUDE` replaces linking the loader. Windows no longer needs
+  LunarG's SDK: Khronos's Vulkan-Headers download is enough. macOS keeps linking
+  Homebrew's loader, because the Mac's default library path does not hold it.
+- **Pinned downloads:** SDL3 3.4.18 and Vulkan-Headers 1.4.350, the versions this Mac
+  builds with. All four archives (Linux headers and SDL3 source, Windows headers and SDL3
+  development zip) were downloaded and unpacked here, and the renderer was built against
+  the downloaded headers alone with no warnings.
+- **`Makefile.win`** no longer stops a build when SDL3 or Vulkan is missing; it skips the
+  renderer as the Unix `Makefile` does. That stop was what kept NidhOX from building on the
+  user's Windows machine.
+- **MSVC** is found with `vswhere.exe`, and `vcvars64.bat`'s environment is captured into
+  the configuration, so builds work from any prompt.
+- **Rebuilding** runs in a fresh `mix` process. In-process `deps.compile --force` cleaned the
+  dependency without building it again. The check reloads the NIF after deleting and
+  purging the old module (an in-place reload is an upgrade, which the NIF does not
+  support), then opens an offscreen device (`CauldronGPU.Setup.card_status/0`).
+- Verified on macOS: `--check`, `--yes`, `--software` and back, from `cauldron_gpu` and from
+  NidhOX. The Linux and Windows modules have not run; their package names, `winget`
+  arguments and `vcvars` capture are untried.
+- The launcher's Drawing field shows whether a renderer is built, and names the task when
+  none is.
+
 ## Open questions and checks
 
 Each must be settled before the work item named in brackets starts. Record the answer
@@ -570,7 +604,7 @@ as a decision.
 ### 1. Package and build
 
 - [x] Mix project, `Makefile` (macOS, Linux), `make slang`, `make shaders`, NIF entry
-- [x] `Makefile.win` (nmake, MSVC; needs `VULKAN_SDK` and `SDL3_DIR`) — written, never run
+- [x] `Makefile.win` (nmake, MSVC; needs `VULKAN_SDK` and `SDL3_DIR`). First run 2026-10-18 on the user's Windows machine stopped the build when they were unset; it now skips the native build with a note, as the Unix `Makefile` does. The full native build has never run on Windows
 - [x] Host executable target (`cauldron_gpu_host`)
 
 ### 2. Graphics layer
@@ -660,6 +694,12 @@ as a decision.
 - [ ] A drafter window backend: cells as quads from a glyph atlas, pictures as textures
       (planned in `dev_docs/VELLUM_DESIGN.md` D20)
 - [ ] First run on Linux and Windows Vulkan
+
+### 13. Setup (D49)
+
+- [x] `mix cauldron_gpu.setup` and `CauldronGPU.Setup` with macOS, Linux and Windows modules;
+      header-only Vulkan builds; `Makefile.win` skips instead of failing
+- [ ] First run of the setup on Linux and Windows
 
 ## Next session
 

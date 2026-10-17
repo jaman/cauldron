@@ -2,19 +2,31 @@
 PRIV_DIR = priv
 !ENDIF
 
-!IFNDEF VULKAN_SDK
-!ERROR cauldron_gpu: set VULKAN_SDK to the Vulkan SDK directory
-!ENDIF
-
-!IFNDEF SDL3_DIR
-!ERROR cauldron_gpu: set SDL3_DIR to the SDL3 development directory (holding include and lib\x64)
-!ENDIF
-
 OUT = $(PRIV_DIR:/=\)
 BUILD = _build\native\windows
+
+!IF !DEFINED(VULKAN_INCLUDE) && DEFINED(VULKAN_SDK)
+VULKAN_INCLUDE = $(VULKAN_SDK)\Include
+!ENDIF
+
+!IF DEFINED(CAULDRON_GPU_SKIP)
+NATIVE_READY = no
+SKIP_REASON = setup chose software drawing
+!ELSEIF !DEFINED(VULKAN_INCLUDE) || !DEFINED(SDL3_DIR)
+NATIVE_READY = no
+SKIP_REASON = Vulkan's headers or SDL3 were not found
+!ELSEIF !EXIST("$(VULKAN_INCLUDE)\vulkan\vulkan.hpp") || !EXIST("$(SDL3_DIR)\include\SDL3\SDL.h")
+NATIVE_READY = no
+SKIP_REASON = VULKAN_INCLUDE or SDL3_DIR does not hold the headers
+!ELSE
+NATIVE_READY = yes
+!ENDIF
+
+!IF "$(NATIVE_READY)" == "yes"
+
 CXXFLAGS = /nologo /std:c++20 /O2 /EHsc /MD /W4 /DCG_HAVE_VULKAN /DNOMINMAX /DWIN32_LEAN_AND_MEAN \
-	/I"$(ERTS_INCLUDE_DIR)" /I"$(SDL3_DIR)\include" /I"$(VULKAN_SDK)\Include" /Ic_src\vulkan\vma
-LIBS = "$(SDL3_DIR)\lib\x64\SDL3.lib" "$(VULKAN_SDK)\Lib\vulkan-1.lib"
+	/I"$(ERTS_INCLUDE_DIR)" /I"$(SDL3_DIR)\include" /I"$(VULKAN_INCLUDE)" /Ic_src\vulkan\vma
+LIBS = "$(SDL3_DIR)\lib\x64\SDL3.lib"
 
 all: $(OUT) $(BUILD) objects $(OUT)\cauldron_gpu.dll $(OUT)\cauldron_gpu_host.exe runtime
 
@@ -46,6 +58,17 @@ $(OUT)\cauldron_gpu_host.exe: objects
 
 runtime:
 	copy /Y "$(SDL3_DIR)\lib\x64\SDL3.dll" $(OUT)\SDL3.dll
+
+!ELSE
+
+all:
+!IF DEFINED(CAULDRON_GPU_SKIP)
+	if exist $(OUT)\cauldron_gpu.dll del /Q $(OUT)\cauldron_gpu.dll
+	if exist $(OUT)\cauldron_gpu_host.exe del /Q $(OUT)\cauldron_gpu_host.exe
+!ENDIF
+	@echo cauldron_gpu: $(SKIP_REASON), so the renderer was not built; games draw in software, and mix cauldron_gpu.setup sets it up
+
+!ENDIF
 
 clean:
 	if exist $(BUILD) rmdir /S /Q $(BUILD)

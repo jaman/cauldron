@@ -45,7 +45,7 @@ defmodule Cauldron2D.Drafter.Launcher do
 
   use Drafter.App
 
-  alias Cauldron2D.Drafter.Client.Settings
+  alias Cauldron2D.Drafter.Client.{Settings, Stage}
 
   @type field :: %{
           required(:key) => atom(),
@@ -59,7 +59,11 @@ defmodule Cauldron2D.Drafter.Launcher do
           optional(:hint) => String.t()
         }
 
-  @doc "The field for how the game is drawn: automatically, in software, or on the graphics card in the terminal or a window."
+  @doc """
+  The field for how the game is drawn: automatically, in software, or on the graphics card
+  in the terminal or a window. Its hint says whether a graphics card renderer is built,
+  and when none is, that `mix cauldron_gpu.setup` sets one up.
+  """
   @spec drawing_field() :: field()
   def drawing_field do
     %{
@@ -73,7 +77,12 @@ defmodule Cauldron2D.Drafter.Launcher do
            {:pane, "graphics card, in the terminal"},
            {:window, "graphics card, in a window"}
          ]},
-      default: :auto
+      default: :auto,
+      hint:
+        if(Stage.available?(),
+          do: "the graphics card renderer is built",
+          else: "no graphics card renderer is built: mix cauldron_gpu.setup sets one up"
+        )
     }
   end
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.1]
+
+### Added
+
+- `mix cauldron_gpu.setup`: finds what building the renderer needs in each platform's
+  usual places, offers to install what is missing (Homebrew on macOS; apt, dnf, pacman or
+  zypper on Linux; winget and downloads on Windows), builds the renderer and opens the
+  graphics card to check it. `--check`, `--yes` and `--software`.
+- `CauldronGPU.Setup`: the build configuration the setup writes and every build reads,
+  and `card_status/0`, whether the renderer loads and opens the graphics card.
+
+### Changed
+
+- The renderer builds with Vulkan's headers alone (`VULKAN_INCLUDE`); it loads the
+  driver's Vulkan library when it runs, so Windows needs no Vulkan SDK.
+- Without what the build needs, the package compiles with no renderer on Windows too,
+  as it does on macOS and Linux, and games draw in software.
+
 ## [0.3.0]
 
 The first release.
