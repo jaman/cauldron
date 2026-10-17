@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.2]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.1]
 
 ### Changed

@@ -1,17 +1,63 @@
 #include "channel.h"
 
 #include <cerrno>
+#include <cstdlib>
 
 #include <fcntl.h>
+
+#if defined(_WIN32)
+#include <io.h>
+
+#include <algorithm>
+#else
 #include <unistd.h>
+#endif
 
 namespace cg::host {
 
 namespace {
 
+#if defined(_WIN32)
+
+long long read_some(int descriptor, uint8_t *data, size_t size) {
+  return _read(descriptor, data, static_cast<unsigned>(std::min<size_t>(size, 1u << 30)));
+}
+
+long long write_some(int descriptor, const uint8_t *data, size_t size) {
+  return _write(descriptor, data, static_cast<unsigned>(std::min<size_t>(size, 1u << 30)));
+}
+
+void take_standard_streams(int &input, int &output) {
+  input = _dup(0);
+  output = _dup(1);
+  _setmode(input, _O_BINARY);
+  _setmode(output, _O_BINARY);
+  int nothing = _open("NUL", _O_RDONLY);
+  _dup2(nothing, 0);
+  _close(nothing);
+  _dup2(2, 1);
+}
+
+#else
+
+long long read_some(int descriptor, uint8_t *data, size_t size) { return read(descriptor, data, size); }
+
+long long write_some(int descriptor, const uint8_t *data, size_t size) { return write(descriptor, data, size); }
+
+void take_standard_streams(int &input, int &output) {
+  input = dup(STDIN_FILENO);
+  output = dup(STDOUT_FILENO);
+  int nothing = open("/dev/null", O_RDONLY);
+  dup2(nothing, STDIN_FILENO);
+  close(nothing);
+  dup2(STDERR_FILENO, STDOUT_FILENO);
+}
+
+#endif
+
 bool read_exactly(int descriptor, uint8_t *data, size_t size) {
   while (size > 0) {
-    ssize_t count = read(descriptor, data, size);
+    long long count = read_some(descriptor, data, size);
     if (count < 0 && errno == EINTR) continue;
     if (count <= 0) return false;
     data += count;
@@ -22,7 +68,7 @@ bool read_exactly(int descriptor, uint8_t *data, size_t size) {
 
 bool write_exactly(int descriptor, const uint8_t *data, size_t size) {
   while (size > 0) {
-    ssize_t count = write(descriptor, data, size);
+    long long count = write_some(descriptor, data, size);
     if (count < 0 && errno == EINTR) continue;
     if (count <= 0) return false;
     data += count;
@@ -33,12 +79,7 @@ bool write_exactly(int descriptor, const uint8_t *data, size_t size) {
 
 }
 
-Channel::Channel() : input_(dup(STDIN_FILENO)), output_(dup(STDOUT_FILENO)) {
-  int nothing = open("/dev/null", O_RDONLY);
-  dup2(nothing, STDIN_FILENO);
-  close(nothing);
-  dup2(STDERR_FILENO, STDOUT_FILENO);
-}
+Channel::Channel() { take_standard_streams(input_, output_); }
 
 bool Channel::receive(std::vector<uint8_t> &packet) {
   uint8_t header[4];
@@ -53,7 +94,7 @@ void Channel::send(const Term &term) {
   uint32_t size = static_cast<uint32_t>(bytes.size());
   uint8_t header[4] = {uint8_t(size >> 24), uint8_t(size >> 16), uint8_t(size >> 8), uint8_t(size)};
   std::lock_guard lock(write_mutex_);
-  if (!write_exactly(output_, header, 4) || !write_exactly(output_, bytes.data(), bytes.size())) _exit(0);
+  if (!write_exactly(output_, header, 4) || !write_exactly(output_, bytes.data(), bytes.size())) std::_Exit(0);
 }
 
 }

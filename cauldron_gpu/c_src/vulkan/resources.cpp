@@ -161,7 +161,7 @@ cg_texture *make_texture(cg_device &device, const cg_texture_desc &desc) {
   auto texture = std::make_unique<cg_texture>();
   texture->format = to_vk_format(desc.format);
   texture->aspect = aspect_of(texture->format);
-  texture->extent = {.width = desc.width, .height = desc.height};
+  texture->extent = vk::Extent2D{desc.width, desc.height};
   texture->mip_levels = std::max(desc.mip_levels, 1u);
   texture->layers = desc.kind == CG_TEXTURE_CUBE ? 6 : 1;
   texture->usage = desc.usage;

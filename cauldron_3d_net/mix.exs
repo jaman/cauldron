@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Net.MixProject do
   use Mix.Project
 
-  @version "0.3.1"
+  @version "0.3.2"
   @source_url "https://github.com/jaman/cauldron"
   @description "3D scenes for the browser: a scene server broadcasting cauldron_gpu's change stream over a Phoenix channel, and a three.js client drawing it."
 
@@ -27,8 +27,8 @@ defmodule Cauldron3D.Net.MixProject do
 
   defp deps do
     [
-      family(:cauldron_gpu, "~> 0.3.1", "../cauldron_gpu", []),
-      family(:cauldron_3d_formats, "~> 0.3.1", "../cauldron_3d_formats", only: [:dev, :test]),
+      family(:cauldron_gpu, "~> 0.3.2", "../cauldron_gpu", []),
+      family(:cauldron_3d_formats, "~> 0.3.2", "../cauldron_3d_formats", only: [:dev, :test]),
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.1"},
       {:jason, "~> 1.4"},

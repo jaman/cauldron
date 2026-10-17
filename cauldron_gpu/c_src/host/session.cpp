@@ -3,10 +3,12 @@
 #include <cerrno>
 #include <cstring>
 
+#if !defined(_WIN32)
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #include "../core/shared_memory.h"
 
@@ -30,6 +32,19 @@ struct Mapping {
   size_t size = 0;
 };
 
+#if defined(_WIN32)
+
+bool map_shared_memory(const std::string &name, size_t, Mapping &, std::string &error) {
+  error = "shared memory " + name + " is not available on this system";
+  return false;
+}
+
+void unmap(const Mapping &) {}
+
+#else
+
+void unmap(const Mapping &mapping) { munmap(const_cast<uint8_t *>(mapping.data), mapping.size); }
+
 bool map_shared_memory(const std::string &name, size_t size, Mapping &mapping, std::string &error) {
   int descriptor = shm_open(name.c_str(), O_RDONLY, 0);
   shm_unlink(name.c_str());
@@ -52,6 +67,8 @@ bool map_shared_memory(const std::string &name, size_t size, Mapping &mapping, s
   mapping = {static_cast<const uint8_t *>(mapped), size};
   return true;
 }
+
+#endif
 
 void event_term(Term &term, const SDL_Event &event) {
   switch (event.type) {
@@ -239,10 +256,10 @@ void Session::submit_shared(Request &request) {
     return;
   }
   if (!window_) {
-    munmap(const_cast<uint8_t *>(mapping.data), mapping.size);
+    unmap(mapping);
     return;
   }
-  window_->submit({mapping.data, mapping.size, now_seconds(), [mapping] { munmap(const_cast<uint8_t *>(mapping.data), mapping.size); }});
+  window_->submit({mapping.data, mapping.size, now_seconds(), [mapping] { unmap(mapping); }});
 }
 
 void Session::capture(Request &request) {

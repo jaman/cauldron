@@ -125,11 +125,13 @@ defmodule CauldronGPU.Setup do
     :persistent_term.erase({native, :error})
     :code.delete(native)
     :code.purge(native)
-    Code.ensure_loaded(native)
 
-    case CauldronGPU.backends() do
+    with {:module, ^native} <- Code.ensure_loaded(native),
+         [_ | _] = backends <- CauldronGPU.backends() do
+      opened(backends)
+    else
+      {:error, _reason} -> {:error, "cauldron_gpu is not compiled"}
       [] -> {:error, "the renderer is not built: #{native.load_error() || "no backend"}"}
-      backends -> opened(backends)
     end
   end
 

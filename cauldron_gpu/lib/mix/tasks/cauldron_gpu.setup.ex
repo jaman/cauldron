@@ -137,8 +137,16 @@ defmodule Mix.Tasks.CauldronGpu.Setup do
     config = Map.put(config, :choice, :card)
     Setup.write_config(config)
     Mix.shell().info("Wrote #{Setup.config_path()}. Building the renderer...")
-    rebuild(config)
-    verify()
+
+    case rebuild(config) do
+      0 ->
+        verify()
+
+      _failed ->
+        Mix.shell().error(
+          "The renderer did not build; the output above says why. Games draw in software until it does. Run mix cauldron_gpu.setup again after fixing it."
+        )
+    end
   end
 
   defp rebuild(config) do
@@ -157,7 +165,8 @@ defmodule Mix.Tasks.CauldronGpu.Setup do
         _unix -> {"mix", args}
       end
 
-    System.cmd(program, args, into: IO.stream(), stderr_to_stdout: true)
+    {_output, status} = System.cmd(program, args, into: IO.stream(), stderr_to_stdout: true)
+    status
   end
 
   defp verify do

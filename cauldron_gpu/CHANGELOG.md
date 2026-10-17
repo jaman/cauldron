@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.2]
+
+### Fixed
+
+- The host program (`cauldron_gpu_host`) builds on Windows: its pipes use the Windows C
+  runtime in binary mode, and shared memory, which Windows builds do not use, reports
+  itself unavailable there.
+- An image's size in the Vulkan backend is set in a form every C++ compiler accepts.
+- `mix cauldron_gpu.setup` stops after a failed build and says so, where it went on to
+  check the card and crashed.
+
 ## [0.3.1]
 
 ### Added

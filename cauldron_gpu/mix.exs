@@ -1,7 +1,7 @@
 defmodule CauldronGPU.MixProject do
   use Mix.Project
 
-  @version "0.3.1"
+  @version "0.3.2"
   @source_url "https://github.com/jaman/cauldron"
   @description "3D rendering on the graphics card for the BEAM: Metal on macOS, Vulkan on Linux and Windows, driven by a scene described from Elixir."
 
@@ -84,9 +84,9 @@ defmodule CauldronGPU.MixProject do
 
   defp deps do
     [
-      family(:cauldron_2d, "~> 0.3.1", "../cauldron_2d", optional: true),
-      family(:cauldron_3d, "~> 0.3.1", "../cauldron_3d", optional: true),
-      family(:cauldron_3d_formats, "~> 0.3.1", "../cauldron_3d_formats", optional: true),
+      family(:cauldron_2d, "~> 0.3.2", "../cauldron_2d", optional: true),
+      family(:cauldron_3d, "~> 0.3.2", "../cauldron_3d", optional: true),
+      family(:cauldron_3d_formats, "~> 0.3.2", "../cauldron_3d_formats", optional: true),
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:elixir_make, "~> 0.9", runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
