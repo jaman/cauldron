@@ -1,0 +1,54 @@
+!IFNDEF PRIV_DIR
+PRIV_DIR = priv
+!ENDIF
+
+!IFNDEF VULKAN_SDK
+!ERROR cauldron_gpu: set VULKAN_SDK to the Vulkan SDK directory
+!ENDIF
+
+!IFNDEF SDL3_DIR
+!ERROR cauldron_gpu: set SDL3_DIR to the SDL3 development directory (holding include and lib\x64)
+!ENDIF
+
+OUT = $(PRIV_DIR:/=\)
+BUILD = _build\native\windows
+CXXFLAGS = /nologo /std:c++20 /O2 /EHsc /MD /W4 /DCG_HAVE_VULKAN /DNOMINMAX /DWIN32_LEAN_AND_MEAN \
+	/I"$(ERTS_INCLUDE_DIR)" /I"$(SDL3_DIR)\include" /I"$(VULKAN_SDK)\Include" /Ic_src\vulkan\vma
+LIBS = "$(SDL3_DIR)\lib\x64\SDL3.lib" "$(VULKAN_SDK)\Lib\vulkan-1.lib"
+
+all: $(OUT) $(BUILD) objects $(OUT)\cauldron_gpu.dll $(OUT)\cauldron_gpu_host.exe runtime
+
+$(OUT):
+	if not exist $(OUT) mkdir $(OUT)
+
+$(BUILD):
+	if not exist $(BUILD)\core mkdir $(BUILD)\core
+	if not exist $(BUILD)\vulkan mkdir $(BUILD)\vulkan
+	if not exist $(BUILD)\host mkdir $(BUILD)\host
+
+objects:
+	cl $(CXXFLAGS) /c c_src\core\*.cpp /Fo"$(BUILD)\core\\"
+	cl $(CXXFLAGS) /w /c c_src\vulkan\vma.cpp /Fo"$(BUILD)\vulkan\vma.obj"
+	cl $(CXXFLAGS) /c c_src\vulkan\backend.cpp c_src\vulkan\accel.cpp c_src\vulkan\barriers.cpp c_src\vulkan\bindless.cpp \
+		c_src\vulkan\commands.cpp c_src\vulkan\device.cpp c_src\vulkan\dispatch.cpp c_src\vulkan\formats.cpp c_src\vulkan\frames.cpp \
+		c_src\vulkan\instance.cpp c_src\vulkan\pipelines.cpp c_src\vulkan\resources.cpp c_src\vulkan\swapchain.cpp \
+		c_src\vulkan\timing.cpp c_src\vulkan\upscaler.cpp /Fo"$(BUILD)\vulkan\\"
+	cl $(CXXFLAGS) /c c_src\host\*.cpp /Fo"$(BUILD)\host\\"
+
+$(OUT)\cauldron_gpu.dll: objects
+	link /nologo /DLL /OUT:$@ $(BUILD)\core\*.obj $(BUILD)\vulkan\*.obj $(LIBS)
+
+$(OUT)\cauldron_gpu_host.exe: objects
+	if exist $(BUILD)\nif.obj del /Q $(BUILD)\nif.obj
+	move /Y $(BUILD)\core\nif.obj $(BUILD)\nif.obj
+	link /nologo /OUT:$@ $(BUILD)\core\*.obj $(BUILD)\vulkan\*.obj $(BUILD)\host\*.obj $(LIBS)
+	move /Y $(BUILD)\nif.obj $(BUILD)\core\nif.obj
+
+runtime:
+	copy /Y "$(SDL3_DIR)\lib\x64\SDL3.dll" $(OUT)\SDL3.dll
+
+clean:
+	if exist $(BUILD) rmdir /S /Q $(BUILD)
+	if exist $(OUT)\cauldron_gpu.* del /Q $(OUT)\cauldron_gpu.*
+	if exist $(OUT)\cauldron_gpu_host.* del /Q $(OUT)\cauldron_gpu_host.*
+	if exist $(OUT)\SDL3.dll del /Q $(OUT)\SDL3.dll

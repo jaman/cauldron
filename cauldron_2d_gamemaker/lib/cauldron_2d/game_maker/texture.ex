@@ -4,12 +4,14 @@ defmodule Cauldron2D.GameMaker.Texture do
   their pictures from through `Cauldron2D.GameMaker.Region`.
 
   `encoding` names how the page's bytes are stored: `:png`, `:qoi` (GameMaker's QOI
-  variant), or `:bz2_qoi` (that, compressed with bzip2). `bytes` is the page as stored.
-  `decode/1` turns a PNG page into a `FrenchCurve.Raster`; the other two encodings
-  return `{:error, {:unsupported_encoding, encoding}}`.
+  variant, `Cauldron2D.GameMaker.Qoi`), or `:bz2_qoi` (that, compressed with bzip2).
+  `bytes` is the page as stored. `decode/1` turns a page in any of the three into a
+  `FrenchCurve.Raster`.
   """
 
   alias Cauldron2D.GameMaker.Bytes
+  alias Cauldron2D.GameMaker.Bzip2
+  alias Cauldron2D.GameMaker.Qoi
   alias FrenchCurve.Raster
 
   @enforce_keys [:encoding, :bytes]
@@ -36,9 +38,18 @@ defmodule Cauldron2D.GameMaker.Texture do
   @doc "The page as a raster."
   @spec decode(t()) :: {:ok, Raster.t()} | {:error, term()}
   def decode(%__MODULE__{encoding: :png, bytes: bytes}), do: Linocut.Png.decode(bytes)
-  def decode(%__MODULE__{encoding: encoding}), do: {:error, {:unsupported_encoding, encoding}}
+  def decode(%__MODULE__{encoding: :qoi, bytes: bytes}), do: Qoi.decode(bytes)
 
-  defp blob(data, entry), do: data |> Bytes.u32s(entry, 6) |> Enum.find(&stored?(data, &1))
+  def decode(%__MODULE__{encoding: :bz2_qoi, bytes: bytes}) do
+    with {:ok, qoi} <- bytes |> bzip2_stream() |> Bzip2.decompress(), do: Qoi.decode(qoi)
+  end
+
+  defp bzip2_stream(<<_header::binary-8, "BZh", _::binary>> = bytes),
+    do: binary_part(bytes, 8, byte_size(bytes) - 8)
+
+  defp bzip2_stream(<<_header::binary-12, rest::binary>>), do: rest
+
+  defp blob(data, entry), do: data |> Bytes.u32s(entry, 7) |> Enum.find(&stored?(data, &1))
 
   defp stored?(data, at) when at > 0 and at + 8 <= byte_size(data),
     do: encoding(binary_part(data, at, 8)) != nil

@@ -26,6 +26,7 @@ defmodule Cauldron2D.Beacon.Listener do
           host: String.t(),
           http: String.t() | nil,
           node: atom() | nil,
+          fields: %{String.t() => String.t()},
           from: :inet.ip_address(),
           heard: integer()
         }
@@ -70,7 +71,7 @@ defmodule Cauldron2D.Beacon.Listener do
       |> Enum.filter(&(now - &1.heard < @fresh_ms))
       |> Enum.sort_by(& &1.heard, :desc)
 
-    {:reply, fresh, %{state | servers: Map.new(fresh, &{&1.http || &1.node, &1})}}
+    {:reply, fresh, %{state | servers: Map.new(fresh, &{key(&1), &1})}}
   end
 
   @impl GenServer
@@ -78,7 +79,7 @@ defmodule Cauldron2D.Beacon.Listener do
     case Beacon.parse(data) do
       {:ok, %{game: game} = call} when game == state.game ->
         server = Map.merge(call, %{from: from, heard: System.monotonic_time(:millisecond)})
-        {:noreply, %{state | servers: Map.put(state.servers, server.http || server.node, server)}}
+        {:noreply, %{state | servers: Map.put(state.servers, key(server), server)}}
 
       _other ->
         {:noreply, state}
@@ -86,6 +87,9 @@ defmodule Cauldron2D.Beacon.Listener do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp key(%{fields: %{"id" => id}}), do: {:id, id}
+  defp key(server), do: server.http || server.node
 
   @impl GenServer
   def terminate(_reason, %{socket: nil}), do: :ok

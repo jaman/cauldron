@@ -21,8 +21,7 @@ defmodule Cauldron2D.Overlap do
          {other_left, other_top, other_right, other_bottom} <- Shape.bounds(second) do
       {max(left, other_left), max(top, other_top), min(right, other_right),
        min(bottom, other_bottom)}
-      |> centres()
-      |> Enum.any?(&(Shape.contains?(first, &1) and Shape.contains?(second, &1)))
+      |> any_centre?(&(Shape.contains?(first, &1) and Shape.contains?(second, &1)))
     else
       nil -> false
     end
@@ -50,8 +49,7 @@ defmodule Cauldron2D.Overlap do
       {left, top, right, bottom} ->
         {max(left, x - radius), max(top, y - radius), min(right, x + radius),
          min(bottom, y + radius)}
-        |> centres()
-        |> Enum.any?(fn {px, py} = centre ->
+        |> any_centre?(fn {px, py} = centre ->
           (px - x) * (px - x) + (py - y) * (py - y) <= radius * radius and
             Shape.contains?(shape, centre)
         end)
@@ -72,14 +70,20 @@ defmodule Cauldron2D.Overlap do
     end
   end
 
-  defp centres({left, top, right, bottom}) do
-    first_column = ceil(left - 0.5)
-    last_column = ceil(right - 0.5) - 1
-    first_row = ceil(top - 0.5)
-    last_row = ceil(bottom - 0.5) - 1
-
-    for row <- first_row..last_row//1,
-        column <- first_column..last_column//1,
-        do: {column + 0.5, row + 0.5}
+  defp any_centre?({left, top, right, bottom}, inside?) do
+    columns = {ceil(left - 0.5), ceil(right - 0.5) - 1}
+    any_row?(ceil(top - 0.5), ceil(bottom - 0.5) - 1, columns, inside?)
   end
+
+  defp any_row?(row, last_row, _columns, _inside?) when row > last_row, do: false
+
+  defp any_row?(row, last_row, {first_column, last_column} = columns, inside?),
+    do:
+      any_column?(first_column, last_column, row + 0.5, inside?) or
+        any_row?(row + 1, last_row, columns, inside?)
+
+  defp any_column?(column, last_column, _y, _inside?) when column > last_column, do: false
+
+  defp any_column?(column, last_column, y, inside?),
+    do: inside?.({column + 0.5, y}) or any_column?(column + 1, last_column, y, inside?)
 end

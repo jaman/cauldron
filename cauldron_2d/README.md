@@ -1,162 +1,264 @@
 # Cauldron2D
 
-A 2D game engine for the BEAM: terminal first, with the browser and the desktop as
-front ends. A game is a value and a few pure functions; the engine draws it, runs it for
-many players, plays its sound and puts it on screen wherever you point it.
+Cauldron2D is a 2D game engine for the BEAM. You write a game as a value and a few pure
+functions. The engine runs it for many players, draws it, and plays its sound. Other
+packages put it on screen: in a terminal, in a browser, or in a desktop window.
 
-## Getting started
+This package has no terminal and no UI framework in it. You can compose a frame and check
+it as bytes in a test, with no app loop and no clock.
+
+## Installation
+
+Add the engine and a front end to your dependencies. The terminal front end is
+`cauldron_2d_drafter`. Add `linocut` to draw pictures as text or code, and
+`tuning_fork_speaker` to hear sound on this machine.
 
 ```elixir
 def deps do
   [
-    {:cauldron_2d, "~> 0.2"},
-    {:cauldron_2d_drafter, "~> 0.1"},
-    {:linocut, "~> 0.1"},
+    {:cauldron_2d, "~> 0.3"},
+    {:cauldron_2d_drafter, "~> 0.2"},
+    {:linocut, "~> 0.2"},
     {:tuning_fork_speaker, "~> 0.1"}
   ]
 end
 ```
 
-Then read [Your first game](guides/tutorial.md): it builds a small game from nothing — the game
-as a value, its tests, its art from `.pic` files, the terminal front end with settings
-and a hud, sound and music, a second player and a robot, the browser and the window —
-and every step is a working example in the repository.
+The engine depends on `linocut` and `tuning_fork`. It plays sound only when a sink such as
+`tuning_fork_speaker` is present.
 
-The pieces, and where they live:
+## A first game
 
-| package | what |
-|---|---|
-| `cauldron_2d` | this package: the engine — tiles, sprites, camera, physics, input, worlds, players, replay, audio, the client contract |
-| [`cauldron_2d_drafter`](https://hexdocs.pm/cauldron_2d_drafter) | the terminal: a surface widget and a ready-made client |
-| [`cauldron_2d_net`](https://hexdocs.pm/cauldron_2d_net) | the network: the served side (a Phoenix channel, socket, pages and API) with `cauldron.js` for the browser, and the links an Elixir client uses to join a world over the socket or on a connected node — the wire, the remote calls, the load test |
-| [`cauldron_2d_wx`](https://hexdocs.pm/cauldron_2d_wx) | the desktop: a wx window drawing the same wire |
-| [`linocut`](https://hexdocs.pm/linocut) | pictures as text or code, and pictures derived from others |
-| [`cauldron_2d_easel`](https://hexdocs.pm/cauldron_2d_easel), [`_drafter`](https://hexdocs.pm/cauldron_2d_easel_drafter), [`_web`](https://hexdocs.pm/cauldron_2d_easel_web), [`_kino`](https://hexdocs.pm/cauldron_2d_easel_kino) | the atlas editors: in the terminal, in a browser, in Livebook |
+A game implements `Cauldron2D.Game`. Every callback is pure. This one lets each player walk
+left and right along a row:
+
+```elixir
+defmodule Walk.Game do
+  @behaviour Cauldron2D.Game
+
+  @speeds %{left: -4.0, right: 4.0}
+
+  @impl true
+  def init(_opts), do: %{players: %{}}
+
+  @impl true
+  def join(state, id, _props),
+    do: {:ok, put_in(state.players[id], %{x: 5.0, held: MapSet.new()})}
+
+  @impl true
+  def leave(state, id), do: %{state | players: Map.delete(state.players, id)}
+
+  @impl true
+  def handle_input(state, id, %{held: held}), do: put_in(state.players[id].held, held)
+
+  @impl true
+  def step(state, dt),
+    do: %{state | players: Map.new(state.players, fn {id, player} -> {id, move(player, dt)} end)}
+
+  @impl true
+  def view(state, id), do: %{me: state.players[id], width: 12}
+
+  @impl true
+  def drain_events(state), do: {[], state}
+
+  defp move(player, dt) do
+    dx = player.held |> Enum.map(&Map.get(@speeds, &1, 0.0)) |> Enum.sum()
+    %{player | x: player.x + dx * dt}
+  end
+end
+```
+
+Drive it in a test with `Cauldron2D.Test`. It needs no process and no clock. Fifty ticks at
+50 Hz is one second, so the player ends near `x = 9.0`:
+
+```elixir
+driver = Cauldron2D.Test.new(Walk.Game, hz: 50)
+{:ok, driver} = Cauldron2D.Test.join(driver, :alice, %{username: "alice"})
+driver = driver |> Cauldron2D.Test.hold(:alice, [:right]) |> Cauldron2D.Test.tick(50)
+Cauldron2D.Test.view(driver, :alice).me.x
+```
+
+Run it for real in a `Cauldron2D.World`. Each player joins from its own process with
+`Cauldron2D.Player` and receives a frame every tick:
+
+```elixir
+{:ok, world} = Cauldron2D.World.start_link(game: Walk.Game, hz: 50)
+:ok = Cauldron2D.Player.join(world, :alice, %{username: "alice"})
+Cauldron2D.Player.input(world, :alice, %{held: MapSet.new([:right]), aim: nil})
+
+receive do
+  {:cauldron_frame, %{tick: tick, view: view, events: events}} -> view.me.x
+end
+```
+
+To put the game on screen, write a `Cauldron2D.Client.Game` module and run it with
+`cauldron_2d_drafter`. Its README continues this example. For the whole path, read
+[Your first game](guides/tutorial.md). It builds `examples/cistern` step by step: the game,
+its tests, its art, the terminal, sound, more players, the browser and the window.
+
+## How the packages fit
+
+| Package | What it does |
+| --- | --- |
+| `cauldron_2d` | This package. It runs worlds and players, and draws tiles, sprites and projections. It holds the client contract every front end reads. |
+| [`cauldron_2d_drafter`](https://hexdocs.pm/cauldron_2d_drafter) | Puts a game in a terminal. It also serves the game over ssh. |
+| [`cauldron_2d_net`](https://hexdocs.pm/cauldron_2d_net) | Serves a game to browsers over a Phoenix channel. Elixir clients use it to join worlds on other machines. |
+| [`cauldron_2d_wx`](https://hexdocs.pm/cauldron_2d_wx) | Opens a game in a desktop window. |
+| [`cauldron_gpu`](https://hexdocs.pm/cauldron_gpu) | Draws a scene's picture on the graphics card. The terminal client uses it when the scene has a `:gpu` function. |
+| [`linocut`](https://hexdocs.pm/linocut) | Draws pictures as text or code, and derives one picture from another. |
+| [`cauldron_2d_easel`](https://hexdocs.pm/cauldron_2d_easel), [`_drafter`](https://hexdocs.pm/cauldron_2d_easel_drafter), [`_web`](https://hexdocs.pm/cauldron_2d_easel_web), [`_kino`](https://hexdocs.pm/cauldron_2d_easel_kino) | Edit an atlas. The editors run in the terminal, in a browser and in Livebook. |
+| [`cauldron_2d_gamemaker`](https://hexdocs.pm/cauldron_2d_gamemaker) | Reads the data files of GameMaker games. |
+
+## What a game is
+
+A game is two modules.
+
+`Cauldron2D.Game` is the game itself. It has `init/1`, `join/3`, `leave/2`,
+`handle_input/3`, `step/2`, `view/2` and `drain_events/1`, all pure. `step/2` runs once per
+tick. `view/2` builds what one player sees, and the world sends it to that player.
+`drain_events/1` returns what happened since the last tick, and every player gets it.
+
+`Cauldron2D.World` runs the game. Players join with `Cauldron2D.Player.join/3`, send what
+they hold with `Cauldron2D.Player.input/3`, and receive `{:cauldron_frame, %{tick, view,
+events}}`. The world takes these options, among others:
+
+* `record: true` keeps a `Cauldron2D.Replay` of joins, leaves and input.
+* `tick: :on_input` steps once each time input arrives. Use it for a turn-based game.
+* `state:` starts the world from a saved game.
+* `follow:` names another world, on this machine or another, to run in step with.
+  The game's optional `export/1`, `restore/1` and `checksum/1` callbacks serve it.
+
+Call `pause/1` and `resume/1` to hold a clocked world. Call `stats/1` to see how it keeps up.
+
+`Cauldron2D.Client.Game` tells the front ends how to show the game. It gives the title,
+the atlas, the actions and keymaps, the worlds, how a view becomes a scene, the hud, and
+the sounds and music. Twelve callbacks are required: `title/0`, `atlas/0`, `actions/0`,
+`keymaps/0`, `toggles/0`, `worlds/1`, `scene/1`, `hud/1`, `listener/1`, `sounds/0`,
+`music/0` and `cue/2`. The rest are optional and documented on the module.
+
+`cauldron_2d_drafter`, `cauldron_2d_net` and `cauldron_2d_wx` each read that module. Each
+shows a title, a lobby, settings, the world, a summary and a guide. A world listed as
+`{module, opts}` belongs to one player, and the client starts it. The game's `start/0`
+chooses the flow: the title then the lobby, the lobby alone, straight into a world, or a
+function of its own.
+
+A scene is a map. It has a `:focus`, `:bounds`, a `:cell` function from a tile to what is
+drawn there, and `:movers` for sprites off the grid. It may add `:labels`, `:volumes`,
+parallax `:layers` and a `:heading`. A scene with a `:picture` function draws its own frame
+instead of using the atlas. A scene with a `:gpu` function also describes that frame for
+the graphics card.
 
 ## What is in the engine
 
-| | |
-|---|---|
-| `Cauldron2D.Atlas` | the catalogue: a sprite (or frames at a rate), a glyph and a colour per tile, built in code or loaded from a directory of `.png` and `.pic` files; `subscribe/1` tells of a change |
-| `Cauldron2D.Sheet` | the atlas packed onto one raster with an index, for a browser or a window |
-| `Cauldron2D.Surface` | a grid of cells composited into one raster, without touching a pixel per frame; movers, animated frames at a time, and labels in `Linocut.Font` |
-| `Cauldron2D.Camera` | which part of the world is on screen, and what is in each cell; `Camera.Follow` trails a target and shakes |
-| `Cauldron2D.Loop` | a fixed timestep, so game speed does not follow frame rate |
-| `Cauldron2D.Renderer` | pixels or glyphs, decided by the terminal |
-| `Cauldron2D.Projection.Iso`, `Projection.FirstPerson` | the same world as an isometric picture (blocks from an art's `height` and `faces`, turned and tilted) or seen from inside it along a heading; the terminal surface draws either in place of the top-down view |
-| `Cauldron2D.Projection.Volume` | coloured regions of space — a sphere, a cylinder, a cone, a beam, a set of whole tiles, or a shape of your own — that tint whatever is seen through them, in every projection |
-| `Cauldron2D.Input.Pad` | game-controller buttons and sticks as the actions a player holds, merged into `Cauldron2D.Input` |
-| `Cauldron2D.Rng` | a seeded generator carried in state, so a game is reproducible |
-| `Cauldron2D.Body` | a point mass with a heading: thrust, drag, gravity fields, wrapping |
-| `Cauldron2D.Collision` | swept bodies against a grid of whole and half tiles, and each other |
-| `Cauldron2D.Particles` | short-lived movers under a cap |
-| `Cauldron2D.Map` | a tile map as text, picture or classic header format, with a game-supplied legend |
-| `Cauldron2D.Input` | held actions from key presses and releases, with tap and toggle fallbacks |
-| `Cauldron2D.World` | a `Cauldron2D.Game` run at a fixed tick for many players, each sent their own view; `stats/1` says how it keeps up |
-| `Cauldron2D.World.Presence`, `Cauldron2D.World.Events` | joins and leaves in every world, and a world's events each tick, for processes that are not players |
-| `Cauldron2D.Replay` | a record of joins and input that rebuilds the same game; `Replay.Viewer` plays it back to a watcher |
-| `Cauldron2D.Audio` | effects placed around a listener, and music in sections and layers, per player |
-| `Cauldron2D.Client.Game` | what a game gives every front end — terminal, browser, window — to put its worlds in front of a player; `Client.Hud` is the hud's data |
-| `Cauldron2D.Worlds` | the worlds a game offers: a world each with its children, started on first use and swept when idle; `Cauldron2D.Stats` says how the node keeps up |
-| `Cauldron2D.Robot` | a computer player: a process that joins as `{:robot, n}` and decides through a brain module on a cadence set by its skill |
-| `Cauldron2D.Grid.Path`, `Cauldron2D.Grid.Coarse`, `Cauldron2D.Grid.Fov` | ways across a grid, in blocks, and what can be seen |
-| `Cauldron2D.Minimap` | the whole map in a few rows of braille with marks |
-| `Cauldron2D.Ledger`, `Cauldron2D.Save`, `Cauldron2D.Paths` | results and boards, saved games, and where a game's files live |
-| `Cauldron2D.Beacon` | a server found on the local network |
-| `Cauldron2D.Test` | a game driven in a test with no world and no clock |
-| `Cauldron2D.Tuning`, `Cauldron2D.Trace` | the numbers a game plays by, and a trace `mix cauldron.report` reads |
+### Worlds and players
 
-Putting it on screen is [`cauldron_2d_drafter`](https://hexdocs.pm/cauldron_2d_drafter),
-a separate package: nothing here depends on a UI framework, so a frame can be composed
-and asserted on as bytes with no terminal, no app loop and no timing involved.
+| Module | What it does |
+| --- | --- |
+| `Cauldron2D.Game` | Defines the callbacks a game implements. |
+| `Cauldron2D.World` | Runs a game at a fixed tick for many players, and sends each its own view. |
+| `Cauldron2D.Player` | Joins a world, sends input, and leaves. |
+| `Cauldron2D.World.Presence`, `Cauldron2D.World.Events` | Tell any process about joins and leaves in every world, and about one world's events each tick. |
+| `Cauldron2D.World.Lockstep` | Keeps a following world in step with its host. |
+| `Cauldron2D.Worlds` | Lists the worlds a game offers. It starts a world on first use and sweeps it when idle. |
+| `Cauldron2D.Distribution` | Hosts worlds for another machine to join over BEAM distribution. |
+| `Cauldron2D.Robot` | Runs a computer player. It joins as `{:robot, n}` and decides through a brain module. |
+| `Cauldron2D.Replay` | Records joins and input, and rebuilds the same game from them. `Replay.Viewer` plays one back to a watcher. |
+| `Cauldron2D.Test` | Drives a game in a test with no world and no clock. |
+| `Cauldron2D.Sessions` | Tracks who is logged in on the node, by any kind of client. |
+| `Cauldron2D.Stats` | Reports how the node keeps up. |
 
-## How it fits together
+### Drawing
 
-A game is two modules. `Cauldron2D.Game` is the game itself — `init/1`, `join/3`,
-`leave/2`, `handle_input/3`, `step/2`, `view/2`, `drain_events/1`, all pure — and
-`Cauldron2D.World` runs it: players join from their own processes with
-`Cauldron2D.Player`, send what they hold, and receive `{:cauldron_frame, %{tick, view,
-events}}` every tick. Started with `record: true` the world keeps a `Cauldron2D.Replay`;
-with `tick: :on_input` it steps only when input arrives, which is the world for a
-turn-based game; `pause/1` and `resume/1` hold a clocked one; `state:` starts it from a
-saved game.
+| Module | What it does |
+| --- | --- |
+| `Cauldron2D.Atlas` | Holds the tiles. Each has a sprite or frames, a glyph and a colour. Build one in code or load it from a directory of `.png` and `.pic` files. `subscribe/1` reports changes. |
+| `Cauldron2D.Sheet` | Packs an atlas onto one raster with an index, for a browser or a window. |
+| `Cauldron2D.Surface` | Composites a grid of cells, movers and labels into one raster. |
+| `Cauldron2D.Camera` | Picks the part of the world on screen. `Camera.Follow` trails a target and shakes. |
+| `Cauldron2D.Renderer` | Detects whether the terminal shows pixels or only glyphs. |
+| `Cauldron2D.Projection.Oblique`, `Projection.Iso`, `Projection.Mode7`, `Projection.FirstPerson` | Draw the same world from above and in front, as an isometric picture, as a ground plane in perspective, or from inside it. |
+| `Cauldron2D.Projection.Volume` | Tints what is seen through coloured regions of space, in every projection. |
+| `Cauldron2D.Parallax` | Draws background layers that each move at their own share of the camera's motion. |
+| `Cauldron2D.Render`, `Cauldron2D.DrawList`, `Cauldron2D.Blend`, `Cauldron2D.Fit` | Draw a frame from placed pictures, blend RGBA, and fit a fixed-shape frame into a pane. |
+| `Cauldron2D.Minimap` | Draws the whole map in a few rows of braille. |
 
-`Cauldron2D.Client.Game` is what the front ends need to show it — its title, atlas,
-actions and keymaps, worlds, how a view becomes a scene and a hud, its sounds and music
-— and `cauldron_2d_drafter`, `cauldron_2d_net` and `cauldron_2d_wx` each put it in
-front of a player with a title, a lobby, settings, the world, a summary and the guide.
-A world whose `world` is `{module, opts}` is the player's own, started by the client. The
-lobby lists the worlds, and whether there is one at all — or a title — is the game's
-`start/0`: the lobby flow, the lobby without a title, straight into a world, or a function
-of its own. None of it has anything to do with how a world steps: a turn-based game
-whose players share a world has a lobby like any other, and what a player is in that
-world — a character, a party — is the game's to ask, through its join props or a page of
-its own.
+### Movement and collision
 
-`Cauldron2D.Audio` is one process per listener. Events carry a position and are scaled
-and panned by their distance from the listener. `Cauldron2D.Audio.Music` plays a piece
-the game declares as sections and layers — the engine names none of them — switching
-sections on bar boundaries with a cross-fade and layer gains at once.
+| Module | What it does |
+| --- | --- |
+| `Cauldron2D.Loop` | Runs a fixed timestep, so game speed does not follow frame rate. |
+| `Cauldron2D.Body` | Moves a point mass with a heading: thrust, drag, gravity fields, wrapping. |
+| `Cauldron2D.Collision` | Sweeps bodies against a grid of whole and half tiles, and against each other. |
+| `Cauldron2D.Shape`, `Cauldron2D.Mask`, `Cauldron2D.Overlap`, `Cauldron2D.Turn` | Test placed, turned and scaled shapes for overlap, pixel by pixel. |
+| `Cauldron2D.Particles` | Moves short-lived particles under a cap. |
+| `Cauldron2D.Grid.Path`, `Grid.Coarse`, `Grid.Fov` | Find ways across a grid and in blocks, and compute what can be seen. |
+| `Cauldron2D.Route`, `Cauldron2D.Steer` | Walk a found route a step at a time, and chase a target round corners. |
+| `Cauldron2D.States`, `Cauldron2D.Thinkers` | Run state tables for actors, and things that change by themselves each tick, in a fixed order. |
+| `Cauldron2D.Sectors.*` | Run levels made of sectors with their own floor and ceiling heights. They cover the map, BSP, movement, sight, lighting, the automap and the view. |
 
-## Design notes
+### Input, sound and files
 
-### The engine draws; the game is the game
+| Module | What it does |
+| --- | --- |
+| `Cauldron2D.Input` | Turns key presses and releases into held actions, with tap and toggle fallbacks. |
+| `Cauldron2D.Input.Pad` | Maps game-controller buttons and sticks to actions. |
+| `Cauldron2D.Audio` | Plays effects placed around a listener, and music in sections and layers, per player. |
+| `Cauldron2D.Map` | Reads a tile map as text, as a picture, or in the classic header format, with a legend you supply. |
+| `Cauldron2D.Rng` | Keeps a seeded generator in state, so a game is reproducible. |
+| `Cauldron2D.Ledger`, `Cauldron2D.Save`, `Cauldron2D.Paths` | Keep results and boards, save games, and say where a game's files live. |
+| `Cauldron2D.Beacon` | Finds a server on the local network. |
+| `Cauldron2D.Tuning`, `Cauldron2D.Trace` | Hold the numbers a game plays by, and write a trace that `mix cauldron.report` reads. |
 
-Entities, combat, generation, turn order and saving belong to the game. The engine's
-job is narrower: a grid of tile ids becomes bytes on a display, cheaply, on whatever
-protocol is there. The one place they meet is a function:
+## How drawing works
+
+### The scene is a function
+
+The game owns its entities, combat, generation, turns and saving. The engine draws a grid
+of tiles. The two meet in one function:
 
 ```elixir
 Cauldron2D.Camera.view(
   focus: {x, y},
-  bounds: {width, height},
   size: {columns, rows},
   cell: fn {x, y} -> cell end
 )
 ```
 
-A roguelike's `cell` consults its map, entities and field of view; a brick game's
-consults a map of bricks. Neither tells the engine anything else about itself.
+The camera calls `cell` once for each visible tile. A roguelike's `cell` reads its map,
+entities and field of view. A brick game's reads a map of bricks.
 
-### The fast path
+### Compositing
 
-`Cauldron2D.Surface` touches no pixel on the frame path:
+`Cauldron2D.Surface` touches no pixel per frame for the grid:
 
-* **a tile is composited once.** A cell's appearance is fully described by
-  `{base, overlays, tint}`; each distinct combination is alpha-blended once into a flat RGBA
-  binary and cached in ETS. A few hundred cover a whole game
-* **a frame is built by slicing.** Pixel row *n* of a row of tiles is `binary_part/3` of each
-  tile at the same offset, concatenated — sub-binaries, no copying, no arithmetic per pixel
+* A cell is `{base, overlays, tint}`. Each distinct cell is blended once into an RGBA
+  binary and kept in ETS.
+* A frame row is built by slicing each tile's row with `binary_part/3` and joining the
+  slices. Nothing is copied pixel by pixel.
 
-The result goes straight into `FrenchCurve.Raster.from_rgba/4`.
-
-**Movers** — sprites at fractional positions, for anything that is not on the grid — are a
-separate path that touches only the rows they land on, so a frame with none pays nothing for
-them.
+The result goes to `FrenchCurve.Raster.from_rgba/4`. Movers are sprites at fractional
+positions. They are drawn on the rows they cover, so a frame without movers pays nothing
+for them.
 
 ### Two cells per tile
 
-A tile is two terminal cells wide and one tall. Cells are about twice as tall as they are wide,
-so a square tile drawn across two of them stays square — and the image's aspect ratio then
-matches the cell box the terminal scales it into, which keeps the art from being stretched by
-the terminal.
+A tile is two terminal cells wide and one tall. A terminal cell is about twice as tall as
+it is wide, so the tile stays square on screen.
 
 ### Text mode
 
-Terminals with no pixel protocol get two-cell coloured glyphs, from the same cells, so the two
-renderings cannot disagree. Braille is not used for tiles: it packs 2×4 dots into a cell, so a
-16-pixel tile would land on four dots and a monster would look like a wall.
-
-Sub-tile positions have no text equivalent — a mover lands in the cell it is nearest to. A
-game that needs the fraction to be visible needs pixels.
+On a terminal without a pixel protocol, the same cells are drawn as two-cell coloured
+glyphs. `Cauldron2D.Drafter.Surface` can also draw the frame as braille or as block
+characters. A mover in text mode lands in the nearest cell, so you need pixels to see
+sub-tile positions.
 
 ### Music
 
-A layer written as a Strudel chain is performed live on the listener's stage, the
-section's chains stacked, so a cue sounds at the next bar with nothing rendered ahead. The
-player's music level is the pattern's master gain on the stage, so a change reaches notes
-already sounding. A layer given as a score, a function or PCM (`{:pcm, binary}`) is rendered once and cached
-instead, two stems at a time, the cued section first.
+`Cauldron2D.Audio.Music` plays a piece that the game declares as sections and layers. It
+switches sections on bar boundaries with a cross-fade. A layer written as a Strudel chain
+is played live, so a cue sounds at the next bar. The player's music level is the master
+gain, so a change reaches notes already sounding. A layer given as a score, a function or
+PCM (`{:pcm, binary}`) is rendered once and cached, with the cued section first.
 
 ## License
 

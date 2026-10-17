@@ -1041,6 +1041,18 @@ defmodule Cauldron2D.Drafter.ClientTest do
     DT.send_key(ctx, :right)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Display   braille" end)
     DT.send_key(ctx, :down)
+
+    if Code.ensure_loaded?(CauldronGPU.Host) do
+      assert :ok ==
+               DT.wait_for(ctx, fn c ->
+                 DT.screen_text(c) =~ "▶ Drawing   graphics card if there is one"
+               end)
+
+      DT.send_key(ctx, :right)
+      assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Drawing   software only" end)
+      DT.send_key(ctx, :down)
+    end
+
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "▶ Frame rate   auto" end)
     DT.send_key(ctx, :right)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "Frame rate   15 fps" end)

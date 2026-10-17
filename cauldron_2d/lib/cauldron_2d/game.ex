@@ -35,6 +35,11 @@ defmodule Cauldron2D.Game do
       from this machine. Default: as it came
     * `checksum/1` — what host and follower compare to know their states agree, the
       parts the steps decide. Default: `:erlang.phash2/1` of the whole state
+
+  A world playing with rollback (`Cauldron2D.World.Rollback`) also reads the optional
+  `input_delay/1` after its steps: the frames its own players' input is stamped ahead,
+  or `nil` to keep the delay it has. Both worlds run the same state, so both take the
+  same delay.
   """
 
   @type state :: term()
@@ -63,5 +68,7 @@ defmodule Cauldron2D.Game do
   @callback restore(term()) :: state()
   @callback checksum(state()) :: term()
 
-  @optional_callbacks export: 1, restore: 1, checksum: 1
+  @callback input_delay(state()) :: pos_integer() | nil
+
+  @optional_callbacks export: 1, restore: 1, checksum: 1, input_delay: 1
 end

@@ -14,7 +14,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
   alias Cauldron2D.Client.{Game, Hud}
   alias Cauldron2D.Drafter.Client
-  alias Cauldron2D.Drafter.Client.{Picture, Settings}
+  alias Cauldron2D.Drafter.Client.{Gpu, Picture, Settings}
   alias Cauldron2D.Drafter.Surface
 
   @doc "The title screen: the game's name, its tagline and the menu."
@@ -375,6 +375,16 @@ defmodule Cauldron2D.Drafter.Client.Screens do
   defp item_text(:display, %{display: display}, _game),
     do: "Display   " <> Atom.to_string(display)
 
+  defp item_text(:drawing, %{drawing: :auto}, _game),
+    do: "Drawing   graphics card if there is one"
+
+  defp item_text(:drawing, %{drawing: :software}, _game), do: "Drawing   software only"
+
+  defp item_text(:drawing, %{drawing: :pane}, _game),
+    do: "Drawing   graphics card, in the terminal"
+
+  defp item_text(:drawing, %{drawing: :window}, _game), do: "Drawing   graphics card, in a window"
+
   defp item_text(:fps, %{fps: :auto}, _game), do: "Frame rate   auto (the terminal's best)"
 
   defp item_text(:fps, %{fps: fps}, _game),
@@ -524,7 +534,8 @@ defmodule Cauldron2D.Drafter.Client.Screens do
       hud_layout(Hud.layout(game.hud(view)), surface) ++
         paused_row(state) ++
         talk_rows(state) ++
-        fps_row(state) ++ zoom_row(state) ++ help(state, play_hints(game, state))
+        fps_row(state) ++
+        gpu_row(state) ++ zoom_row(state) ++ help(state, play_hints(game, state))
     )
   end
 
@@ -552,6 +563,13 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     do: [label("#{shown || "…"} frames/s from the world", style: %{fg: :bright_black})]
 
   defp fps_row(_state), do: []
+
+  defp gpu_row(state) do
+    case Gpu.note(state) do
+      nil -> []
+      note -> [label(note, style: %{fg: :bright_black})]
+    end
+  end
 
   defp zoom_row(state) do
     case Enum.reject(

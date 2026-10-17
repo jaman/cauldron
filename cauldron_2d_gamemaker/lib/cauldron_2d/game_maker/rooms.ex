@@ -9,10 +9,12 @@ defmodule Cauldron2D.GameMaker.Rooms do
      id is already present (a persistent one) is not placed again
   3. in the game's first room, every instance's game start event
   4. the room's creation code
+  5. every instance's room start event
+  6. when the creation code or a room start event went to another room
+     (`World.goto/2`), that room is entered at once, before any step in this one
 
   An instance a GameMaker Studio 2 room places on an instance layer takes that layer's
   depth, and is marked as on it (`room_layer`).
-  5. every instance's room start event
   """
 
   alias Cauldron2D.GameMaker.Room
@@ -45,7 +47,11 @@ defmodule Cauldron2D.GameMaker.Rooms do
     |> each_instance(first?, :other, @game_start)
     |> World.run_named("gml_Room_#{definition.name}_Create", nil)
     |> each_instance(true, :other, @room_start)
+    |> followed()
   end
+
+  defp followed(%World{pending_room: nil} = world), do: world
+  defp followed(%World{pending_room: room} = world), do: enter(world, room)
 
   defp leave(world, true), do: world
 

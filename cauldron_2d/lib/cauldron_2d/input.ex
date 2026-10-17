@@ -243,6 +243,18 @@ defmodule Cauldron2D.Input do
   defp spec_with(key, []), do: key
   defp spec_with(key, mods), do: {key, mods}
 
+  @doc """
+  The keys bound to each action, as `%{action => [key]}`: each key without its modifiers,
+  a mouse binding as `{:mouse, button}`, in the order the keymap gave them.
+  """
+  @spec keymap(t()) :: %{action() => [atom() | {:mouse, term()}]}
+  def keymap(%__MODULE__{bindings: bindings}) do
+    Enum.reduce(Enum.reverse(bindings), %{}, fn
+      {{:mouse, _button} = mouse, action}, acc -> Map.update(acc, action, [mouse], &[mouse | &1])
+      {{key, _mods}, action}, acc -> Map.update(acc, action, [key], &[key | &1])
+    end)
+  end
+
   @doc "Whether `spec` is bound to any action."
   @spec binds?(t(), key_spec()) :: boolean()
   def binds?(%__MODULE__{bindings: bindings}, spec) do

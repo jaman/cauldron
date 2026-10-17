@@ -35,7 +35,14 @@ defmodule Cauldron2D.World do
     * `:record` — keep a `Cauldron2D.Replay` of joins, leaves and input. Default `false`
     * `:name` — a GenServer name. Default none
     * `:follow` — another world, on this machine or another, to follow instead of
-      running one of its own. Default none
+      running one of its own, or `{:link, address, port}`: the world behind a
+      `Cauldron2D.Link` listener there, which the world connects to itself and plays
+      with rollback, closing the connection when it stops. Default none
+    * `:rollback` — with `:follow`, play the host's game with rollback
+      (`Cauldron2D.World.Rollback`) instead of following it step by step: a keyword
+      list of `:delay`, `:window` and `:lead`, or `true` for their defaults. Default none
+    * `:join_props` — with `:follow`, props added to every join of this world's players
+      sent to the host. Default none
 
   ## Following
 
@@ -49,12 +56,24 @@ defmodule Cauldron2D.World do
   follower stops, with reason `:normal`, when the host does. Starting one fails with
   `{:error, {:host, reason}}` when the host cannot be reached within `:timeout`
   milliseconds (default `10_000`).
+
+  ## Rollback
+
+  A world started with `follow: host, rollback: opts` runs the host's game on its own
+  clock instead, from the host's state when it starts. Both worlds apply their own
+  players' input as soon as it comes, a few frames ahead, and run the other's input
+  again when it arrives late (`Cauldron2D.World.Rollback`). The host decides every join
+  and leave. A host plays with rollback against one world at a time, and a world playing
+  with rollback has no followers. When the host stops, the other world stops with reason
+  `:normal`; when the other world stops, the host goes on alone. The other world adds
+  `round_trip`, its round trip to the host in milliseconds when it started, to the props
+  of every join of its players it sends the host.
   """
 
   use GenServer
 
-  alias Cauldron2D.{Loop, Replay}
-  alias Cauldron2D.World.{Events, Lockstep, Presence}
+  alias Cauldron2D.{Link, Loop, Replay}
+  alias Cauldron2D.World.{Events, Lockstep, Presence, Rollback}
 
   @type player_id :: term()
 
@@ -158,10 +177,84 @@ defmodule Cauldron2D.World do
 
   @impl GenServer
   def init(opts) do
-    case Keyword.get(opts, :follow) do
-      nil -> {:ok, hosting(opts)}
-      host -> following(opts, host)
+    case {Keyword.get(opts, :follow), Keyword.get(opts, :rollback)} do
+      {nil, _rollback} -> {:ok, hosting(opts)}
+      {{:link, address, port}, rollback} -> linked(opts, address, port, rollback || true)
+      {host, nil} -> following(opts, host)
+      {host, rollback} -> rolling(opts, host, rollback_opts(rollback))
     end
+  end
+
+  @impl GenServer
+  def terminate(_reason, %{link: link}) when is_pid(link) do
+    if Process.alive?(link), do: Link.close(link)
+    :ok
+  end
+
+  def terminate(_reason, _world), do: :ok
+
+  defp linked(opts, address, port, rollback) do
+    case Link.connect(address, port, Keyword.get(opts, :timeout, 10_000)) do
+      {:ok, link} -> rolled_over(link, rolling(opts, link, rollback_opts(rollback)))
+      {:error, reason} -> {:stop, {:host, reason}}
+    end
+  end
+
+  defp rolled_over(link, {:ok, world}), do: {:ok, %{world | link: link}}
+
+  defp rolled_over(link, {:stop, reason}) do
+    Link.close(link)
+    {:stop, reason}
+  end
+
+  defp round_trip(host, timeout) do
+    times =
+      for _ping <- 1..5 do
+        started = System.monotonic_time(:microsecond)
+        GenServer.call(host, :hz, timeout)
+        (System.monotonic_time(:microsecond) - started) / 1000
+      end
+
+    times |> Enum.sort() |> Enum.at(2)
+  end
+
+  defp rollback_opts(true), do: []
+  defp rollback_opts(opts) when is_list(opts), do: opts
+
+  defp rolling(opts, host, rollback_opts) do
+    timeout = Keyword.get(opts, :timeout, 10_000)
+    hz = GenServer.call(host, :hz, timeout)
+    round_trip = round_trip(host, timeout)
+    delay = Rollback.delay(round_trip, hz)
+    rollback_opts = Keyword.put_new(rollback_opts, :delay, delay)
+
+    case GenServer.call(host, {:rollback, self(), rollback_opts}, timeout) do
+      {host_pid, %{hz: hz, start: start}} when is_pid(host_pid) ->
+        with {:ok, world} <- rolled(opts, host_pid, hz, start, rollback_opts),
+             do:
+               {:ok,
+                %{world | round_trip: round_trip, join_props: Keyword.get(opts, :join_props, %{})}}
+
+      {:error, reason} ->
+        {:stop, {:host, reason}}
+    end
+  catch
+    :exit, reason -> {:stop, {:host, reason}}
+  end
+
+  defp rolled(opts, host_pid, hz, start, rollback_opts) do
+    world = world(Keyword.fetch!(opts, :game), nil, hz, :fixed, false)
+    rollback = %{Rollback.new(host_pid, false, rollback_opts) | frames: start.frames}
+    send(self(), :tick)
+
+    {:ok,
+     %{
+       world
+       | state: Rollback.restored_state(world.game, start.state),
+         steps: start.frame,
+         host: %{pid: host_pid, monitor: rollback.monitor},
+         rollback: rollback
+     }}
   end
 
   defp hosting(opts) do
@@ -199,12 +292,29 @@ defmodule Cauldron2D.World do
       host: nil,
       followers: %{},
       applied: [],
-      drained: []
+      drained: [],
+      rollback: nil,
+      link: nil,
+      round_trip: nil,
+      join_props: %{}
     }
   end
 
   @impl GenServer
+  def handle_call({:rollback, pid, opts}, _from, %{rollback: nil} = world) do
+    world = %{world | rollback: Rollback.new(pid, true, opts)}
+    {:reply, {self(), %{hz: world.hz, start: Rollback.start(world)}}, world}
+  end
+
+  def handle_call({:rollback, _pid, _opts}, _from, world),
+    do: {:reply, {:error, :rollback_taken}, world}
+
+  def handle_call(:hz, _from, world), do: {:reply, world.hz, world}
+
   def handle_call({:join, id, props, pid, frames?}, _from, %{host: %{pid: host}} = world) do
+    props = Map.merge(props, world.join_props)
+    props = if world.round_trip, do: Map.put(props, :round_trip, world.round_trip), else: props
+
     case GenServer.call(host, {:join, id, props, pid, false}, @host_call_ms) do
       :ok -> {:reply, :ok, put_in(world.players[id], unready(player(world, id, pid, frames?)))}
       refused -> {:reply, refused, world}
@@ -216,6 +326,7 @@ defmodule Cauldron2D.World do
     {:reply, :ok, unfollowed(world, id)}
   end
 
+  def handle_call(:pause, _from, %{rollback: %{}} = world), do: {:reply, :ok, world}
   def handle_call(:pause, _from, %{host: %{}} = world), do: {:reply, :ok, world}
   def handle_call(:resume, _from, %{host: %{}} = world), do: {:reply, :ok, world}
   def handle_call(:paused?, _from, %{host: %{}} = world), do: {:reply, false, world}
@@ -266,6 +377,17 @@ defmodule Cauldron2D.World do
     end
   end
 
+  defp joined(%{rollback: %{}} = world, id, props, pid, frames?) do
+    case world.game.join(world.state, id, props) do
+      {:ok, _state} ->
+        world = put_in(world.players[id], unready(player(world, id, pid, frames?)))
+        {:reply, :ok, Rollback.local(world, {:join, id, props})}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, world}
+    end
+  end
+
   defp joined(world, id, props, pid, frames?) do
     case world.game.join(world.state, id, props) do
       {:ok, state} ->
@@ -289,6 +411,12 @@ defmodule Cauldron2D.World do
   end
 
   @impl GenServer
+  def handle_cast({:input, id, input}, %{rollback: %{}} = world) do
+    if Map.has_key?(world.players, id),
+      do: {:noreply, Rollback.local(world, {:input, id, input})},
+      else: {:noreply, world}
+  end
+
   def handle_cast({:input, id, input}, %{host: %{pid: host}} = world) do
     if Map.has_key?(world.players, id), do: GenServer.cast(host, {:input, id, input})
     {:noreply, world}
@@ -320,6 +448,12 @@ defmodule Cauldron2D.World do
     {:noreply, %{world | loop: loop}}
   end
 
+  def handle_info(:tick, %{rollback: %{}} = world) do
+    {due, loop} = Loop.advance(world.loop, Loop.now())
+    Process.send_after(self(), :tick, Loop.wait(loop, Loop.now()))
+    alone(rolled(%{world | loop: loop}, due))
+  end
+
   def handle_info(:tick, world) do
     {due, loop} = Loop.advance(world.loop, Loop.now())
     base = world.steps
@@ -340,10 +474,38 @@ defmodule Cauldron2D.World do
   end
 
   def handle_info(
+        {:cauldron_rollback, peer, actions, through, frame},
+        %{rollback: %{peer: peer}} = world
+      ),
+      do: {:noreply, Rollback.received(world, actions, through, frame)}
+
+  def handle_info({:cauldron_rollback_lead, peer, average}, %{rollback: %{peer: peer}} = world),
+    do: {:noreply, Rollback.led(world, average)}
+
+  def handle_info({:cauldron_rollback_lead, _peer, _average}, world), do: {:noreply, world}
+
+  def handle_info(
+        {:cauldron_rollback_check, peer, frame, sum},
+        %{rollback: %{peer: peer}} = world
+      ),
+      do: {:noreply, Rollback.checked(world, frame, sum)}
+
+  def handle_info({:cauldron_rollback, _peer, _actions, _through, _frame}, world),
+    do: {:noreply, world}
+
+  def handle_info({:cauldron_rollback_check, _peer, _frame, _sum}, world), do: {:noreply, world}
+
+  def handle_info(
         {:DOWN, monitor, :process, _pid, _reason},
         %{host: %{monitor: monitor}} = world
       ),
       do: {:stop, :normal, world}
+
+  def handle_info(
+        {:DOWN, monitor, :process, _pid, _reason},
+        %{rollback: %{monitor: monitor, host?: true}} = world
+      ),
+      do: {:noreply, Rollback.ended(world)}
 
   def handle_info({:DOWN, _monitor, :process, pid, _reason}, world)
       when is_map_key(world.followers, pid) do
@@ -370,6 +532,46 @@ defmodule Cauldron2D.World do
         Presence.broadcast(self(), :left, id)
         %{world | players: players}
     end
+  end
+
+  defp rolled(world, due) do
+    world = Enum.reduce(1..due//1, world, fn _step, world -> rolled_frame(world) end)
+    world = if due > 0, do: broadcast(world), else: world
+    world |> delay_asked() |> Rollback.flushed()
+  end
+
+  defp delay_asked(%{game: game, state: state, rollback: rollback} = world) do
+    with true <- function_exported?(game, :input_delay, 1),
+         delay when is_integer(delay) and delay > 0 and delay != rollback.delay <-
+           game.input_delay(state) do
+      Rollback.delayed(world, delay)
+    else
+      _same -> world
+    end
+  end
+
+  defp rolled_frame(world) do
+    if Rollback.advance?(world) do
+      case Rollback.wait(world) do
+        {true, world} -> world
+        {false, world} -> drained(Rollback.run(world))
+      end
+    else
+      world
+    end
+  end
+
+  defp alone(world) do
+    cond do
+      not Rollback.silent?(world) -> {:noreply, world}
+      world.rollback.host? -> {:noreply, Rollback.ended(world)}
+      true -> {:stop, :normal, world}
+    end
+  end
+
+  defp drained(world) do
+    {events, state} = world.game.drain_events(world.state)
+    %{world | state: state, drained: world.drained ++ events}
   end
 
   defp stepped(world, due) do
@@ -462,6 +664,18 @@ defmodule Cauldron2D.World do
 
     send(player.pid, {:cauldron_frame, frame})
     %{player | events: [], next: world.steps + player.every}
+  end
+
+  defp remove(%{rollback: %{}} = world, id) do
+    case Map.pop(world.players, id) do
+      {nil, _players} ->
+        world
+
+      {%{monitor: monitor}, players} ->
+        Process.demonitor(monitor, [:flush])
+        Presence.broadcast(self(), :left, id)
+        Rollback.local(%{world | players: players}, {:leave, id})
+    end
   end
 
   defp remove(world, id) do

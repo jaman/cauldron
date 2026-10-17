@@ -13,10 +13,15 @@ defmodule Cauldron2D.GameMaker.Sprite do
       otherwise one for every frame; `mask/2` gives a frame's
     * `speed` is `{rate, :per_second | :per_frame}`, the animation's playback; GameMaker
       Studio 1 files carry none and are `{1.0, :per_frame}`
-    * `kind` is `:bitmap`, `:vector` or `:spine`; only a bitmap sprite has frames
+    * `kind` is `:bitmap`, `:swf`, `:spine` or `:vector`; only a bitmap sprite has frames
+    * `nine_slice` is `nil`, or `%{left, top, right, bottom, modes}` when the sprite is
+      drawn stretched by its nine parts: the borders in pixels from each edge, kept as
+      they are, and the tile mode of the left, top, right, bottom and centre parts
+      (`0` stretch, `1` repeat, `2` mirror, `3` blank, `4` hide)
   """
 
   alias Cauldron2D.GameMaker.Bytes
+  alias Cauldron2D.GameMaker.General
   alias Cauldron2D.GameMaker.Region
   alias Cauldron2D.Mask
 
@@ -32,7 +37,8 @@ defmodule Cauldron2D.GameMaker.Sprite do
     frames: [],
     masks: [],
     speed: {1.0, :per_frame},
-    kind: :bitmap
+    kind: :bitmap,
+    nine_slice: nil
   ]
 
   @type t :: %__MODULE__{
@@ -46,14 +52,28 @@ defmodule Cauldron2D.GameMaker.Sprite do
           frames: [Region.t()],
           masks: [Mask.t()],
           speed: {float(), :per_second | :per_frame},
-          kind: :bitmap | :vector | :spine
+          kind: :bitmap | :swf | :spine | :vector,
+          nine_slice:
+            %{
+              left: integer(),
+              top: integer(),
+              right: integer(),
+              bottom: integer(),
+              modes: [non_neg_integer()]
+            }
+            | nil
         }
 
-  @kinds %{0 => :bitmap, 1 => :vector, 2 => :spine}
+  @kinds %{0 => :bitmap, 1 => :swf, 2 => :spine, 3 => :vector}
 
-  @doc "The sprite at `at`, its frames looked up in `regions` by offset."
-  @spec read(binary(), non_neg_integer(), %{non_neg_integer() => Region.t()}) :: t()
-  def read(data, at, regions) do
+  @doc """
+  The sprite at `at`, its frames looked up in `regions` by offset. Files written by
+  GameMaker 2024.6 or later store each mask as the collision box only; the masks come
+  back widened to the whole picture.
+  """
+  @spec read(binary(), non_neg_integer(), %{non_neg_integer() => Region.t()}, General.t()) ::
+          t()
+  def read(data, at, regions, %General{} = general) do
     <<_name::little-32, width::little-32, height::little-32, left::little-signed-32,
       right::little-signed-32, bottom::little-signed-32, top::little-signed-32,
       _transparent::little-32, smooth::little-32, _preload::little-32, box_mode::little-32,
@@ -71,9 +91,11 @@ defmodule Cauldron2D.GameMaker.Sprite do
       frames: []
     }
 
+    mask_box = if General.at_least?(general, 2024, 6), do: :box, else: :picture
+
     if marker == -1,
-      do: special(data, at + 60, sprite, regions),
-      else: bitmap(data, at + 56, sprite, regions)
+      do: special(data, at + 60, sprite, regions, mask_box),
+      else: bitmap(data, at + 56, sprite, regions, mask_box)
   end
 
   @doc "The mask frame `frame` collides with, `nil` for a sprite with no masks."
@@ -84,32 +106,116 @@ defmodule Cauldron2D.GameMaker.Sprite do
   def mask(%__MODULE__{masks: masks}, frame),
     do: Enum.at(masks, Integer.mod(frame, length(masks)))
 
-  defp special(data, at, sprite, regions) do
+  defp special(data, at, sprite, regions, mask_box) do
     [version, kind] = Bytes.u32s(data, at, 2)
     rate = Bytes.f32(data, at + 8)
     per = if Bytes.u32(data, at + 12) == 0, do: :per_second, else: :per_frame
     frames_at = at + 16 + 4 * min(max(version - 1, 0), 2)
-    sprite = %{sprite | speed: {rate, per}, kind: Map.get(@kinds, kind, :bitmap)}
 
-    if sprite.kind == :bitmap, do: bitmap(data, frames_at, sprite, regions), else: sprite
+    sprite = %{
+      sprite
+      | speed: {rate, per},
+        kind: Map.get(@kinds, kind, :bitmap),
+        nine_slice: nine_slice(data, version, at)
+    }
+
+    if sprite.kind == :bitmap,
+      do: bitmap(data, frames_at, sprite, regions, mask_box),
+      else: sprite
   end
 
-  defp bitmap(data, at, sprite, regions) do
+  defp nine_slice(data, version, at) when version >= 3 do
+    case Bytes.u32(data, at + 20) do
+      0 ->
+        nil
+
+      slice_at ->
+        <<left::little-signed-32, top::little-signed-32, right::little-signed-32,
+          bottom::little-signed-32, enabled::little-32, modes::binary-20>> =
+          binary_part(data, slice_at, 40)
+
+        if enabled != 0,
+          do: %{
+            left: left,
+            top: top,
+            right: right,
+            bottom: bottom,
+            modes: for(<<mode::little-32 <- modes>>, do: mode)
+          }
+    end
+  end
+
+  defp nine_slice(_data, _version, _at), do: nil
+
+  defp bitmap(data, at, sprite, regions, mask_box) do
     pointers = Bytes.pointers(data, at)
     masks_at = at + 4 + 4 * length(pointers)
 
     %{
       sprite
       | frames: Enum.map(pointers, &Map.fetch!(regions, &1)),
-        masks: masks(data, masks_at, sprite.size)
+        masks: masks(data, masks_at, sprite, mask_box)
     }
   end
 
-  defp masks(data, at, {width, height}) do
+  defp masks(data, at, %__MODULE__{size: size, box: {left, top, right, bottom}}, :box) do
+    case {right - left + 1, bottom - top + 1} do
+      ^size -> picture_masks(data, at, size)
+      {box_width, box_height} when box_width < 1 or box_height < 1 -> []
+      box_size -> box_masks(data, at, box_size, {left, top}, size)
+    end
+  end
+
+  defp masks(data, at, %__MODULE__{size: size}, :picture), do: picture_masks(data, at, size)
+
+  defp picture_masks(data, at, {width, height}) do
     size = div(width + 7, 8) * height
     count = Bytes.u32(data, at)
 
     for index <- 0..(count - 1)//1,
         do: Mask.new(width, height, binary_part(data, at + 4 + index * size, size))
   end
+
+  defp box_masks(data, at, {box_width, box_height}, corner, {width, height}) do
+    size = div(box_width + 7, 8) * box_height
+    count = Bytes.u32(data, at)
+
+    for index <- 0..(count - 1)//1 do
+      bits = binary_part(data, at + 4 + index * size, size)
+      widened = widen(bits, {box_width, box_height}, corner, {width, height})
+      Mask.new(width, height, widened)
+    end
+  end
+
+  defp widen(bits, {box_width, box_height}, {left, top}, {width, height}) do
+    stride = div(box_width + 7, 8)
+    rows = for <<row::binary-size(stride) <- bits>>, do: row
+    rows = List.to_tuple(rows)
+    padding = div(width + 7, 8) * 8 - width
+
+    for y <- 0..(height - 1), into: <<>> do
+      source = y - top
+
+      if source >= 0 and source < box_height,
+        do: place(elem(rows, source), box_width, left, width, padding),
+        else: <<0::size(width + padding)>>
+    end
+  end
+
+  defp place(row, box_width, left, width, padding) when left >= 0 and left + box_width <= width do
+    <<picked::bitstring-size(box_width), _::bitstring>> = row
+    <<0::size(left), picked::bitstring, 0::size(width - left - box_width + padding)>>
+  end
+
+  defp place(row, box_width, left, width, padding) do
+    bits = for x <- 0..(width - 1), into: <<>>, do: <<pixel(row, x - left, box_width)::1>>
+    <<bits::bitstring, 0::size(padding)>>
+  end
+
+  defp pixel(row, x, box_width) when x >= 0 and x < box_width do
+    <<_::bitstring-size(x), bit::1, _::bitstring>> = row
+    bit
+  end
+
+  defp pixel(_row, _x, _box_width), do: 0
 end

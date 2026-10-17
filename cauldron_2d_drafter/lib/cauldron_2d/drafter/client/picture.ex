@@ -13,6 +13,16 @@ defmodule Cauldron2D.Drafter.Client.Picture do
       place of deflated raw pixels
     * `swap` — each frame is stored before the last is let go, so the pane never blanks
       between frames
+    * `gpu` — a scene that describes itself for the graphics card (a scene's `:gpu`) is
+      drawn by `CauldronGPU` at the pane's size in pixels and shown in the pane; other
+      scenes, and every scene when no graphics card opens, are drawn as without it
+    * `window` — as `gpu`, but in a window of its own: keys pressed in the window reach
+      the client as the terminal's do, and the pane is left empty while the window opens and is open
+    * `software` — never the graphics card
+
+  Without `gpu`, `window` or `software` the player's drawing setting decides
+  (`Cauldron2D.Drafter.Client.Settings`), which by default uses the graphics card in the
+  pane when there is one.
     * `none` — none of these
 
   Without `native`, or with it when neither the game nor `size` gives a size, the picture
@@ -33,6 +43,9 @@ defmodule Cauldron2D.Drafter.Client.Picture do
           | {:size, {pos_integer(), pos_integer()}}
           | :png
           | :swap
+          | :gpu
+          | :window
+          | :software
 
   @default [{:native, 2}, :swap]
 
@@ -81,13 +94,28 @@ defmodule Cauldron2D.Drafter.Client.Picture do
   end
 
   @doc """
+  Where `options` ask for scenes to be drawn: on the graphics card in the pane (`:pane`)
+  or a window (`:window`), never on it (`:software`), or `nil` when they do not say.
+  """
+  @spec gpu([option()]) :: :pane | :window | :software | nil
+  def gpu(options) do
+    cond do
+      :software in options -> :software
+      :window in options -> :window
+      :gpu in options -> :pane
+      true -> nil
+    end
+  end
+
+  @doc """
   The `:native`, `:native_scale`, `:picture_format` and `:swap` props of a
-  `Cauldron2D.Drafter.Surface` showing `scene` under `look` with `options`.
+  `Cauldron2D.Drafter.Surface` showing `scene` under `look` with `options`. A scene with a
+  `:gpu` is drawn at the pane's own pixels.
   """
   @spec surface_props([option()], map(), map()) :: keyword()
   def surface_props(options, scene, look) do
     [
-      native: native_size(options, scene, look),
+      native: if(Map.has_key?(scene, :gpu), do: :pane, else: native_size(options, scene, look)),
       native_scale: Enum.find_value(options, :fit, &scale/1),
       picture_format: if(:png in options, do: :png, else: :rgba),
       swap: :swap in options
@@ -118,7 +146,7 @@ defmodule Cauldron2D.Drafter.Client.Picture do
   defp scale({:native, scale}), do: scale
   defp scale(_option), do: nil
 
-  defp option?(option) when option in [:native, :png, :swap], do: true
+  defp option?(option) when option in [:native, :png, :swap, :gpu, :window, :software], do: true
   defp option?({:native, scale}), do: is_integer(scale) and scale > 0
 
   defp option?({:size, {width, height}}),
@@ -129,6 +157,9 @@ defmodule Cauldron2D.Drafter.Client.Picture do
   defp option("native"), do: {:ok, :native}
   defp option("png"), do: {:ok, :png}
   defp option("swap"), do: {:ok, :swap}
+  defp option("gpu"), do: {:ok, :gpu}
+  defp option("window"), do: {:ok, :window}
+  defp option("software"), do: {:ok, :software}
 
   defp option("native:" <> scale) do
     case Integer.parse(scale) do

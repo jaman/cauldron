@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## [0.3.0]
+
+### Changed
+
+* The README is rewritten in plain sentences.
+
+## [0.2.6]
 
 ### Fixed
 

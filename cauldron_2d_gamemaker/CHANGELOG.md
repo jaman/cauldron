@@ -1,6 +1,21 @@
 # Changelog
 
-## Unreleased
+## [0.3.0]
+
+### Added
+
+- Data files of GameMaker 2024.14: QOI and bzip2-compressed QOI textures
+  (`Cauldron2D.GameMaker.Qoi`, `Cauldron2D.GameMaker.Bzip2`), the runtime version read
+  from the data (`Cauldron2D.GameMaker.Runtime`, `General.at_least?/5`) and the object, sprite
+  (nine-slice included), font, background, room and layer records of that version.
+- `Collide.place/4` and `Collide.meeting?/4` take `{:id, instance}`.
+
+### Changed
+
+- A room entered goes on at once to the room its creation code or room start events
+  go to (`Rooms.enter/2`), before any step in it, as the runner does.
+
+## [0.2.6]
 
 ### Added
 

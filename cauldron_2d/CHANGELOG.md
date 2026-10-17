@@ -1,6 +1,23 @@
 # Changelog
 
-## Unreleased
+## [0.3.0]
+
+### Added
+
+* `Cauldron2D.World`'s `:rollback`: a follower that plays the host's game with rollback
+  (`Cauldron2D.World.Rollback`), each world on its own clock, its own players' input
+  stamped a few frames ahead and frames run again when the other's arrives late.
+* `Cauldron2D.Link`: two worlds playing with rollback over one TCP connection, without
+  BEAM distribution: `listen/2`, `port/1`, `connect/3`, `ping/3`, `close/1` and `drop/1`.
+  A world follows one with `follow: {:link, address, port}`.
+* `Cauldron2D.World`'s `:join_props`, added to every join a follower sends its host,
+  and `round_trip` added to them by a world playing with rollback.
+* `Cauldron2D.Game`'s optional `input_delay/1`: the frames a world playing with rollback
+  stamps its players' input ahead, changed while it plays.
+* `Cauldron2D.Beacon` calls with fields (`put/2`), which `Cauldron2D.Beacon.Listener`
+  keeps by their `"id"`; `Cauldron2D.Input.keymap/1`.
+
+## [0.2.6]
 
 ### Added
 

@@ -35,20 +35,30 @@ defmodule Cauldron2D.GameMaker.Collide do
     end
   end
 
-  @doc "Whether instance `id`, moved to `{x, y}`, overlaps an instance of `object` (`:all` for any)."
-  @spec meeting?(World.t(), non_neg_integer(), {number(), number()}, non_neg_integer() | :all) ::
+  @doc "Whether instance `id`, moved to `{x, y}`, overlaps an instance of `object` (`:all` for any, `{:id, other}` for that one instance)."
+  @spec meeting?(
+          World.t(),
+          non_neg_integer(),
+          {number(), number()},
+          non_neg_integer() | :all | {:id, non_neg_integer()}
+        ) ::
           boolean()
   def meeting?(%World{} = world, id, position, object),
     do: place(world, id, position, object) != nil
 
-  @doc "The first instance of `object` that instance `id`, moved to `{x, y}`, overlaps; `nil` for none."
-  @spec place(World.t(), non_neg_integer(), {number(), number()}, non_neg_integer() | :all) ::
+  @doc "The first instance of `object` (`:all` for any, `{:id, other}` for that one instance) that instance `id`, moved to `{x, y}`, overlaps; `nil` for none."
+  @spec place(
+          World.t(),
+          non_neg_integer(),
+          {number(), number()},
+          non_neg_integer() | :all | {:id, non_neg_integer()}
+        ) ::
           non_neg_integer() | nil
   def place(%World{} = world, id, position, object) do
     with %Instance{} = instance <- World.fetch(world, id),
          %Shape{} = mine <- shape(world, instance, position) do
       world
-      |> World.instances_of(object)
+      |> candidates(object)
       |> Enum.find(fn other -> other != id and touches?(world, mine, other) end)
     else
       _ -> nil

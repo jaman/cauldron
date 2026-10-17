@@ -1,7 +1,7 @@
 defmodule Linocut.MixProject do
   use Mix.Project
 
-  @version "0.2.6"
+  @version "0.3.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "Pictures written as text and outlines, rendered to sprites, headings, palettes and strips."
 
@@ -29,7 +29,7 @@ defmodule Linocut.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:french_curve, "~> 0.2.0", "../../french_curve", override: true)
+      family(:french_curve, "~> 0.2.1", "../../french_curve", override: true)
     ]
   end
 

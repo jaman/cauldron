@@ -73,8 +73,9 @@ defmodule Cauldron2D.Drafter.Surface do
     * `:native` — `{width, height}`, the picture's own size in pixels. Given, on a kitty or
       iTerm2 terminal the picture is asked for at that size times a whole number
       (`:native_scale`), widened or heightened to the pane's shape, and the terminal
-      scales it to the pane, in place of the pane's cells times the density. Default
-      `nil`
+      scales it to the pane, in place of the pane's cells times the density. `:pane`
+      asks for it at the pane's own pixels (the terminal's cell size times the pane's
+      cells, where the terminal reports one). Default `nil`
     * `:native_scale` — `:fit`, the largest whole number at which the picture fits the
       pane's pixels (the terminal's cell size times the pane's cells, where the terminal
       reports one, else the cells times the density), or a positive integer. Default
@@ -996,6 +997,9 @@ defmodule Cauldron2D.Drafter.Surface do
       do: {width * scale, max(1, round(width * scale * pane_height / pane_width))},
       else: {max(1, round(height * scale * pane_width / pane_height)), height * scale}
   end
+
+  defp picture_size(%__MODULE__{projection: :picture, native: :pane}, columns, cells, density),
+    do: pane_pixels(columns, cells, density)
 
   defp picture_size(_state, columns, cells, density), do: {columns * density, cells * density}
 

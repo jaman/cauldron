@@ -1,7 +1,8 @@
 defmodule Cauldron2D.Drafter.Client.Settings do
   @moduledoc """
   A player's settings: which keys do what, whether the pointer steers, how loud things
-  are, how the world is drawn, and the game's own options (`Cauldron2D.Client.Game`'s
+  are, how the world is drawn (`display`, and `drawing`: on the graphics card or not), and
+  the game's own options (`Cauldron2D.Client.Game`'s
   `options/0`, its defaults under whatever was saved), and which player each game
   controller plays: `pads`, a map from a controller's name to a player number or `:none`
   (`Cauldron2D.Drafter.Client.Controllers`). `controllers` lists the controllers
@@ -32,6 +33,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
           sfx: float(),
           music: float(),
           display: display(),
+          drawing: drawing(),
           fps: fps(),
           options: map(),
           pads: %{String.t() => pos_integer() | :none},
@@ -44,6 +46,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
             sfx: 0.85,
             music: 0.35,
             display: :auto,
+            drawing: :auto,
             fps: :auto,
             options: %{},
             pads: %{},
@@ -52,12 +55,20 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   @typedoc "How the world is drawn: pixels where the terminal has them, else glyphs; braille; block characters of a glyph set; or glyphs."
   @type display :: :auto | :braille | :half | :quad | :sextant | :octant | :glyphs
 
+  @typedoc """
+  Where a game that can be drawn by the graphics card is drawn: `:auto` on the card in the
+  pane when there is one, `:software` never on the card, `:pane` on the card in the pane,
+  `:window` on the card in a window of its own.
+  """
+  @type drawing :: :auto | :software | :pane | :window
+
   @typedoc "Frames per second, or `:auto` for the terminal's best."
   @type fps :: :auto | pos_integer()
 
   @cell_sets [:half, :quad, :sextant, :octant]
   @displays [:auto, :braille | @cell_sets] ++ [:glyphs]
   @frame_rates [:auto, 15, 30, 50, 60]
+  @drawings [:auto, :software, :pane, :window]
 
   @doc """
   Settings for `game` with `overrides` applied over the game's first preset.
@@ -80,6 +91,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
       sfx: Map.get(overrides, :sfx, levels.sfx) / 1,
       music: Map.get(overrides, :music, levels.music) / 1,
       display: overrides |> Map.get(:display, :auto) |> display_option(),
+      drawing: overrides |> Map.get(:drawing, :auto) |> drawing_option(),
       options:
         Map.merge(
           Game.optional(game, :options, [], %{}),
@@ -91,14 +103,36 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   end
 
   @typedoc "One line of the settings screen: the preset, an action's binding, or a switch or level."
-  @type item :: :preset | {:action, Input.action()} | :pointer | :sfx | :music | :display | :fps
+  @type item ::
+          :preset
+          | {:action, Input.action()}
+          | :pointer
+          | :sfx
+          | :music
+          | :display
+          | :drawing
+          | :fps
 
-  @doc "The settings screen's items for `game`, top to bottom."
+  @doc """
+  The settings screen's items for `game`, top to bottom; `:drawing` is there when the
+  build has the graphics card renderer (`cauldron_gpu`).
+  """
   @spec items(module()) :: [item()]
   def items(game) do
     [:preset] ++
-      Enum.map(game.actions(), &{:action, &1}) ++ [:pointer, :sfx, :music, :display, :fps]
+      Enum.map(game.actions(), &{:action, &1}) ++
+      [:pointer, :sfx, :music, :display] ++ drawing_item() ++ [:fps]
   end
+
+  defp drawing_item, do: if(Code.ensure_loaded?(CauldronGPU.Host), do: [:drawing], else: [])
+
+  defp drawing_option(drawing) when drawing in @drawings, do: drawing
+  defp drawing_option(_other), do: :auto
+
+  @doc "The next or previous drawing choice, in the order auto, software, pane, window, wrapping."
+  @spec step_drawing(t(), -1 | 1) :: t()
+  def step_drawing(%__MODULE__{} = settings, delta),
+    do: %{settings | drawing: step(@drawings, settings.drawing, delta)}
 
   defp display_option(:text), do: :glyphs
   defp display_option(display) when display in @displays, do: display

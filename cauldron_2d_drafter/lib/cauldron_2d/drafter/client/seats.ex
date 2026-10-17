@@ -3,7 +3,8 @@ defmodule Cauldron2D.Drafter.Client.Seats do
   The further players a client plays on the same machine, from the game's
   `local_seats/1`: each a player of the world with its own keys and its own controller.
 
-  A seat is `%{id, input, pad, last_input}`. Seats join the world with `frames: false`,
+  A seat is `%{id, input, pad, device, last_input}`, `device` what the seat last played
+  with: `:keyboard`, or `{:pad, name}` with the name its controller connected under. Seats join the world with `frames: false`,
   so the client receives frames only as its own player; each key event reaches every
   seat's input and counts where that seat's keymap binds it; a controller event reaches
   the one seat it is routed to. `send_input/3` sends a seat's input only when it changed.
@@ -16,6 +17,7 @@ defmodule Cauldron2D.Drafter.Client.Seats do
           id: String.t(),
           input: Input.t(),
           pad: Pad.t(),
+          device: :keyboard | {:pad, String.t() | nil},
           last_input: map() | nil
         }
 
@@ -42,6 +44,7 @@ defmodule Cauldron2D.Drafter.Client.Seats do
               id: id,
               input: Input.new(keymap, input_options),
               pad: Pad.new(padmap),
+              device: :keyboard,
               last_input: nil
             }
           ]
@@ -58,10 +61,24 @@ defmodule Cauldron2D.Drafter.Client.Seats do
     Enum.each(seats, &Player.leave(world, &1.id))
   end
 
-  @doc "Every seat's input after a key or pointer event at `now`."
+  @doc """
+  Every seat's input after a key or pointer event at `now`; a seat whose keymap binds
+  the key plays with the keyboard from then on.
+  """
   @spec key([seat()], term(), integer()) :: [seat()]
-  def key(seats, event, now),
-    do: Enum.map(seats, &%{&1 | input: Input.handle(&1.input, event, now)})
+  def key(seats, event, now) do
+    Enum.map(seats, fn seat ->
+      device = if keyed?(seat.input, event), do: :keyboard, else: seat.device
+      %{seat | input: Input.handle(seat.input, event, now), device: device}
+    end)
+  end
+
+  @doc "Whether the key event `event` is one `input` binds."
+  @spec keyed?(Input.t(), term()) :: boolean()
+  def keyed?(input, {:key, key}) when is_atom(key), do: Input.binds?(input, key)
+  def keyed?(input, {:key, key, _mods}) when is_atom(key), do: Input.binds?(input, key)
+  def keyed?(input, {:key_down, key, _mods}) when is_atom(key), do: Input.binds?(input, key)
+  def keyed?(_input, _event), do: false
 
   @doc "Every seat's input with its timed holds expired at `now`."
   @spec expire([seat()], integer()) :: [seat()]
@@ -77,12 +94,24 @@ defmodule Cauldron2D.Drafter.Client.Seats do
 
   @doc "Seat `index` (counting from `0`) after a controller event."
   @spec controller([seat()], non_neg_integer(), map()) :: [seat()]
-  def controller(seats, index, event) do
+  def controller(seats, index, event, name \\ nil) do
     List.update_at(seats, index, fn seat ->
       pad = Pad.handle(seat.pad, event)
-      %{seat | pad: pad, input: Input.merge(seat.input, Pad.held(pad), Pad.strength(pad))}
+
+      %{
+        seat
+        | pad: pad,
+          input: Input.merge(seat.input, Pad.held(pad), Pad.strength(pad)),
+          device: pad_device(seat.device, event, name)
+      }
     end)
   end
+
+  @doc "The device after controller event `event` from the controller named `name`: that controller, unless the event is its going away."
+  @spec pad_device(:keyboard | {:pad, String.t() | nil}, map(), String.t() | nil) ::
+          :keyboard | {:pad, String.t() | nil}
+  def pad_device(device, %{type: :disconnected}, _name), do: device
+  def pad_device(_device, _event, name), do: {:pad, name}
 
   @doc """
   Every seat whose input changed sent to `world`, its read input passed through `steer`
@@ -91,7 +120,11 @@ defmodule Cauldron2D.Drafter.Client.Seats do
   @spec send_input([seat()], GenServer.server(), (map() -> map())) :: [seat()]
   def send_input(seats, world, steer) do
     Enum.map(seats, fn seat ->
-      sent = seat.input |> Input.state() |> steer.() |> Map.put(:aim, nil)
+      sent =
+        seat.input
+        |> Input.state()
+        |> steer.()
+        |> Map.merge(%{aim: nil, device: seat.device, keys: Input.keymap(seat.input)})
 
       if sent != seat.last_input do
         Player.input(world, seat.id, sent)

@@ -13,6 +13,9 @@ defmodule Cauldron2D.GameMaker.Data do
   texture pages, still encoded; `Cauldron2D.GameMaker.Pictures` decodes them. `audio`
   holds the stored sounds' bytes, indexed by `Cauldron2D.GameMaker.Sound`'s `audio`.
 
+  `general.runtime` is the GameMaker version that wrote the file
+  (`Cauldron2D.GameMaker.Runtime`); the layout each resource is read with follows it.
+
   `options` is `nil` when the file's options use the older layout
   (`Cauldron2D.GameMaker.Options`).
 
@@ -129,14 +132,14 @@ defmodule Cauldron2D.GameMaker.Data do
       chunks: chunks,
       options: chunk(chunks, "OPTN", nil, &options(bytes, &1)),
       textures: textures(bytes, chunks),
-      sprites: each(bytes, chunks, "SPRT", &Sprite.read(bytes, &1, regions)),
-      backgrounds: each(bytes, chunks, "BGND", &Background.read(bytes, &1, regions, format)),
-      objects: each(bytes, chunks, "OBJT", &Object.read(bytes, &1)),
-      rooms: Enum.map(rooms, &Room.read(bytes, &1, format, instance_size)),
-      sounds: each(bytes, chunks, "SOND", &Sound.read(bytes, &1)),
+      sprites: each(bytes, chunks, "SPRT", &Sprite.read(bytes, &1, regions, general)),
+      backgrounds: each(bytes, chunks, "BGND", &Background.read(bytes, &1, regions, general)),
+      objects: each(bytes, chunks, "OBJT", &Object.read(bytes, &1, general)),
+      rooms: Enum.map(rooms, &Room.read(bytes, &1, general, instance_size)),
+      sounds: each(bytes, chunks, "SOND", &Sound.read(bytes, &1, general)),
       audio: chunk(chunks, "AUDO", [], &Sound.audio(bytes, &1)),
       audio_groups: each(bytes, chunks, "AGRP", &Bytes.string_at(bytes, &1)),
-      fonts: each(bytes, chunks, "FONT", &Font.read(bytes, &1, regions, format)),
+      fonts: each(bytes, chunks, "FONT", &Font.read(bytes, &1, regions, general)),
       paths: each(bytes, chunks, "PATH", &GamePath.read(bytes, &1)),
       scripts: each(bytes, chunks, "SCPT", &Script.read(bytes, &1))
     }

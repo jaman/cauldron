@@ -15,6 +15,17 @@ defmodule Cauldron2D.GameMaker.Bytes do
     value
   end
 
+  @doc "The byte at `at`."
+  @spec u8(binary(), non_neg_integer()) :: byte()
+  def u8(data, at), do: :binary.at(data, at)
+
+  @doc "The unsigned 16-bit number at `at`."
+  @spec u16(binary(), non_neg_integer()) :: non_neg_integer()
+  def u16(data, at) do
+    <<value::little-16>> = binary_part(data, at, 2)
+    value
+  end
+
   @doc "The signed 32-bit number at `at`."
   @spec i32(binary(), non_neg_integer()) :: integer()
   def i32(data, at) do

@@ -8,6 +8,8 @@ defmodule Cauldron2D.GameMaker.Background do
 
     * `size` — `{width, height}` of one tile
     * `border` — `{x, y}`, the pixels between tiles on the page
+    * `separation` — `{x, y}`, the pixels between tiles in the source sprite; `{0, 0}`
+      in files written before GameMaker 2024.14.1
     * `columns` — tiles across the picture
     * `count` — how many tiles there are
     * `frames` — pictures per tile; above `1` a tile animates, one frame every
@@ -18,6 +20,7 @@ defmodule Cauldron2D.GameMaker.Background do
   """
 
   alias Cauldron2D.GameMaker.Bytes
+  alias Cauldron2D.GameMaker.General
   alias Cauldron2D.GameMaker.Region
 
   @enforce_keys [:name, :picture]
@@ -26,6 +29,7 @@ defmodule Cauldron2D.GameMaker.Background do
   @type tiles :: %{
           size: {pos_integer(), pos_integer()},
           border: {non_neg_integer(), non_neg_integer()},
+          separation: {non_neg_integer(), non_neg_integer()},
           columns: pos_integer(),
           count: non_neg_integer(),
           frames: pos_integer(),
@@ -40,16 +44,17 @@ defmodule Cauldron2D.GameMaker.Background do
           tiles: tiles() | nil
         }
 
-  @doc "The background at `at`; `format` decides whether it carries a tileset."
-  @spec read(binary(), non_neg_integer(), %{non_neg_integer() => Region.t()}, atom()) :: t()
-  def read(data, at, regions, format) do
+  @doc "The background at `at`; `general` decides whether it carries a tileset."
+  @spec read(binary(), non_neg_integer(), %{non_neg_integer() => Region.t()}, General.t()) ::
+          t()
+  def read(data, at, regions, %General{} = general) do
     [_name, _transparent, smooth, _preload, picture] = Bytes.u32s(data, at, 5)
 
     %__MODULE__{
       name: Bytes.string_at(data, at),
       picture: Map.get(regions, picture),
       smooth: smooth != 0,
-      tiles: tiles(data, at + 20, format)
+      tiles: tiles(data, at + 20, general)
     }
   end
 
@@ -65,22 +70,32 @@ defmodule Cauldron2D.GameMaker.Background do
      height}
   end
 
-  defp tiles(_data, _at, :gms1), do: nil
+  defp tiles(_data, _at, %General{format: :gms1}), do: nil
 
-  defp tiles(data, at, _format) do
-    [_two, width, height, border_x, border_y, columns, frames, count, _zero] =
-      Bytes.u32s(data, at, 9)
-
-    <<frame_time::little-64>> = binary_part(data, at + 36, 8)
+  defp tiles(data, at, %General{} = general) do
+    [_version, width, height] = Bytes.u32s(data, at, 3)
+    {separation, at} = separation(data, at + 12, general)
+    [border_x, border_y, columns, frames, count, _exported] = Bytes.u32s(data, at, 6)
+    <<frame_time::little-64>> = binary_part(data, at + 24, 8)
 
     %{
       size: {width, height},
       border: {border_x, border_y},
+      separation: separation,
       columns: columns,
       count: count,
       frames: frames,
       frame_time: frame_time,
-      ids: Bytes.u32s(data, at + 44, count * frames)
+      ids: Bytes.u32s(data, at + 32, count * frames)
     }
+  end
+
+  defp separation(data, at, general) do
+    if General.at_least?(general, 2024, 14, 1) do
+      [x, y] = Bytes.u32s(data, at, 2)
+      {{x, y}, at + 8}
+    else
+      {{0, 0}, at}
+    end
   end
 end

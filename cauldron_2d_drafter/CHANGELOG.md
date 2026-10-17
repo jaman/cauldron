@@ -1,6 +1,24 @@
 # Changelog
 
-## Unreleased
+## [0.3.0]
+
+### Added
+
+* The asks `{:options, changes}`, `{:clipboard, text}`, `{:return, props}` and
+  `{:on_return, props}` (`Cauldron2D.Client.Game`): a world entered with `{:enter,
+  props}` can send the player back to the world they came from with props for that
+  join, or name the props to join with should it go down.
+* Each player's input carries the device they last used (`:device`) and their key
+  bindings (`:keys`).
+* `Cauldron2D.Drafter.Client.Sprites` draws `Cauldron2D.DrawList` items on the graphics
+  card as `CauldronGPU` sprites, uploading each picture once, and keeps canvases by name.
+
+### Changed
+
+* A world entered with `{:enter, props}` that cannot be joined sends the player back to
+  the world they came from, with `refused: true` among that join's props.
+
+## [0.2.6]
 
 ### Changed
 

@@ -152,7 +152,7 @@ defmodule Cauldron2D.Drafter.Client do
   alias Cauldron2D.Audio.Music
   alias Cauldron2D.Client.Game
   alias Cauldron2D.Drafter.{Chat, Surface}
-  alias Cauldron2D.Drafter.Client.{Controllers, Picture, Screens, Seats, Settings}
+  alias Cauldron2D.Drafter.Client.{Controllers, Gpu, Picture, Screens, Seats, Settings, Stage}
   alias Cauldron2D.Input.Pad
   alias Cauldron2D.Projection.Iso
   alias Cauldron2D.World.Presence
@@ -258,6 +258,7 @@ defmodule Cauldron2D.Drafter.Client do
       audio: start_audio(game, props, settings),
       input: nil,
       pad: Pad.new(padmap(game, props)),
+      device: :keyboard,
       seats: [],
       devices: %{},
       controllers: Controllers.new(),
@@ -268,6 +269,7 @@ defmodule Cauldron2D.Drafter.Client do
       zoom: initial_zoom(game),
       look: look,
       picture: Picture.options(props, look),
+      gpu: Gpu.new(Picture.options(props, look)),
       pad_aim: nil,
       stick_aim?: false,
       looked_at: nil,
@@ -291,6 +293,7 @@ defmodule Cauldron2D.Drafter.Client do
       request: nil,
       asked: nil,
       return_props: nil,
+      return_extra: %{},
       world_ref: nil,
       summary_world: nil,
       rebinding: nil,
@@ -298,6 +301,7 @@ defmodule Cauldron2D.Drafter.Client do
       last_input: nil,
       guide: %{offset: 0, rows: 16, return: :title}
     }
+    |> Gpu.configure()
     |> cue_music()
   end
 
@@ -390,6 +394,7 @@ defmodule Cauldron2D.Drafter.Client do
   @impl true
   def unmount(state) do
     leave_world(state)
+    Gpu.stop(state)
     if state.audio, do: stop_audio(state.audio)
     Trace.stop()
     :ok
@@ -528,10 +533,14 @@ defmodule Cauldron2D.Drafter.Client do
 
   def on_timer(:menu_frame, state) do
     Drafter.set_timeout(@menu_frame_ms, :menu_frame)
-    %{state | menu_frame: state.menu_frame + 1}
+    window_tick(%{state | menu_frame: state.menu_frame + 1})
   end
 
   def on_timer(_timer, state), do: state
+
+  defp window_tick(%{view: nil} = state), do: state
+
+  defp window_tick(state), do: Gpu.tick(state, game_scene(state))
 
   @impl true
   def on_message({:cauldron_frame, frame}, %{joined: joined} = state) when joined != nil do
@@ -548,6 +557,7 @@ defmodule Cauldron2D.Drafter.Client do
       |> followed()
       |> looked(now())
       |> stick_aimed(Pad.aim(state.pad))
+      |> window_tick()
 
     Audio.listener(state.audio, state.game.listener(frame.view))
     Audio.play(state.audio, frame.events)
@@ -571,6 +581,8 @@ defmodule Cauldron2D.Drafter.Client do
   end
 
   def on_message({:cauldron_atlas, _name, :changed}, state), do: state
+
+  def on_message({Stage, _stage, _message} = message, state), do: Gpu.message(message, state)
 
   def on_message({:cauldron_players, _world, _change, _id}, state) do
     %{state | lobby: %{state.lobby | changes: state.lobby.changes + 1}}
@@ -994,6 +1006,9 @@ defmodule Cauldron2D.Drafter.Client do
   defp adjust(%{selected: :display} = state, delta),
     do: put_settings(state, Settings.step_display(state.settings, delta))
 
+  defp adjust(%{selected: :drawing} = state, delta),
+    do: put_settings(state, Settings.step_drawing(state.settings, delta))
+
   defp adjust(%{selected: :fps} = state, delta) do
     state = put_settings(state, Settings.step_fps(state.settings, state.game, delta))
     apply_frame_rate(state)
@@ -1023,7 +1038,7 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp put_settings(state, settings) do
     Audio.levels(state.audio, settings.sfx, settings.music)
-    assign_controllers(%{state | settings: settings})
+    Gpu.configure(assign_controllers(%{state | settings: settings}))
   end
 
   defp step_preset(state, delta) do
@@ -1082,7 +1097,7 @@ defmodule Cauldron2D.Drafter.Client do
         |> menu_request(Map.get(result, :request))
 
       Audio.play(state.audio, Map.get(result, :sounds, []))
-      if Map.get(result, :leave, false), do: leave(state), else: {:ok, state}
+      if Map.get(result, :leave, false), do: leave(state), else: {:ok, window_tick(state)}
     else
       {:noreply, state}
     end
@@ -1131,17 +1146,51 @@ defmodule Cauldron2D.Drafter.Client do
        else: %{state | asked: number}
   end
 
+  defp answer(state, {number, {:options, changes}}) when is_map(changes) do
+    settings = state.settings
+    options = Map.merge(settings.options, changes)
+    take_menu_settings(%{state | asked: number}, %{settings | options: options})
+  end
+
+  defp answer(state, {number, {:clipboard, text}}) when is_binary(text) do
+    Drafter.Clipboard.copy(text)
+    %{state | asked: number}
+  end
+
   defp answer(state, {number, {:enter, props}}) do
     returning = state.return_props || state.props
     state = leave_world(%{state | asked: number})
-    enter(%{state | props: Map.merge(state.props, props), return_props: returning}, :first)
+
+    entering = %{
+      state
+      | props: Map.merge(state.props, props),
+        return_props: returning,
+        return_extra: %{}
+    }
+
+    case enter(entering, :first) do
+      %{joined: nil} = refused ->
+        enter(%{refused | props: returning, return_props: nil}, :first, %{refused: true})
+
+      entered ->
+        entered
+    end
   end
+
+  defp answer(%{return_props: props} = state, {number, {:return, extra}})
+       when props != nil and is_map(extra) do
+    state = leave_world(%{state | asked: number})
+    enter(%{state | props: props, return_props: nil, return_extra: %{}}, :first, extra)
+  end
+
+  defp answer(state, {number, {:on_return, extra}}) when is_map(extra),
+    do: %{state | asked: number, return_extra: extra}
 
   defp answer(state, {number, _ask}), do: %{state | asked: number}
 
-  defp returned(%{return_props: props} = state) do
+  defp returned(%{return_props: props, return_extra: extra} = state) do
     state = leave_world(state)
-    enter(%{state | props: props, return_props: nil}, :first)
+    enter(%{state | props: props, return_props: nil, return_extra: %{}}, :first, extra)
   end
 
   defp watch(world) do
@@ -1370,9 +1419,15 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp followed(state), do: state
 
-  @doc "The game's scene for the client's view and look: `scene/2` where the game defines it, else `scene/1`."
+  @doc """
+  The scene the client draws for its view and look: the game's `scene/2` where it
+  defines one, else `scene/1`, with its picture drawn by the graphics card where the
+  client has one (`Cauldron2D.Drafter.Client.Gpu.scene/2`).
+  """
   @spec scene(map()) :: Game.scene()
-  def scene(%{game: game, view: view} = state) do
+  def scene(state), do: Gpu.scene(state, game_scene(state))
+
+  defp game_scene(%{game: game, view: view} = state) do
     if function_exported?(game, :scene, 2),
       do: game.scene(view, look(state)),
       else: game.scene(view)
@@ -1582,8 +1637,15 @@ defmodule Cauldron2D.Drafter.Client do
     trace_event(event)
     now = now()
 
+    device = if Seats.keyed?(input, event), do: :keyboard, else: state.device
+
     {:ok,
-     %{state | input: Input.handle(input, event, now), seats: Seats.key(state.seats, event, now)}
+     %{
+       state
+       | input: Input.handle(input, event, now),
+         seats: Seats.key(state.seats, event, now),
+         device: device
+     }
      |> push_input()
      |> push_seats()}
   end
@@ -1611,9 +1673,15 @@ defmodule Cauldron2D.Drafter.Client do
     state = known(state, device)
 
     case Map.get(state.devices, device) do
-      0 -> own_pad_event(event, state)
-      nil -> {:noreply, state}
-      slot -> {:ok, push_seats(%{state | seats: Seats.controller(state.seats, slot - 1, event)})}
+      0 ->
+        own_pad_event(event, state)
+
+      nil ->
+        {:noreply, state}
+
+      slot ->
+        seats = Seats.controller(state.seats, slot - 1, event, pad_name(state, event))
+        {:ok, push_seats(%{state | seats: seats})}
     end
   end
 
@@ -1648,8 +1716,12 @@ defmodule Cauldron2D.Drafter.Client do
 
   defp own_pad_event(event, state) do
     pad = Pad.handle(state.pad, event)
-    pad_screen(event, %{state | pad: pad})
+    device = Seats.pad_device(state.device, event, pad_name(state, event))
+    pad_screen(event, %{state | pad: pad, device: device})
   end
+
+  defp pad_name(state, %{device: device}), do: Controllers.name(state.controllers, device)
+  defp pad_name(_state, _event), do: nil
 
   defp pad_screen(
          %{type: :button, pressed: true, button: button},
@@ -1658,7 +1730,7 @@ defmodule Cauldron2D.Drafter.Client do
        when menu != nil do
     case menu_pad_key(button) do
       nil -> {:noreply, state}
-      key -> menu_event({:key, key}, state)
+      key -> menu_event({:key, key, [:pad]}, state)
     end
   end
 
@@ -1885,6 +1957,7 @@ defmodule Cauldron2D.Drafter.Client do
       }
       |> with_options(options_of(state))
       |> with_request(Map.get(state, :request))
+      |> Map.merge(%{device: state.device, keys: Input.keymap(state.input)})
 
     if sent != state.last_input do
       Trace.write(:input, held: Enum.join(sent.held, ","), aim: aim_text(sent.aim))

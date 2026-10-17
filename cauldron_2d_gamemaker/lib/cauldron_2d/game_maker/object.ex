@@ -6,6 +6,8 @@ defmodule Cauldron2D.GameMaker.Object do
       own masks collide
     * `parent` is the object it inherits events from, `nil` for none
     * `depth` orders drawing: greater depth is drawn first, further back
+    * `managed` is the managed flag of files written by GameMaker 2022.5 up to 2026.1,
+      `nil` for other files
     * `physics` holds the Box2D settings, `nil` when the object does not use physics
     * `events` lists `{type, subtype, code}`: `type` is a name from
       `Cauldron2D.GameMaker.Event.types/0`, `subtype` the alarm, key, object, step or
@@ -17,6 +19,7 @@ defmodule Cauldron2D.GameMaker.Object do
 
   alias Cauldron2D.GameMaker.Bytes
   alias Cauldron2D.GameMaker.Event
+  alias Cauldron2D.GameMaker.General
 
   @enforce_keys [:name, :sprite, :depth, :events]
   defstruct [
@@ -26,6 +29,7 @@ defmodule Cauldron2D.GameMaker.Object do
     :parent,
     :depth,
     :visible,
+    :managed,
     :solid,
     :persistent,
     :physics,
@@ -40,23 +44,26 @@ defmodule Cauldron2D.GameMaker.Object do
           parent: non_neg_integer() | nil,
           depth: integer(),
           visible: boolean(),
+          managed: boolean() | nil,
           solid: boolean(),
           persistent: boolean(),
           physics: map() | nil,
           events: [event()]
         }
 
-  @doc "The object at `at`."
-  @spec read(binary(), non_neg_integer()) :: t()
-  def read(data, at) do
-    <<_name::little-32, sprite::little-signed-32, visible::little-32, solid::little-32,
-      depth::little-signed-32, persistent::little-32, parent::little-signed-32,
+  @doc "The object at `at`; `general` says whether its entry carries the managed flag."
+  @spec read(binary(), non_neg_integer(), General.t()) :: t()
+  def read(data, at, %General{} = general) do
+    flag = managed_flag_size(general)
+
+    <<_name::little-32, sprite::little-signed-32, visible::little-32, managed::binary-size(flag),
+      solid::little-32, depth::little-signed-32, persistent::little-32, parent::little-signed-32,
       mask::little-signed-32, physics::little-32, sensor::little-32, shape::little-32,
       density::binary-4, restitution::binary-4, group::little-32, linear::binary-4,
       angular::binary-4, vertices::little-32, friction::binary-4, awake::little-32,
-      kinematic::little-32>> = binary_part(data, at, 80)
+      kinematic::little-32>> = binary_part(data, at, 80 + flag)
 
-    shape_at = at + 80
+    shape_at = at + 80 + flag
     events_at = shape_at + vertices * 8
 
     %__MODULE__{
@@ -66,6 +73,7 @@ defmodule Cauldron2D.GameMaker.Object do
       parent: if(parent >= 0, do: parent),
       depth: depth,
       visible: visible != 0,
+      managed: managed(managed),
       solid: solid != 0,
       persistent: persistent != 0,
       physics:
@@ -86,6 +94,15 @@ defmodule Cauldron2D.GameMaker.Object do
         ),
       events: events(data, events_at)
     }
+  end
+
+  defp managed(<<>>), do: nil
+  defp managed(<<flag::little-32>>), do: flag != 0
+
+  defp managed_flag_size(general) do
+    if General.at_least?(general, 2022, 5) and not General.at_least?(general, 2026, 1),
+      do: 4,
+      else: 0
   end
 
   defp points(data, at, count) do

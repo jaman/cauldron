@@ -44,6 +44,14 @@ defmodule Cauldron2D.Client.Game do
   `:native` (`{width, height}`), over the look's, is the picture's own size in pixels:
   the size the client's picture options (`Cauldron2D.Drafter.Client.Picture`) draw it at
   times a whole number, for a terminal that keeps images to scale.
+  A scene with a `:picture` may also have a `:gpu` —
+  `fn target, cache, {width, height}, aspect -> {changes, cache} end` — the same picture
+  described for a graphics card: it uploads what it needs through `target` (a
+  `CauldronGPU.Target`) and answers the tick's `CauldronGPU.Stream` changes, with the
+  game's 2D layer (status bar, messages, menus) as an `{:overlay, texture}`. `cache` is
+  what it answered last time, `nil` the first time.
+  A client whose picture options ask for the graphics card draws with `:gpu` when the
+  scene has it and the card opens, and with `:picture` otherwise.
 
   `worlds/1` is given the client's props and read whenever a lobby draws, so it may
   answer differently each time. A world is `%{id, name, world, players, humans, map,
@@ -147,7 +155,9 @@ defmodule Cauldron2D.Client.Game do
       look's `:menu_frame` counts up ten times a second, so the scene is drawn again
       for a menu's animations while the world stands still; a
       controller's d-pad arrives as the keys `:up`, `:down`, `:left` and `:right`, `A` as
-      `:enter`, and `B` and `Start` as `:escape`
+      `:enter`, and `B` and `Start` as `:escape`, each as `{:key, key, [:pad]}` so a game
+      can tell a controller's press from the keyboard's (a yes/no prompt takes `A` as
+      yes, as console ports of the games do)
     * `open_menu/2` — `(settings, arg)`, the game's menu opened because the world asked
       for it with `{:menu, arg}` (see `ask/1`); a game without it gets `open_menu/1`
     * `menu_event/3` — `(menu, event, settings)`, one event while the menu is open. Returns
@@ -161,10 +171,19 @@ defmodule Cauldron2D.Client.Game do
     * `ask/1` — what the world asks of this player's client, read from each view: `nil`,
       or `{number, ask}` with `ask` `:menu` (open the game's menu, as the `menu` key does),
       `{:menu, arg}` (open the game's menu given `arg`, `open_menu/2`),
-      `:quit` (end the client), or `{:enter, props}` (leave this world, merge `props` into
+      `:quit` (end the client), `{:options, changes}` (merge the map `changes` into the
+      player's game options and save them, as the menu saves its own changes),
+      `{:clipboard, text}` (put `text` on the player's clipboard),
+      `{:enter, props}` (leave this world, merge `props` into
       the client's mount props and join the first world `worlds/1` then gives; should
-      that world go down, the client takes its earlier props back and joins the first of
-      their worlds again). The client acts on each number once, so the game keeps an ask
+      that join fail, the client joins the first world of its earlier props again with
+      `refused: true` among that join's props, and should that world go down, the client
+      takes its earlier props back and joins the first of their worlds again, adding the
+      props of the last `{:on_return, props}` to that join's),
+      `{:return, props}` (in a world entered that way, leave it
+      at once for the first world of the earlier props, joining it with `props` added to
+      that join's props only), or `{:on_return, props}` (keep `props` for the join that
+      follows should the world entered go down). The client acts on each number once, so the game keeps an ask
       in its views only for the few steps the client needs to see it
     * `input_options/1` — extra `Cauldron2D.Input.new/2` options for the player's
       `:options`, such as `:gesture_ms`
@@ -201,7 +220,9 @@ defmodule Cauldron2D.Client.Game do
           optional(:heading) => number(),
           optional(:picture) => ({pos_integer(), pos_integer()}, number() ->
                                    FrenchCurve.Raster.t()),
-          optional(:native) => {pos_integer(), pos_integer()}
+          optional(:native) => {pos_integer(), pos_integer()},
+          optional(:gpu) => (term(), term(), {pos_integer(), pos_integer()}, number() ->
+                               {list(), term()})
         }
   @type page :: %{key: atom(), hint: String.t(), title: String.t(), render: (-> [Hud.row()])}
 
@@ -270,7 +291,17 @@ defmodule Cauldron2D.Client.Game do
             }
   @callback input_options(map()) :: keyword()
   @callback open_menu(map(), term()) :: term()
-  @callback ask(term()) :: {term(), :menu | {:menu, term()} | :quit | {:enter, map()}} | nil
+  @callback ask(term()) ::
+              {term(),
+               :menu
+               | {:menu, term()}
+               | :quit
+               | {:options, map()}
+               | {:clipboard, String.t()}
+               | {:enter, map()}
+               | {:return, map()}
+               | {:on_return, map()}}
+              | nil
 
   @optional_callbacks scene: 2,
                       holds: 0,

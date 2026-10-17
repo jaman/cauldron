@@ -40,6 +40,15 @@ defmodule Cauldron2D.Drafter.Client.Controllers do
     %{controllers | connected: connected ++ [{device, unique(connected, name)}]}
   end
 
+  @doc "The name `device` connected under, or `nil` when it is not connected."
+  @spec name(t(), device()) :: String.t() | nil
+  def name(%__MODULE__{connected: connected}, device) do
+    case List.keyfind(connected, device, 0) do
+      {^device, name} -> name
+      nil -> nil
+    end
+  end
+
   @doc "The controllers without `device`."
   @spec disconnect(t(), device()) :: t()
   def disconnect(%__MODULE__{connected: connected} = controllers, device),

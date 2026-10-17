@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Formats.MixProject do
   use Mix.Project
 
-  @version "0.2.6"
+  @version "0.3.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "Readers for the Quake family of game files into Cauldron3D: map files, models, sprites, picture collections, sounds, entity text and pak and pk3 archives."
 
@@ -25,7 +25,7 @@ defmodule Cauldron3D.Formats.MixProject do
 
   defp deps do
     [
-      family(:cauldron_3d, "~> 0.2.6", "../cauldron_3d", []),
+      family(:cauldron_3d, "~> 0.3.0", "../cauldron_3d", []),
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]

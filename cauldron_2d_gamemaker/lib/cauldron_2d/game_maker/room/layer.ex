@@ -2,7 +2,8 @@ defmodule Cauldron2D.GameMaker.Room.Layer do
   @moduledoc """
   A layer of a GameMaker Studio 2 room. Layers draw in order of `depth`, greater first;
   `offset` `{x, y}` shifts everything on the layer and `speed` `{x, y}` scrolls it by
-  that many pixels a step.
+  that many pixels a step. `effect` is the name of the layer's effect in files written
+  by GameMaker 2022.1 or later, `nil` for a layer without one.
 
   `content` depends on the layer's kind:
 
@@ -19,13 +20,26 @@ defmodule Cauldron2D.GameMaker.Room.Layer do
       when empty, otherwise `{tile, flags}` where `flags` lists any of `:mirror`,
       `:flip` and `:rotate`
     * `{:unknown, kind}` — a kind this reader does not take apart (effects, paths)
+
+  Files written by GameMaker 2024.2 or later store a tile grid run-length encoded; the
+  grid is returned the same way as for older files.
   """
 
   alias Cauldron2D.GameMaker.Bytes
+  alias Cauldron2D.GameMaker.General
   alias Cauldron2D.GameMaker.Room.Tile
 
   @enforce_keys [:name, :id, :depth, :content]
-  defstruct [:name, :id, :depth, :content, offset: {0.0, 0.0}, speed: {0.0, 0.0}, visible: true]
+  defstruct [
+    :name,
+    :id,
+    :depth,
+    :content,
+    :effect,
+    offset: {0.0, 0.0},
+    speed: {0.0, 0.0},
+    visible: true
+  ]
 
   @type cell :: {non_neg_integer(), [:mirror | :flip | :rotate]} | nil
   @type t :: %__MODULE__{
@@ -35,15 +49,16 @@ defmodule Cauldron2D.GameMaker.Room.Layer do
           content: {atom(), term()},
           offset: {number(), number()},
           speed: {number(), number()},
-          visible: boolean()
+          visible: boolean(),
+          effect: String.t() | nil
         }
 
   @tile_index 0x7FFFF
   @flags [mirror: 0x10000000, flip: 0x20000000, rotate: 0x40000000]
 
   @doc "The layer at `at`."
-  @spec read(binary(), non_neg_integer()) :: t()
-  def read(data, at) do
+  @spec read(binary(), non_neg_integer(), General.t()) :: t()
+  def read(data, at, %General{} = general) do
     <<_name::little-32, id::little-32, kind::little-32, depth::little-signed-32,
       offset_x::binary-4, offset_y::binary-4, speed_x::binary-4, speed_y::binary-4,
       visible::little-32>> = binary_part(data, at, 36)
@@ -55,11 +70,12 @@ defmodule Cauldron2D.GameMaker.Room.Layer do
       offset: {Bytes.float(offset_x), Bytes.float(offset_y)},
       speed: {Bytes.float(speed_x), Bytes.float(speed_y)},
       visible: visible != 0,
-      content: content(kind, data, at + 36)
+      effect: effect(data, at + 36, general),
+      content: content(kind, data, content_at(data, at + 36, general), general)
     }
   end
 
-  defp content(1, data, at) do
+  defp content(1, data, at, _general) do
     <<visible::little-32, foreground::little-32, sprite::little-signed-32, across::little-32,
       down::little-32, stretch::little-32, colour::little-32, first::binary-4, rate::binary-4,
       per::little-32>> = binary_part(data, at, 40)
@@ -77,9 +93,10 @@ defmodule Cauldron2D.GameMaker.Room.Layer do
      }}
   end
 
-  defp content(2, data, at), do: {:instances, Bytes.u32s(data, at + 4, Bytes.u32(data, at))}
+  defp content(2, data, at, _general),
+    do: {:instances, Bytes.u32s(data, at + 4, Bytes.u32(data, at))}
 
-  defp content(3, data, at) do
+  defp content(3, data, at, _general) do
     [tiles, sprites] = Bytes.u32s(data, at, 2)
 
     {:assets,
@@ -89,12 +106,12 @@ defmodule Cauldron2D.GameMaker.Room.Layer do
      }}
   end
 
-  defp content(4, data, at) do
+  defp content(4, data, at, general) do
     [tileset, columns, rows] = Bytes.u32s(data, at, 3)
 
     cells =
       data
-      |> Bytes.u32s(at + 12, columns * rows)
+      |> tile_values(at + 12, columns * rows, general)
       |> Enum.map(&cell/1)
       |> Enum.chunk_every(max(columns, 1))
       |> Enum.map(&List.to_tuple/1)
@@ -103,7 +120,41 @@ defmodule Cauldron2D.GameMaker.Room.Layer do
     {:tiles, %{tileset: tileset, size: {columns, rows}, cells: cells}}
   end
 
-  defp content(kind, _data, _at), do: {:unknown, kind}
+  defp content(kind, _data, _at, _general), do: {:unknown, kind}
+
+  defp effect(data, at, general) do
+    if General.at_least?(general, 2022, 1) and Bytes.u32(data, at) != 0,
+      do: Bytes.string_at(data, at + 4)
+  end
+
+  defp content_at(data, at, general) do
+    if General.at_least?(general, 2022, 1),
+      do: at + 12 + 12 * Bytes.u32(data, at + 8),
+      else: at
+  end
+
+  defp tile_values(data, at, count, general) do
+    if General.at_least?(general, 2024, 2),
+      do: data |> run_lengths(at, count, []) |> Enum.take(count),
+      else: Bytes.u32s(data, at, count)
+  end
+
+  defp run_lengths(_data, _at, remaining, runs) when remaining <= 0 do
+    runs |> Enum.reverse() |> Enum.concat()
+  end
+
+  defp run_lengths(data, at, remaining, runs) do
+    case Bytes.u8(data, at) do
+      control when control >= 128 ->
+        length = Bitwise.band(control, 0x7F) + 1
+        run = List.duplicate(Bytes.u32(data, at + 1), length)
+        run_lengths(data, at + 5, remaining - length, [run | runs])
+
+      length ->
+        run = Bytes.u32s(data, at + 1, length)
+        run_lengths(data, at + 1 + 4 * length, remaining - length, [run | runs])
+    end
+  end
 
   defp cell(value) do
     case Bitwise.band(value, @tile_index) do
