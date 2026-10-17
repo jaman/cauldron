@@ -7,6 +7,7 @@
 
 #if defined(_WIN32)
 #include <io.h>
+#include <share.h>
 
 #include <algorithm>
 #else
@@ -32,7 +33,8 @@ void take_standard_streams(int &input, int &output) {
   output = _dup(1);
   _setmode(input, _O_BINARY);
   _setmode(output, _O_BINARY);
-  int nothing = _open("NUL", _O_RDONLY);
+  int nothing = -1;
+  _sopen_s(&nothing, "NUL", _O_RDONLY, _SH_DENYNO, 0);
   _dup2(nothing, 0);
   _close(nothing);
   _dup2(2, 1);

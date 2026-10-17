@@ -590,6 +590,13 @@ remove an earlier renderer.
   arguments and `vcvars` capture are untried.
 - The launcher's Drawing field shows whether a renderer is built, and names the task when
   none is.
+- **First Windows runs (2026-10-18, user's machine, Visual Studio 18 Build Tools):** the
+  setup found MSVC and downloaded SDL3 and the headers. 0.3.1 failed compiling the host
+  (POSIX pipes and shared memory); 0.3.2 built everything, but the NIF did not load because
+  Windows does not search a DLL's folder for its own imports. The NIF now links SDL3
+  delay-loaded and loads `SDL3.dll` from its own folder in its `load` callback. MinGW
+  (`brew install mingw-w64`) compiles every source for Windows here as a check before
+  each Windows try; MSVC itself only runs on the user's machine.
 
 ## Open questions and checks
 

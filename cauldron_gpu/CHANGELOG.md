@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.3]
+
+### Fixed
+
+- On Windows the renderer loads the `SDL3.dll` beside it. Windows does not search a
+  library's own folder for what it needs, so loading failed with "The specified module
+  could not be found"; SDL3 is now delay-loaded and loaded from that folder first.
+- MSVC builds without warnings about `strncpy`, `getenv` and `_open`.
+
 ## [0.3.2]
 
 ### Fixed

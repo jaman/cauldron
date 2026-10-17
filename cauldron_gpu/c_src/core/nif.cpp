@@ -15,6 +15,10 @@ extern "C" int erl_drv_steal_main_thread(char *name, void **tid, void *(*func)(v
 #include <thread>
 #endif
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace cg {
 
 bool launch_window_thread(void *(*loop)(void *)) {
@@ -321,7 +325,29 @@ void handle_destructor(ErlNifEnv *, void *object) {
   enif_release_resource(handle->window_ref);
 }
 
+#if defined(_WIN32)
+
+bool load_sdl_beside_library() {
+  HMODULE self = nullptr;
+  auto address = reinterpret_cast<LPCWSTR>(&load_sdl_beside_library);
+  if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, address, &self))
+    return false;
+  std::wstring path(32768, L'\0');
+  DWORD length = GetModuleFileNameW(self, path.data(), static_cast<DWORD>(path.size()));
+  if (length == 0 || length >= path.size()) return false;
+  path.resize(length);
+  path = path.substr(0, path.find_last_of(L"\\/") + 1) + L"SDL3.dll";
+  return LoadLibraryExW(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH) != nullptr;
+}
+
+#else
+
+bool load_sdl_beside_library() { return true; }
+
+#endif
+
 int load(ErlNifEnv *env, void **, ERL_NIF_TERM) {
+  if (!load_sdl_beside_library()) return 2;
   auto flags = static_cast<ErlNifResourceFlags>(ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER);
   window_type = enif_open_resource_type(env, nullptr, "cauldron_gpu_window", window_destructor, flags, nullptr);
   handle_type = enif_open_resource_type(env, nullptr, "cauldron_gpu_handle", handle_destructor, flags, nullptr);

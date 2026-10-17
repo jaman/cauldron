@@ -1,9 +1,9 @@
 #include "internal.hpp"
 
+#include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_vulkan.h>
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <stdexcept>
@@ -14,7 +14,7 @@ namespace {
 constexpr const char *validation_layer_name = "VK_LAYER_KHRONOS_validation";
 
 bool validation_requested() {
-  const char *setting = std::getenv("CAULDRON_GPU_VALIDATION");
+  const char *setting = SDL_getenv("CAULDRON_GPU_VALIDATION");
   return setting != nullptr && std::strcmp(setting, "1") == 0;
 }
 

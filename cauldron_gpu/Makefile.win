@@ -48,7 +48,7 @@ objects:
 	cl $(CXXFLAGS) /c c_src\host\*.cpp /Fo"$(BUILD)\host\\"
 
 $(OUT)\cauldron_gpu.dll: objects
-	link /nologo /DLL /OUT:$@ $(BUILD)\core\*.obj $(BUILD)\vulkan\*.obj $(LIBS)
+	link /nologo /DLL /OUT:$@ $(BUILD)\core\*.obj $(BUILD)\vulkan\*.obj $(LIBS) delayimp.lib /DELAYLOAD:SDL3.dll
 
 $(OUT)\cauldron_gpu_host.exe: objects
 	if exist $(BUILD)\nif.obj del /Q $(BUILD)\nif.obj

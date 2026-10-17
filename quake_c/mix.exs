@@ -1,7 +1,7 @@
 defmodule QuakeC.MixProject do
   use Mix.Project
 
-  @version "0.3.2"
+  @version "0.3.3"
   @source_url "https://github.com/jaman/cauldron"
   @description "A QuakeC virtual machine in Elixir: reads compiled progs.dat programs and runs them against builtins the host supplies."
 

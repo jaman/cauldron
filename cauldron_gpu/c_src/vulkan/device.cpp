@@ -2,6 +2,7 @@
 
 #include <SDL3/SDL_vulkan.h>
 
+#include <algorithm>
 #include <cstring>
 #include <memory>
 #include <stdexcept>
@@ -85,8 +86,9 @@ void wait_idle_ignoring_errors(vk::Device device) {
 }
 
 void copy_string(char *destination, size_t capacity, const char *source) {
-  std::strncpy(destination, source, capacity - 1);
-  destination[capacity - 1] = '\0';
+  size_t length = std::min(std::strlen(source), capacity - 1);
+  std::memcpy(destination, source, length);
+  destination[length] = '\0';
 }
 
 }
