@@ -114,8 +114,4 @@ expression is a raster, a list of rasters or a strip. You can also give it a `.p
 
 ## License
 
-[AGPL-3.0-only](https://github.com/jaman/cauldron/blob/main/LICENSE). You may use, study, change and share it under the AGPL at
-no cost.
-
-A game or service whose source you do not publish needs a
-[commercial license](https://github.com/jaman/cauldron/blob/main/COMMERCIAL.md).
+MIT — see [LICENSE](https://github.com/jaman/cauldron/blob/main/linocut/LICENSE).

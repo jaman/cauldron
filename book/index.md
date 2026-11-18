@@ -39,9 +39,11 @@ answer, the glossary and the troubleshooting chapter are at the end of part one.
 | `cauldron_sfx` | A sound-effect bank and its editors |
 | `cauldron_2d_easel` | Art editing as data, in a terminal, a browser or Livebook |
 
-Cauldron is free software under the GNU Affero General Public License, version 3. A game
-or service whose source you do not publish needs a commercial license; see
-`COMMERCIAL.md` in the repository.
+The `cauldron_*` packages are free software under the GNU Affero General Public
+License, version 3. A game or service whose source you do not publish needs a commercial
+license; see `COMMERCIAL.md` in the repository. The components they are built with —
+`linocut` and `quake_c`, and `drafter`, `french_curve`, `tuning_fork` and `gamepad` in
+their own repositories — are MIT.
 
 ## Building this book
 

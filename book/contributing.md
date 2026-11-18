@@ -136,6 +136,8 @@ tags, pushes, and publishes the packages dependencies first.
 
 ## Licensing
 
-The packages are AGPL-3.0-only, with a commercial option for closed use described in
-`COMMERCIAL.md`. A change is contributed under the same terms; do not copy code in that
-cannot be licensed that way.
+The `cauldron_*` packages are AGPL-3.0-only, with a commercial option for closed use
+described in `COMMERCIAL.md`. `linocut`, `quake_c` and `drafter` are MIT, as are
+`french_curve`, `tuning_fork` and `gamepad` in their own repositories. A change is
+contributed under the terms of the package it lands in; do not copy code in that cannot be
+licensed that way.

@@ -1,8 +1,12 @@
 # Commercial license
 
-Cauldron is free software under the [GNU Affero General Public License, version 3](LICENSE)
-(AGPL-3.0-only). You may use it, study it, change it and share it under those
-terms at no cost.
+The `cauldron_*` packages are free software under the [GNU Affero General Public
+License, version 3](LICENSE) (AGPL-3.0-only). You may use them, study them, change
+them and share them under those terms at no cost.
+
+The components beside them — `linocut` and `quake_c` in this repository, and
+`drafter`, `french_curve`, `tuning_fork` and `gamepad` in their own — are MIT, and
+this file does not apply to them.
 
 Some uses are easier to buy than to comply with. This file says which.
 
