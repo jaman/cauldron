@@ -28,7 +28,7 @@ defmodule Cauldron2D.Draw do
   projection `:picture`.
   """
 
-  alias Cauldron2D.{Atlas, Camera, Parallax, Raster, Screen, Surface}
+  alias Cauldron2D.{Atlas, Camera, Field, Parallax, Raster, Screen, Surface}
   alias Cauldron2D.Projection.{FirstPerson, Iso, Mode7, Oblique}
   alias FrenchCurve.Backend.Cells
 
@@ -81,10 +81,13 @@ defmodule Cauldron2D.Draw do
   `:facing`, `:facings`, `:tilt`, `:heading`, `:pitch`, `:density`), at `zoom`.
   The scene's own `:heading` wins over the look's; its `:eye` is read by `eye_height/2`.
   A 3D scene's `:gpu` and `:gpu_size` are passed on as they are, for a drawer that
-  sends 3D scenes (`Cauldron3D.Net.Drawer`).
+  sends 3D scenes (`Cauldron3D.Net.Drawer`). A scene with a `:field` seen top-down is
+  drawn as `Cauldron2D.Field.scene/3` makes it.
   """
   @spec props(module(), map(), map(), number()) :: keyword()
   def props(game, scene, look, zoom) do
+    scene = Field.scene(scene, game.atlas(), Map.get(look, :projection, :top))
+
     [
       atlas: game.atlas(),
       focus: scene[:focus],

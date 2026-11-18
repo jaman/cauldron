@@ -170,7 +170,7 @@ defmodule Cauldron2D.Drafter.Client do
   alias Cauldron.{Audio, Chat, Input, Player, Sessions, Trace, World}
   alias Cauldron.Audio.Music
   alias Cauldron.Client.{Controls, Fronts, Game, Keys, Menus, Party, Start, View}
-  alias Cauldron2D.{Atlas, Camera, Draw}
+  alias Cauldron2D.{Atlas, Camera, Draw, Field}
   alias Cauldron2D.Client.Look
   alias Cauldron2D.Drafter.{Launcher, Surface}
 
@@ -1385,13 +1385,17 @@ defmodule Cauldron2D.Drafter.Client do
 
   @doc """
   The scene the client draws for its view and look: the game's `scene/2` where it
-  defines one, else `scene/1`, with its picture drawn by the graphics card where the
-  client has one (`Cauldron2D.Drafter.Client.Gpu.scene/2`).
+  defines one, else `scene/1`, a fixed `:field` drawn as `Cauldron2D.Field.scene/3`
+  makes it, with its picture drawn by the graphics card where the client has one
+  (`Cauldron2D.Drafter.Client.Gpu.scene/2`).
   """
   @spec scene(map()) :: Game.scene()
   def scene(state), do: Gpu.scene(state, game_scene(state))
 
-  defp game_scene(%{game: game, view: view} = state) do
+  defp game_scene(%{game: game} = state),
+    do: state |> own_scene() |> Field.scene(game.atlas(), look(state).projection)
+
+  defp own_scene(%{game: game, view: view} = state) do
     if function_exported?(game, :scene, 2),
       do: game.scene(view, look(state)),
       else: game.scene(view)
@@ -1403,10 +1407,18 @@ defmodule Cauldron2D.Drafter.Client do
   def follow(state, %{subject: subject}), do: %{state | pan: {0.0, 0.0}, subject: subject}
   def follow(state, _scene), do: state
 
-  @doc "The zoom levels this client steps through: `Cauldron2D.Drafter.Surface.zoom_levels/3` for the game's atlas, the display in use and the projection in view."
+  @doc "The zoom levels this client steps through: `Cauldron2D.Drafter.Surface.zoom_levels/3` for the game's atlas, the display in use and the projection in view; `1` alone while the scene is a fixed `:field`."
   @spec zoom_levels(map()) :: [number()]
   def zoom_levels(%{game: game, settings: settings} = state),
-    do: Surface.zoom_levels(game.atlas(), Settings.surface_mode(settings), look(state).projection)
+    do:
+      Surface.zoom_levels(game.atlas(), Settings.surface_mode(settings), drawn_projection(state))
+
+  defp drawn_projection(%{view: nil} = state), do: look(state).projection
+
+  defp drawn_projection(state) do
+    projection = look(state).projection
+    if Field.fixed?(own_scene(state), projection), do: :picture, else: projection
+  end
 
   defp zoom_step(state, step, anchor) do
     levels = zoom_levels(state)
@@ -1748,7 +1760,7 @@ defmodule Cauldron2D.Drafter.Client do
       focus: focus(state, scene),
       zoom: zoom,
       mode: Settings.surface_mode(state.settings),
-      projection: look.projection,
+      projection: if(Map.get(scene, :picture), do: :picture, else: look.projection),
       facing: look.facing,
       facings: Map.get(look, :facings) || 4,
       tilt: look.tilt,
@@ -1760,7 +1772,7 @@ defmodule Cauldron2D.Drafter.Client do
     }
 
     cell = {x - rect.x, y - rect.y}
-    world = Surface.world_at(surface, rect, cell)
+    world = surface |> Surface.world_at(rect, cell) |> Field.world_at(scene)
     traced(surface, rect, cell, world, scene, state)
     world
   end

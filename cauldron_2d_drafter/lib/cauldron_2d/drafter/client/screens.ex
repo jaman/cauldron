@@ -534,7 +534,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     look = Client.look(state)
 
     {:cauldron_surface,
-     Keyword.put(Draw.props(game, scene, look, zoom_for(state, scene)), :focus, focus) ++
+     Keyword.put(Draw.props(game, scene, look, Map.get(state, :zoom, 1)), :focus, focus) ++
        [
          id: :play,
          mode: Settings.surface_mode(settings),
@@ -544,28 +544,6 @@ defmodule Cauldron2D.Drafter.Client.Screens do
          flex: 1
        ] ++ Picture.surface_props(state.picture, scene, look)}
   end
-
-  # A game may ask for a zoom that fits its board to the pane (`zoom: :fit`). The pane is
-  # measured in cells, a tile is two cells wide and one tall, and the largest level that
-  # fits both ways is used; one that fits neither leaves it at 1.
-  defp zoom_for(%{zoom: :fit} = state, scene) do
-    case state do
-      %{geometry: %{size: {columns, rows}}} ->
-        {width, height} = Map.get(scene, :bounds) || {columns / 2, rows}
-
-        state
-        |> Client.zoom_levels()
-        |> Enum.filter(fn level ->
-          level > 0 and width * 2 * level <= columns and height * level <= rows
-        end)
-        |> Enum.max(fn -> 1 end)
-
-      _no_geometry ->
-        1
-    end
-  end
-
-  defp zoom_for(state, _scene), do: Map.get(state, :zoom, 1)
 
   defp paused_row(state) do
     if Client.paused?(state),
@@ -674,7 +652,6 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
   @doc "A zoom as text: `2×`, `1/2×`."
   @spec zoom_text(number()) :: String.t()
-  def zoom_text(:fit), do: "fit"
   def zoom_text(zoom) when zoom >= 1, do: "#{round(zoom)}×"
   def zoom_text(zoom), do: "1/#{round(1 / zoom)}×"
 
