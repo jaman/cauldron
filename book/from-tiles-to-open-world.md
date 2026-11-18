@@ -103,6 +103,11 @@ mover = Cauldron.OpenWorld.Mover.step(mover, map, intent, pace, seconds)
 {endpoint, stopped?} = Cauldron.OpenWorld.Map.travel(map, mover.point, wanted)
 ```
 
+![Vale, the open-world example, drawn on the graphics card: the lake, its shore and the woods around it](assets/vale.png)
+
+That frame is `Vale`'s own scene, read back without a window (`CauldronGPU.open(window:
+false)` and `capture/2`); `book/make_vale_frame.exs` draws it again.
+
 A game can introduce the open world without rewriting itself. The world module still
 implements `Cauldron.Game`; only `view/2` returns something else, and the client module's
 `scene/2` draws that instead. `cauldron_examples/3d/vale` is a complete open world —
