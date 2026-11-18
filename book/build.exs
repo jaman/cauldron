@@ -117,3 +117,49 @@ case System.find_executable("pandoc") do
       System.halt(1)
     end
 end
+
+# A PDF needs a browser to print the HTML: Chrome, Chromium or Edge. `CHROME` names one
+# that is somewhere else.
+chrome =
+  System.get_env("CHROME") ||
+    Enum.find(
+      [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/usr/bin/google-chrome",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/microsoft-edge"
+      ],
+      &File.exists?/1
+    )
+
+if File.exists?(Path.join(out, "cauldron.html")) and chrome do
+  profile = Path.join(System.tmp_dir!(), "cauldron-book-#{System.unique_integer([:positive])}")
+  pdf = Path.join(out, "cauldron.pdf")
+
+  {output, status} =
+    System.cmd(
+      chrome,
+      [
+        "--headless=new",
+        "--no-sandbox",
+        "--disable-gpu",
+        "--user-data-dir=#{profile}",
+        "--no-pdf-header-footer",
+        "--virtual-time-budget=30000",
+        "--print-to-pdf=#{pdf}",
+        "file://#{Path.join(out, "cauldron.html")}"
+      ],
+      stderr_to_stdout: true
+    )
+
+  File.rm_rf(profile)
+
+  if status == 0 and File.exists?(pdf) do
+    IO.puts("wrote book/build/cauldron.pdf (#{div(File.stat!(pdf).size, 1024)} KB)")
+  else
+    IO.puts("the PDF was not written:\n#{output}")
+  end
+end
