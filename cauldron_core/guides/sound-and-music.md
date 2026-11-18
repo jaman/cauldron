@@ -19,9 +19,9 @@ sections and layers; `Cauldron.Audio.Voice` makes a sound.
 | `recordings/0` | A function from an event name to a recording, for recorded music |
 | `sink/1` | Where this player's sound goes, from the client's props |
 
-`use Cauldron.Client.Game` gives the first three a silent default — a function that
-answers `nil` for every event, no pieces, no cue — so a game without sound writes
-nothing. A game with sound writes all three.
+`use Cauldron.Client.Game` gives the first three a silent default: a function that
+answers `nil` for every event, no pieces, no cue. A game without sound writes nothing; a
+game with sound writes all three.
 
 ## Events and voices
 
@@ -51,8 +51,8 @@ end
 
 `Cauldron.Audio.Voice.new/1` takes a shape (`:sine`, `:square`, `:saw`, `:triangle`,
 `:noise`), a frequency, a sweep, a gain, a pan, an envelope, filters, waveshaping and
-more. A voice is rendered to 16-bit PCM at the stage's rate once and then played; the
-same seed renders the same noise.
+more. A voice is rendered to 16-bit PCM at the stage's rate once, then played. The same
+seed renders the same noise.
 
 A placed event is `{name, {x, y}}`. With a listener set, it is scaled by its distance —
 full within one tile, silent at `:earshot` tiles — and panned by its side. Without a
@@ -80,14 +80,14 @@ Cauldron.Audio.play(audio, [:tag, {:step, {3.0, 1.0}}])
 `Cauldron.Audio.Sink` names where sound goes: `speaker/0` for this machine,
 `silent/0` for nowhere, `process/2` for messages to a process, `pulse/1` for a
 PulseAudio or PipeWire server. When nothing can play, the stage stays silent and the
-sound calls are no-ops returning `:ok`; `Cauldron.Audio.on?/1` says which it is.
+sound calls are no-ops returning `:ok`. `Cauldron.Audio.on?/1` says which it is.
 
 The stage sounds at most `:voices` sounds at once and lets the oldest go past that. The
 effects and music levels are separate and set with `Cauldron.Audio.levels/3`;
 `Cauldron.Audio.mute/2` silences both and restores them. A sound that should keep
-sounding under a key — an alarm, an engine — is a keyed event: `Cauldron.Audio.keyed/4`,
-`Cauldron.Audio.moved/2` and `Cauldron.Audio.stopped/2` replace, place and release the
-sound under that key.
+sounding under a key — an alarm, an engine — is a keyed event.
+`Cauldron.Audio.keyed/4`, `Cauldron.Audio.moved/2` and `Cauldron.Audio.stopped/2`
+replace, place and release the sound under that key.
 
 ## Music
 
@@ -112,16 +112,16 @@ end
 ```
 
 What a layer plays is either a Strudel chain, performed live on the listener's stage, or
-something rendered once: a `Cauldron.Audio.Score`, a zero-arity function returning PCM,
-`{:pcm, binary}` at the stage's rate, or `{:pcm, binary, rate, channels}`. A rendered
-piece is kept in the game's music directory under `piece/section/layer` and a fingerprint
-of what was written, so a changed layer is rendered again and an unchanged one is read
-back. A section cued while it renders takes effect when it is ready, at the next bar
-boundary, with a cross-fade.
+something rendered once. A rendered layer is a `Cauldron.Audio.Score`, a zero-arity
+function returning PCM, `{:pcm, binary}` at the stage's rate, or
+`{:pcm, binary, rate, channels}`. A rendered piece is kept in the game's music directory
+under `piece/section/layer`, with a fingerprint of what was written. A changed layer is
+rendered again; an unchanged one is read back. A section cued while it renders takes
+effect when it is ready, at the next bar boundary, with a cross-fade.
 
 A piece of long recordings sets `render: :on_cue`, so a section is rendered when first
-cued; a piece that is already rendered — a song bundle loaded with
-`Cauldron.Audio.Music.from_song/3` — sets `render: :ready` and nothing is rendered or
+cued. A piece that is already rendered — a song bundle loaded with
+`Cauldron.Audio.Music.from_song/3` — sets `render: :ready`, and nothing is rendered or
 kept. A piece's `:fingerprint` keys its renders: change it when the music's meaning
 changes without its text changing.
 
@@ -155,8 +155,7 @@ the screen changes and as views arrive.
 A client whose music is static — an audio instance started with `static_music: true`, as
 a server with many players may set — asks `cue(view, {:static, screen})` first. That is
 the one section it will loop for the whole stay, so a game may answer with a loop rather
-than the layered piece, and the client falls back to `cue(view, screen)` when that is
-`nil`.
+than the layered piece. The client falls back to `cue(view, screen)` when that is `nil`.
 
 ## How the client gets it
 
@@ -177,9 +176,9 @@ defmodule Tag.Client do
 end
 ```
 
-`:earshot` is in tiles; `:voices` caps how many sounds are mixed at once; `:rate` is the
-stage's sample rate, which a game whose music is recorded at another rate sets to the
-recording's rate; `:master` `:sfx` makes the effects level scale the music too.
+`:earshot` is in tiles. `:voices` caps how many sounds are mixed at once. `:rate` is the
+stage's sample rate; a game whose music is recorded at another rate sets it to the
+recording's rate. `:master` `:sfx` makes the effects level scale the music too.
 
 A game's rendered music lives under `Cauldron.Client.Game.music_dir/1`, which is
 `Cauldron.Paths.cache(home, "music")`; the home is the game's `home/0`, or its client

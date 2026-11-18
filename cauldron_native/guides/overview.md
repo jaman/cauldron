@@ -1,4 +1,4 @@
-# Overview
+# On a phone or tablet
 
 `cauldron_native` builds an Elixir project as an iOS, tvOS, macOS or Android app. The app
 starts the Erlang runtime inside its own process and boots your release, so your
@@ -77,10 +77,10 @@ The `:cauldron_native` keys are `CauldronNative.Build.App`'s:
 | `:env` | Environment variables set before the BEAM starts |
 
 `mix cauldron_native.build` runs itself again with `MIX_TARGET` set to the system and
-`MIX_ENV` set to `prod` unless you set one, builds a release, compiles every dependency's
-NIFs for the platform, writes an Xcode or Gradle project, and builds the app. The first
-build for a platform downloads and cross-compiles OpenSSL and OTP, which takes several
-minutes; later builds reuse them from `~/.cache/cauldron_native`.
+`MIX_ENV` set to `prod` unless you set one. It builds a release, compiles every
+dependency's NIFs for the platform, writes an Xcode or Gradle project, and builds the app.
+The first build for a platform downloads and cross-compiles OpenSSL and OTP, which takes
+several minutes. Later builds reuse them from `~/.cache/cauldron_native`.
 
 ```
 mix cauldron_native.build ios --team ABCDE12345 --run
@@ -159,7 +159,7 @@ app's config, and each answers through `handle_info/2`.
 
 ## The screen both ways share
 
-Under either use is one bridge. `CauldronNative.subscribe/1` sends the calling process
+One bridge sits under both uses. `CauldronNative.subscribe/1` sends the calling process
 the screen's events:
 
 | Event | What it reports |

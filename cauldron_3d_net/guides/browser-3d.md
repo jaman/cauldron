@@ -1,7 +1,7 @@
 # 3D in a browser
 
 `cauldron_3d_net` serves a 3D scene to a browser. A scene server keeps the scene as
-`Cauldron3D.Scene.Stream` changes, broadcasts each tick over a Phoenix channel, and
+`Cauldron3D.Scene.Stream` changes and broadcasts each tick over a Phoenix channel.
 `cauldron3d.js` draws those changes with three.js on the browser's graphics card. The
 machine serving the scene draws nothing.
 
@@ -62,10 +62,10 @@ an optional `:verify`, a `{module, function}` given the connect params and answe
 `{:ok, assigns}` or `:error`. Without one, everyone may connect.
 
 `use Cauldron3D.Net.Channel` takes `:topic` and defines a channel on `"scene:<id>"`, `id`
-a scene started with `start_link/1`. Joining a scene that does not exist is refused. On
-joining, the channel pushes the whole scene as one binary `"changes"` message and then
-each batch the scene broadcasts. Its `"event"` messages are decoded by
-`Cauldron3D.Net.Events` and passed to the scene.
+a scene started with `start_link/1`. The channel refuses a join to a scene that does not
+exist. On joining, it pushes the whole scene as one binary `"changes"` message, then each
+batch the scene broadcasts. `Cauldron3D.Net.Events` decodes its `"event"` messages and
+passes them to the scene.
 
 A browser's input reaches the `:events` pid as
 `{:cauldron_3d_net, scene_id, session, event}`. `session` is a reference for that browser,
@@ -134,9 +134,10 @@ canvas fills the window and takes keyboard focus.
 
 ## What the browser draws
 
-`cauldron3d.js` opens a socket, joins `"scene:<id>"`, applies the snapshot, and applies
-each `"changes"` message as it arrives. The changes are the same `Cauldron3D.Scene.Stream`
-bytes a native renderer takes: uploads, releases and one tick's places.
+`cauldron3d.js` opens a socket, joins `"scene:<id>"`, and applies the snapshot. It then
+applies each `"changes"` message as it arrives. The changes are the same
+`Cauldron3D.Scene.Stream` bytes a native renderer takes: uploads, releases and one tick's
+places.
 
 The browser draws what WebGL 2 can:
 
@@ -169,13 +170,13 @@ Each client is sent its scene as the changes a renderer takes and draws it itsel
 game's scene gives the drawer a `:gpu` closure,
 `fn target, cache, {width, height}, aspect -> {changes, cache} end`, and optionally
 `:gpu_size`. For each client the drawer keeps an outbox (`Cauldron3D.Net.Outbox`) the
-closure uploads to, so a client joining later is given the whole scene and uploads the
+closure uploads to. A client joining later therefore gets the whole scene, and uploads the
 game makes in the background reach it as they finish.
 
 The drawer pushes `{"changes", payload}`. A browser joins with the param
-`"changes" => "stream"` and reads `Cauldron3D.Scene.Stream` bytes; any other client reads
+`"changes" => "stream"` and reads `Cauldron3D.Scene.Stream` bytes. Any other client reads
 the change terms, keeps them with `Cauldron3D.Net.RemoteScene` and draws them with
-`Cauldron3D.Net.Replay`; a client in the same node gets the terms themselves. The game's
+`Cauldron3D.Net.Replay`. A client in the same node gets the terms themselves. The game's
 scene function decides:
 
 ```elixir
@@ -183,7 +184,7 @@ def scene(%{remote: _} = view, _look), do: Cauldron3D.Net.RemoteScene.scene(view
 ```
 
 The drawer's `browser/0` gives the game's pages the two scripts and the import map they
-need, which is why a game's browser page can be served by `cauldron_2d_net`'s pages with
+need. That is why a game's browser page can be served by `cauldron_2d_net`'s pages with
 `drawer: Cauldron3D.Net.Drawer`.
 
 ## Where to go next

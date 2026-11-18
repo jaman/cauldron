@@ -1,4 +1,4 @@
-# Files
+# 3D file formats
 
 `cauldron_3d_formats` reads the files of the Quake family into structures the renderers
 draw: `Cauldron3D.Bsp`, `Cauldron3D.Mesh` and `Cauldron3D.Texture`. It also reads glTF
@@ -70,8 +70,8 @@ It answers the world and the entity text.
 
 `:hulls` gives the boxes of hulls 1 and up, in the order the map was compiled with; hull
 0, the point hull, is built from the nodes. `:texture` is your function of the lower-case
-name and the four mips, and gives the entry in the world's `textures`: its kind `:solid`,
-`:masked`, `:sky`, `:liquid` or `:hidden`, and whatever else the game keeps. The default is
+name and the four mips. It gives the entry in the world's `textures`: its kind (`:solid`,
+`:masked`, `:sky`, `:liquid` or `:hidden`) and whatever else the game keeps. The default is
 `Cauldron3D.Formats.Bsp.solid/2`, and a texture the map names but does not hold becomes
 `Cauldron3D.Formats.Bsp.missing/0`, a checked square.
 
@@ -87,10 +87,10 @@ unit, default `1 / 32`.
 ## Models
 
 `Cauldron3D.Formats.Mdl.parse/1` reads a Quake model into a `Cauldron3D.Mesh` whose
-frames are its poses, with the model's flags (rocket trail, gib blood, rotation and so on)
-and its box. `Cauldron3D.Formats.Mdl.pose/3` picks the pose for a frame number at a time,
-including a frame group cycling through its poses, which is the `frame:` a mesh is drawn
-at.
+frames are its poses. It keeps the model's flags (rocket trail, gib blood, rotation and so
+on) and its box. `Cauldron3D.Formats.Mdl.pose/3` picks the pose for a frame number at a
+time, including a frame group cycling through its poses, which is the `frame:` a mesh is
+drawn at.
 
 ```elixir
 {:ok, player} = Cauldron3D.Formats.Mdl.parse(bytes)
@@ -160,10 +160,10 @@ beside it or inline as `data:` URIs, or a `.glb` container. `parse/2` takes the 
 `:base` folder for relative URIs.
 
 A document holds `meshes` as packed triangle lists, `materials` in metallic-roughness
-terms, `images` as PNG or JPEG bytes, `instances` for every node of the scene with a mesh
-and its world matrix, the `nodes` tree, `skins` with their inverse bind matrices, the
-`animations`, and the top-level `extensions`. Coordinates are glTF's: metres, `+y` up,
-texture rows from the top.
+terms, `images` as PNG or JPEG bytes, and `instances` for every node of the scene with a
+mesh and its world matrix. It also holds the `nodes` tree, `skins` with their inverse bind
+matrices, the `animations`, and the top-level `extensions`. Coordinates are glTF's: metres,
+`+y` up, texture rows from the top.
 
 ```elixir
 {:ok, document} = Cauldron3D.Formats.Gltf.read("alley/barrel_stove_1k.gltf")
@@ -174,10 +174,10 @@ Cauldron3D.Scene.Target.submit(target, placed.instances)
 
 `Cauldron3D.Scene.Gltf.upload/3` uploads one mesh for each glTF mesh a node places, with a
 part per primitive, the materials those parts use, and their images as encoded textures.
-It answers `%{instances, handles, bounds, skins, morphs, next_id}`: the changes to submit,
-every handle uploaded, the box around everything placed, `{id, skin}` for each skinned
-instance, `{id, node, weights}` for each instance with morph targets, and the first id not
-used.
+It answers `%{instances, handles, bounds, skins, morphs, next_id}`. That is the changes to
+submit, every handle uploaded, the box around everything placed, `{id, skin}` for each
+skinned instance, `{id, node, weights}` for each instance with morph targets, and the first
+id not used.
 
 A skinned mesh keeps its rest pose until
 `{:pose, id, %Cauldron3D.Scene.Pose{bones: bones}}` arrives, with the bones

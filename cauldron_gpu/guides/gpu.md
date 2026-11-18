@@ -22,10 +22,10 @@ machine. At run time it needs a built renderer, one backend it can load, and a d
 | Linux | Vulkan | a C++20 compiler, `make`, `pkg-config`, SDL3, Vulkan's headers, a Vulkan driver |
 | Windows | Vulkan | MSVC's C++ Build Tools, SDL3's development files, Vulkan's headers, a Vulkan driver |
 
-`mix cauldron_gpu.setup` looks for each thing in the platform's usual places, offers to
-install what is missing — showing what it will run — builds the renderer, and opens the
-graphics card to check it. Declining leaves software drawing, and running it again starts
-over.
+`mix cauldron_gpu.setup` looks for each thing in the platform's usual places and offers to
+install what is missing, showing what it will run. It then builds the renderer and opens
+the graphics card to check it. Declining leaves software drawing, and running it again
+starts over.
 
 ```sh
 mix cauldron_gpu.setup
@@ -99,30 +99,30 @@ Window events arrive at the `:events` process as `{:cauldron_gpu, window_id, eve
 height}`, `{:focus, boolean}`, `:close_requested`, and `{:error, message}`.
 
 On macOS the window runs on the process's main thread, which the first `open/1` takes for
-the rest of the VM's life; `wx` cannot open windows in the same VM.
+the rest of the VM's life. `wx` cannot open windows in the same VM.
 
 `CauldronGPU.close/1` closes the window; later calls with the same `gpu` answer
 `{:error, "closed"}`.
 
 ## How a scene becomes GPU work
 
-A mesh, texture, material or scatter is uploaded once and answered with a
-`Cauldron3D.Scene.Handle`. Uploading again under a handle's id replaces it, which is how a
-per-tick mesh — particles, a HUD texture — is updated:
+Upload a mesh, texture, material or scatter once and get a `Cauldron3D.Scene.Handle` back.
+Uploading again under a handle's id replaces it. That is how a game updates a per-tick
+mesh, such as particles or the hud's texture:
 
 ```elixir
 CauldronGPU.submit(gpu, [{:mesh, cube.id, Mesh.cube(2.0)}])
 ```
 
-Everything else is a list of changes, `Cauldron3D.Scene.Stream` lists them all: instances,
-moves, poses, lights, the camera, the environment, light styles, the overlay picture, the
-screen tint and effects. `CauldronGPU.submit/2` puts a `:tick` at the front of the list,
-turns it into the stream's binary, and hands it to the renderer.
+Everything else is a list of changes, and `Cauldron3D.Scene.Stream` lists them all:
+instances, moves, poses, lights, the camera, the environment, light styles, the overlay
+picture, the screen tint and effects. `CauldronGPU.submit/2` puts a `:tick` at the front of
+the list, turns it into the stream's binary, and hands it to the renderer.
 
 The renderer interpolates instances, poses and the camera from the previous tick to this
-one over the tick's length, so a game ticking at 20–35 Hz still draws smoothly at the
-display's rate. `snap: true` places something without interpolating, for teleports and new
-levels.
+one over the tick's length. A game ticking at 20–35 Hz therefore still draws smoothly at
+the display's rate. `snap: true` places something without interpolating, for teleports and
+new levels.
 
 `:effects` asks for `:ray_traced_shadows`, `:ray_traced_reflections`,
 `:ray_traced_ambient_occlusion`, `:ray_traced_global_illumination`, `:upscaling` and
@@ -138,14 +138,14 @@ levels.
 
 ## Sending textures
 
-`CauldronGPU.texture/2` uploads a `Cauldron3D.Scene.Texture`. A texture holding a PNG or
-JPEG file is decoded first, on a dirty scheduler, by `CauldronGPU.decode/1`;
+`CauldronGPU.texture/2` uploads a `Cauldron3D.Scene.Texture`. `CauldronGPU.decode/1`
+decodes a texture holding a PNG or JPEG file first, on a dirty scheduler;
 `CauldronGPU.decode!/1` raises instead of answering an error. `CauldronGPU.decoded/1`
 does the same to the textures in a list of changes.
 
 `CauldronGPU.reduce_image/2` shrinks a picture so its longest side is at most `:max_side`
-pixels (default 2048) and writes it again as JPEG at `:quality`, or PNG when a pixel is
-see-through.
+pixels (default 2048). It writes the picture again as JPEG at `:quality`, or PNG when a
+pixel is see-through.
 
 ## Where the frames go
 
@@ -230,7 +230,7 @@ end
 * `size` is the picture's size in pixels and `aspect` how wide a pixel shows against its
   height; set the camera's `aspect` from it.
 * `changes` is the tick: instances, the camera, lights, light styles, and a 2D layer or an
-  overlay for the HUD.
+  overlay for the hud.
 
 ```elixir
 def draw(_view, target, cache, {_width, _height}, aspect) do
@@ -288,8 +288,8 @@ capabilities are none of the effects, so
 `Cauldron3D.Scene.Target.capabilities/1` answers `false` for each.
 
 A scene that uses nothing beyond meshes, materials, lights, the camera and an overlay
-looks much the same on either renderer; one that leans on the environment, shadows or
-ray tracing does not.
+looks much the same on either renderer. One that leans on the environment, shadows or ray
+tracing does not.
 
 ## Where to go next
 

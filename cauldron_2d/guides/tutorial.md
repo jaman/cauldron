@@ -1,22 +1,22 @@
 # Your first game: Cistern
 
 This guide builds a small game from nothing and puts it in a terminal, in a browser and
-in a window, with sound, more players and a computer opponent along the way. Every
-piece of it is in [`cauldron_examples/games/cistern`](https://github.com/jaman/cauldron/tree/main/cauldron_examples/games/cistern)
+in a window, with sound, more players and a computer opponent along the way. The whole
+of it is in [`cauldron_examples/games/cistern`](https://github.com/jaman/cauldron/tree/main/cauldron_examples/games/cistern)
 in the repository, tests included, so you can read the finished thing beside each step.
 
 The game: **a town is in drought, and a storm has come — the Squall, a cloud with a
-face, that will rain anywhere but the cistern.** You are the keeper. You carry three
+face, that will rain anywhere but the cistern.** You are the keeper, carrying three
 clay jars: one balanced on your head, one hanging from each end of a yoke. The Squall
-drifts along the top and lets the rain go; every drop casts a ring on the ground where
+drifts along the top and lets the rain go. Every drop casts a ring on the ground where
 it will land, so you walk under it and catch it. A drop that reaches the ground breaks
 the jar hanging on that side, and the storm steps back to give you a breather. Catch
 fifteen in a row and a broken jar is mended. When a storm's rain is all down, the next
 storm is faster. When the last jar breaks, you are out.
 
 It is a catching game in the line of Activision's *Kaboom!*: a villain with a face, a
-pace that climbs, and a miss that costs you and slows the game down rather than ending
-it.
+pace that climbs, and a miss that costs you. A miss slows the game down rather than
+ending it.
 
 By the end you will have used:
 
@@ -96,10 +96,10 @@ defstruct [:id, :name, :rng, robot?: false, offset: 0, centre: 8.0,
            until_drop: 0.0, lull: 0.0, caught: 0, score: 0, streak: 0, best: 1, out?: false]
 ```
 
-Where the keeper stands, which side jars they still carry (the head jar is always
-there until they are out), the Squall, the drops in the air, the splashes and the `+3`s
-still showing, which storm it is and how much of its rain has fallen, the quiet before
-the next drop, and the score.
+Where the keeper stands, and which side jars they still carry; the head jar is always
+there until they are out. The Squall, the drops in the air, the splashes and the `+3`s
+still showing. Which storm it is, how much of its rain has fallen, the quiet before the
+next drop, and the score.
 
 ### Starting
 
@@ -116,10 +116,10 @@ def init(opts) do
 end
 ```
 
-Two things to notice. The random generator lives *in the state*: each square holds a
-`Cauldron.Rng`, and every call gives back `{value, next_rng}` for the square to keep.
-That is what makes a game with the same seed play the same rain every time — which is
-what makes replays and tests possible.
+The random generator lives *in the state*: each square holds a `Cauldron.Rng`, and
+every call gives back `{value, next_rng}` for the square to keep. That is what makes a
+game with the same seed play the same rain every time, and what makes replays and tests
+possible.
 
 The numbers live in a `Cauldron.Tuning`. `Cistern.Tuning` declares them once, with
 defaults, limits and a line of documentation each:
@@ -155,8 +155,8 @@ def join(%__MODULE__{} = game, id, props) do
 end
 ```
 
-Every keeper gets a square of their own, rained on from the same seed, so two keepers
-start out facing the same storm and no two of them ever stand in each other's way.
+Every keeper gets a square of their own, rained on from the same seed. Two keepers
+start out facing the same storm, and no two of them ever stand in each other's way.
 `offset` places each square a hundred tiles from the last in the world; step 6 says why.
 
 `props` are whatever the front end passes at the join; every Cauldron client passes
@@ -218,8 +218,8 @@ defp catching(jars, drop) do
 end
 ```
 
-A drop that gets to the ground is a miss: it breaks the jar on its side — or the other
-side's, or last of all the head jar — splashes every drop still falling, steps the
+A drop that gets to the ground is a miss. It breaks the jar on its side — or the other
+side's, or last of all the head jar. It splashes every drop still falling, steps the
 storm back, and starts the lull again. The Squall grins.
 
 `dt` is whatever the world passes — `1 / hz` — and nothing here assumes what it is. Run at
@@ -384,15 +384,15 @@ def install do
 end
 ```
 
-An installed atlas is shared by every process on the node under its name, and a game
-that `Atlas.subscribe/1`s to it is told when it changes — which is what the editors do
-on save, so you can redraw a jar while the game runs.
+An installed atlas is shared by every process on the node under its name. A game that
+`Atlas.subscribe/1`s to it is told when it changes; that is what the editors do on save,
+so you can redraw a jar while the game runs.
 
 You do not have to write pictures by hand. `cauldron_2d_easel_drafter` is an editor in
 the terminal (`mix cauldron.easel priv/art --tile 16 --atlas cistern`),
 `cauldron_2d_easel_web` the same in a browser, `cauldron_2d_easel_kino` in Livebook.
 Or draw in code and write the `.pic` out: the Squall, the sky and the town in this
-directory were drawn that way — the cloud is a handful of overlapping circles, shaded
+directory were drawn that way. The cloud is a handful of overlapping circles, shaded
 by height, outlined where a pixel's neighbour is outside it, with a face on top.
 
 ## 4. On screen
@@ -448,8 +448,8 @@ A scene is a camera focus, the world's bounds, and the things to draw:
 
 - **cells** — `cell.({x, y})` answers what is on the grid at a tile: an art, a list of
   arts laid over it, and a tint. The engine asks only for the tiles on screen. Cistern's
-  sky darkens with height, the town's roofs and lit windows stand on the two rows above
-  the cobbles, and which house a column gets is picked from its number, so the town is
+  sky darkens with height, and the town's roofs and lit windows stand on the two rows
+  above the cobbles. Which house a column gets is picked from its number, so the town is
   the same every time.
 - **movers** — arts at fractional positions, for anything that moves between tiles. They
   are drawn in list order, so the rings go first and the rain over everything. A mover
@@ -485,11 +485,11 @@ def hud(%{me: me, rivals: rivals}) do
 end
 ```
 
-Rows of runs, each run text with a colour. A tag on a row lets a front end style it;
-otherwise it is data every front end draws the same way. `Cauldron.Client.Hud`
-describes the shapes, including a column beside the world. Until the first catch the
-hud carries a hint — *walk under a ring: that is where the rain will fall* — so a new
-player knows what to do.
+A hud is rows of runs, each run text with a colour. A tag on a row lets a front end
+style it; otherwise it is data every front end draws the same way.
+`Cauldron.Client.Hud` describes the shapes, including a column beside the world. Until
+the first catch the hud carries a hint — *walk under a ring: that is where the rain will
+fall* — so a new player knows what to do.
 
 ### Running it
 
@@ -511,9 +511,9 @@ end
 
 You get a title, a settings screen (key presets and rebinding, pointer steering, sound
 levels, pixels or glyphs, frame rate), the world with your hud, a summary when
-`outcome/1` says so, and a guide from `guide/0` — all from the client module. Where the
-terminal draws pictures (kitty, iTerm2, sixel) the square is pixels; elsewhere it is the
-glyphs from `atlas.txt`.
+`outcome/1` says so, and a guide from `guide/0`. All of it comes from the client module.
+Where the terminal draws pictures (kitty, iTerm2, sixel) the square is pixels; elsewhere
+it is the glyphs from `atlas.txt`.
 
 These are the client's own screens, the same for every game that does not draw its own.
 A game can draw its title, its summary, its menus and its hud itself — in its own fonts
@@ -587,16 +587,16 @@ Worlds.register(:contest,
 )
 ```
 
-A world is a world that starts when the first player joins its name and stops after a
-while with nobody in it. The lobby lists them — `worlds/1` returns
+A registered world starts when the first player joins its name, and stops after a while
+with nobody in it. The lobby lists them — `worlds/1` returns
 `Cauldron.Worlds.list/0` — with who is in each, updated as players come and go.
 `children` are processes started beside the world: here a computer player.
 
 Every event goes to every player in a world, so the catches in the square beside yours
 are sent to you too. That is what the squares' `offset` is for: each square is a hundred
-tiles from the next, every event is placed at its square's own position, and the
-listener is your keeper — so another keeper's rain is out of earshot, and nothing had
-to be filtered.
+tiles from the next, and every event is placed at its square's own position. The
+listener is your keeper, so another keeper's rain is out of earshot, and nothing had to
+be filtered.
 
 A robot is a brain module the engine drives on a cadence set by its skill:
 
@@ -631,7 +631,7 @@ It is given the same view a player gets and answers with the same input a player
 Nothing in the game knows which keepers are people.
 
 Worlds live in the VM that registered them, so two players share "The yard" when
-they reach the same VM: over ssh, with `Cauldron2D.Drafter.Server` serving the game and
+they reach the same VM: over SSH, with `Cauldron2D.Drafter.Server` serving the game and
 each player's terminal connecting to it, or in the browser (step 7). A second `mix
 cistern` in another terminal is a second VM with worlds of its own.
 
@@ -671,11 +671,11 @@ end
 ```
 
 `mix cistern.serve` starts it on port 4300. `/play` is the title, `/play/lobby` the
-worlds, `/play/world/yard` the square: the pages ship `cauldron.js`, which joins the
-channel, shows each frame on a canvas (a picture the server drew with `Cauldron2D.Draw`,
-or the scene drawn in the browser when the server leaves the drawing to its clients;
-see `Cauldron2D.Net.Drawing`), sends the keys, the mouse and the controllers as they
-happen, and plays the sound the server mixes for this player.
+worlds, `/play/world/yard` the square. The pages ship `cauldron.js`, which joins the
+channel and shows each frame on a canvas: a picture the server drew with
+`Cauldron2D.Draw`, or the scene drawn in the browser when the server leaves the drawing
+to its clients (see `Cauldron2D.Net.Drawing`). It sends the keys, the mouse and the
+controllers as they happen, and plays the sound the server mixes for this player.
 The same game, the same worlds, the same robots.
 
 ## 8. A window
@@ -714,10 +714,10 @@ takes to answer.
 ## 10. Where next
 
 `cauldron_examples/games/cistern_complete` is where these chapters lead: the same game finished. Its
-jars fill and must be poured into the cistern's grate while the rain keeps falling; the
-Squall has moods you learn to read — drizzle, gusts, sulks that end in a burst, hail to
-dodge and lightning that flickers before it strikes; keepers play versus, a good pour
-sending a gust to the rival's Squall; and it draws its own title, menus and hud in its
+jars fill and must be poured into the cistern's grate while the rain keeps falling. The
+Squall has moods you learn to read: drizzle, gusts, sulks that end in a burst, hail to
+dodge and lightning that flickers before it strikes. Keepers play versus, a good pour
+sending a gust to the rival's Squall, and it draws its own title, menus and hud in its
 own fonts and art.
 
 Games built on Cauldron use everything above in different ways:
@@ -731,7 +731,7 @@ Games built on Cauldron use everything above in different ways:
   ready-made client. Its creatures hunt by sound.
 - A multiplayer XPilot. Ships from an outline turned to every heading with
   `Cauldron2D.Picture.headings/3`; maps in XPilot's own file format through `Cauldron2D.Map`; a
-  server over ssh with accounts; worlds on other nodes and other servers joined through
+  server over SSH with accounts; worlds on other nodes and other servers joined through
   `Cauldron.Net.Remote`; a ledger of results.
 
 The module documentation is the reference for each piece; this guide is the order to

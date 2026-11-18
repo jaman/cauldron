@@ -13,8 +13,8 @@ buttons and controller controls. Read [Input and menus](input-and-menus.html).
 
 ## Arena
 
-The older word for a world, still accepted where a ledger row or a recorder is labelled
-with the place a result came from. Read [Worlds and players](worlds-and-players.html).
+The older word for a world, accepted where a ledger row or a recorder is labelled with
+the place a result came from. Read [Worlds and players](worlds-and-players.html).
 
 ## Atlas
 
@@ -74,7 +74,7 @@ plays in a world. Read [Input and menus](input-and-menus.html).
 ## Presses
 
 The value a game keeps with a player to tell what was pressed and released since the last
-step, and to remember a press for a moment after it happened. Read
+step. It remembers a press for a moment after it happened. Read
 [Input and menus](input-and-menus.html).
 
 ## Replay
@@ -133,5 +133,5 @@ Read [Worlds and players](worlds-and-players.html).
 
 Everything else is the game's. A game names its actions, its worlds, its sections and
 layers, its metrics, its saves and its players. The engine reads those names but never
-interprets them, which is why two games can use the same words for different things and
+interprets them. Two games can therefore use the same words for different things, and
 neither has to explain itself to Cauldron.

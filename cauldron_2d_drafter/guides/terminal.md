@@ -21,9 +21,9 @@ Drafter.run(Cauldron2D.Drafter.Client,
 ```
 
 `Drafter.run/2` takes an app module and its options. `:props` is the map the client's
-`mount/1` receives. The world is drawn by `Cauldron2D.Drafter.Surface`, a widget the
-registry must know about before the client mounts; the server, the test helper and the
-package's own runner register it themselves.
+`mount/1` receives. `Cauldron2D.Drafter.Surface` draws the world, a widget the registry
+must know about before the client mounts; the server, the test helper and the package's
+own runner register it themselves.
 
 `Drafter.run/2` blocks until the player leaves. A standalone run halts the VM on the way
 out unless it is given `halt_on_exit: false`. Called from an application that is already
@@ -120,7 +120,7 @@ saved in `$XDG_CONFIG_HOME/<home>/launcher.config`, `<home>` the game's
 `Cauldron.Client.Game.home/1`. Overrides that skip the page are not saved.
 
 The `:drawing` field is also written into the player's settings when `:player` is given, so
-the page and the game's own options change one setting. `Launcher.steam_folders/1` lists
+the page and the game's own options change the same setting. `Launcher.steam_folders/1` lists
 where Steam keeps a game on macOS (CrossOver bottles too), Linux and Windows, for a path
 field's `:discover`.
 
@@ -142,9 +142,9 @@ drops any of them with `client_keys/0`.
 | Guide | `↑`/`↓`, `PgUp`/`PgDn`, `Home`/`End`, `Esc` or `q` back |
 
 The settings items are the key preset, each action's binding, pointer steering, the
-effects and music levels, display, drawing and the frame rate. `Enter` on a binding and then
-a key, a mouse button or a notch of the wheel adds it to that binding; `Backspace` removes
-the binding's last key, and `Esc` during a rebind cancels it.
+effects and music levels, display, drawing and the frame rate. Press `Enter` on a binding,
+then a key, a mouse button or a notch of the wheel, to add it to that binding. `Backspace`
+removes the binding's last key, and `Esc` during a rebind cancels it.
 
 In the world:
 
@@ -176,7 +176,7 @@ left stick play the game's directions, and the bumpers turn where a projection t
 The surface draws the world in one of two ways: as an image through the terminal's image
 protocol, or as coloured glyphs from the same atlas.
 
-Which protocol is used is settled in three steps.
+Three steps decide the protocol.
 
 1. A mode forced on the surface, else `CAULDRON_MODE`, else `config :cauldron_2d, mode:`,
    else `:pixel`. The modes are `text`, `pixel`, `kitty`, `iterm2` and `sixel`, and the

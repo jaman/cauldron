@@ -15,7 +15,7 @@ something. They look alike from the outside, so start by finding which layer is 
 | It should make a sound and does not | `Cauldron.Audio.on?/1` and `Cauldron.Audio.stage/1` | No sink, or no speaker package |
 | A front end crashes as it opens | The compiler's warnings for the client module | A missing callback |
 
-`Cauldron.World.game/1` is worth checking first in any of them: it is the module the
+`Cauldron.World.game/1` is worth checking first in any of them. It is the module the
 world actually runs, and a world started with the wrong one looks like a game that does
 nothing.
 
@@ -46,19 +46,19 @@ call exits. A world started with `start_link/1` from a process that exits stops 
 
 ## Input that never arrives
 
-Input is a cast to the world and returns `:ok` before the world sees it, and the world
-drops it silently when the id is not one of its players. So the first question is
-whether the player is present:
+Input is a cast to the world and returns `:ok` before the world sees it. The world drops
+input silently when the id is not one of its players, so the first question is whether
+the player is present:
 
 ```elixir
 Cauldron.World.players(world)
 #=> [:alice]
 ```
 
-If the id is not in the list, the join failed or was made somewhere else. `Cauldron.Player.join/4`
-answers `{:error, :taken}` when another process already plays that id, and the game's own
-`{:error, reason}` when the game refused. Input sent before a successful join is
-dropped.
+If the id is not in the list, the join failed or was made somewhere else.
+`Cauldron.Player.join/4` answers `{:error, :taken}` when another process already plays
+that id, and the game's own `{:error, reason}` when the game refused. Input sent before a
+successful join is dropped.
 
 If the player is present, the next question is whether the game saw anything. Watch the
 state across a step:
@@ -70,10 +70,11 @@ Process.sleep(100)
 after_input = Cauldron.World.snapshot(world)
 ```
 
-A state that never changes means the input did not reach the game: the id was not a
-player, or a `handle_input/3` clause whose pattern did not match the input map raised and
-took the world with it. A game that accepts input but does not keep it looks different:
-`handle_input/3` changes the state once, and `step/2` has nothing to act on after that.
+A state that never changes means the input did not reach the game. Either the id was not
+a player, or a `handle_input/3` clause whose pattern did not match the input map raised
+and took the world with it. A game that accepts input but does not keep it looks
+different: `handle_input/3` changes the state once, and `step/2` has nothing to act on
+after that.
 
 On the client side the same symptom has a different cause: the input instance holds
 nothing. Check, in order:
@@ -111,15 +112,15 @@ sent.
 
 If `view/2` returns something, ask whether a frame is due. `view/2` is called only for a
 player a frame is due to, and a player joined with `frames: false` never gets one. A
-client shows nothing at all before a world's first frame; that is what `opening/1` is
+client shows nothing at all before a world's first frame. That is what `opening/1` is
 for.
 
 A third case is a scene that is not empty but has nothing visible in it. The view is the
 game's data; the scene is what the client draws from it, built by the game's `scene/1`
 or `scene/2`. A scene missing the keys its drawing package reads — for a 2D game, the
-focus, the bounds and the movers — is a drawing problem, not a world one: the view
+focus, the bounds and the movers — is a drawing problem, not a world one. The view
 arrived and was turned into an empty picture. Compare the view the frame carried with
-the scene the client's client module builds from it.
+the scene the game's client module builds from it.
 
 ## Sound that is silent
 
@@ -158,7 +159,7 @@ When `on?/1` is true, check what is being asked to play:
 
 `Cauldron.Audio.playing/1` says which bed was last asked for, and
 `Cauldron.Audio.Music.current/1` which piece and section are playing. A rendered piece
-that fails to render is logged and never plays; a bed asked for before its render
+that fails to render is logged and never plays. A bed asked for before its render
 finishes plays when the render arrives, so a first play can lag by the length of a
 render.
 
@@ -166,8 +167,8 @@ render.
 
 The behaviour's required callbacks are `title/0`, `view/0`, `actions/0`, `keymaps/0`,
 `toggles/0`, `worlds/1`, `scene/1`, `hud/1`, `listener/1`, `sounds/0`, `music/0` and
-`cue/2`. `use Cauldron.Client.Game` defines the ones most games write the same way —
-`toggles/0`, `hud/1`, `listener/1`, `sounds/0`, `music/0`, `cue/2` and `scene/1` — so a
+`cue/2`. `use Cauldron.Client.Game` defines the ones most games write the same way:
+`toggles/0`, `hud/1`, `listener/1`, `sounds/0`, `music/0`, `cue/2` and `scene/1`. A
 module that uses it still has to write `title/0`, `view/0`, `actions/0`, `keymaps/0`,
 `worlds/1` and `scene/2`.
 
@@ -184,12 +185,12 @@ warning: function title/0 required by behaviour Cauldron.Client.Game is not impl
 
 Warnings appear when the module is compiled, so a module carried over from an old build
 can fail only at runtime. `mix compile --warnings-as-errors` turns them into build
-failures, and `@impl true` on a function that is not a callback is a warning too: the
+failures. `@impl true` on a function that is not a callback is a warning too: the
 attribute says the function implements the behaviour, and nothing does.
 
 Every other callback is optional, and a front end asks for it through
-`Cauldron.Client.Game.optional/4`, so a game with no `fronts/1` gets the client's own
-title, and one with no `pages/1` gets no extra title pages. That is a choice, not a bug.
+`Cauldron.Client.Game.optional/4`. A game with no `fronts/1` gets the client's own title,
+and one with no `pages/1` gets no extra title pages. That is a choice, not a bug.
 
 ## Where to go next
 

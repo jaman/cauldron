@@ -131,9 +131,9 @@ A `%Cauldron3D.Scene.Camera{}` holds `position`, a `rotation` quaternion, `fov_y
 radians, and `near` and `far` distances. `Cauldron3D.Scene.Quat.yaw_pitch/2` builds the
 usual rotation. `snap: true` places it without interpolating from the previous tick.
 
-`viewport` is the part of the frame the view is drawn into, as fractions from the top
-left; the rest is black under the overlay. `aspect` is how wide the viewport shows
-against its height, for pixels that are not square, and `resolution` draws the view as
+`viewport` is the part of the frame the renderer draws the view into, as fractions from
+the top left; the rest is black under the overlay. `aspect` is how wide the viewport
+shows against its height, for pixels that are not square. `resolution` draws the view as
 that many blocks across and down.
 
 ## Environments
@@ -159,9 +159,8 @@ it, `scale` and `angle` turn it, `colour` and `alpha` tint it, and `mode` blends
 
 A layer draws into `:frame` or into a canvas, inside `port`, from the sprites' space
 `view`. `Cauldron3D.Scene.ColumnLayer` redraws a texture column by column through a table
-of positions, stretches and shades. Layers are sent with `{:layers, [...]}` and drawn
-every frame until the next `{:layers, ...}`. Colours are display values, blended as
-stored.
+of positions, stretches and shades. Send layers with `{:layers, [...]}`; the renderer
+draws them every frame until the next one. Colours are display values, blended as stored.
 
 ```elixir
 ship = Cauldron3D.Scene.Target.texture(target, ship_texture)
@@ -206,8 +205,8 @@ Every change is a term. `Cauldron3D.Scene.Stream` lists them all and
 
 Each `submit` is one tick. `CauldronGPU.submit/2` and `CauldronGPU.Host.submit/2` put
 `:tick` at the front, and the renderer interpolates instances, poses and the camera from
-the previous tick to this one. Ids are yours, from 1 to 2³²−1; putting one again
-replaces what it named.
+the previous tick to this one. Ids are yours, from 1 to 2³²−1; sending one again replaces
+what it named.
 
 A change list is data, so it can be kept or sent somewhere. `Cauldron3D.Scene.Host.Record`
 rebuilds a scene from the changes sent to it, and answers the changes that would rebuild
@@ -245,11 +244,11 @@ reason.
 | `Cauldron3D.Scene.Software` | here, with `cauldron_3d` | a machine without a usable graphics card |
 
 `Cauldron3D.Scene.Software` draws the same scene more plainly and hands each frame to a
-function of yours. It draws meshes and their materials' base colour and texture, vertex
-colours, poses, `in_front` and `depth_test: false` instances, the sky's shading, ambient
-light, exposure, point, spot and directional lights, the screen tint and the overlay. It
-does not draw shadows, reflections, ray-traced effects, lightmaps and light styles, normal
-and occlusion maps, sky pictures, fog, 2D layers, or a canvas's contents.
+function of yours. It draws meshes, their materials' base colour and texture, vertex
+colours and poses. It also draws `in_front` and `depth_test: false` instances, the sky's
+shading, ambient light, exposure, point, spot and directional lights, the screen tint and
+the overlay. It does not draw shadows, reflections, ray-traced effects, lightmaps and light
+styles, normal and occlusion maps, sky pictures, fog, 2D layers, or a canvas's contents.
 
 ```elixir
 parent = self()

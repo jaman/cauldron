@@ -1,22 +1,21 @@
 # Art: atlases, pictures and fonts
 
-A Cauldron2D game draws from an atlas: a named catalogue of tiles, each with a picture,
-or a run of frames, and a glyph and a colour for terminals that draw characters. Art is
-data. The renderer is given an atlas and a scene, and asks for nothing else.
+A Cauldron2D game draws from an atlas: a named catalogue of tiles. Each tile has a
+picture, or a run of frames, and a glyph and a colour for terminals that draw characters.
+Art is data. The renderer takes an atlas and a scene and asks for nothing else.
 
 ![From art to a frame](assets/atlas.svg)
 
 ![A frame from an example game: the workshop, the cup and the cat are a game's own art, drawn from an atlas](assets/greenware-detail.png)
 
 
-This guide covers how the art is made and assembled. [Projections](projections.html) is
-how the atlas is drawn into a world; the [tutorial](tutorial.html) builds one atlas for a
-whole game.
+The pages after this take the atlas into a world ([Projections](projections.html)) and
+build one for a whole game ([the tutorial](tutorial.html)).
 
 ## What an atlas holds
 
-`Cauldron2D.Atlas.new/2` starts an empty one. It needs a name and a tile size; the void
-colour is what a cell with nothing in it is drawn as.
+`Cauldron2D.Atlas.new/2` starts an empty one. It needs a name and a tile size. The void
+colour fills a cell with nothing in it.
 
 ```elixir
 alias Cauldron2D.{Atlas, Raster, Shapes}
@@ -96,9 +95,9 @@ Atlas.install(atlas)
 
 `Atlas.load/3` reads every `.png` and `.pic` in the directory, each art named by its
 file. A `.pic` gives its frames as it draws them, at their own size; one smaller than a
-tile is centred in one. A `.png` exactly one tile square is the art; one a whole number of
-tiles wide and one tile tall is a strip of frames, left to right; any other size is one
-art of that size. A file that will not read is `{:error, {:art, file, reason}}`.
+tile is centred in one. A `.png` exactly one tile square is the art. One a whole number
+of tiles wide and one tile tall is a strip of frames, left to right. Any other size is
+one art of that size. A file that will not read is `{:error, {:art, file, reason}}`.
 
 `:arts` lays over the `atlas.txt` manifest, per art: `glyph:`, `color:`, `fps:` and
 `frame: {width, height}`, which cuts a picture into frames of that size, left to right
@@ -217,10 +216,10 @@ gem =
 ## A picture's pixels
 
 `Cauldron2D.Raster` is the value every drawing and backend function works on: a width, a
-height, a background colour for any pixel never written, and its contents in two layers —
-a dense RGBA base buffer and a sparse map of written pixels over it. `get_pixel/3` reads
-the top layer first. `finalize/1` folds the sparse writes into the dense buffer, so a
-raster sent to a backend more than once does not rebuild it each time; drawing after it
+height, and a background colour for any pixel never written. Its contents sit in two
+layers — a dense RGBA base buffer and a sparse map of written pixels over it. `get_pixel/3`
+reads the top layer first. `finalize/1` folds the sparse writes into the dense buffer, so
+a raster sent to a backend more than once does not rebuild it each time. Drawing after it
 stays correct.
 
 | call | does |
@@ -253,16 +252,16 @@ Cauldron2D.Font.layout(font, "PRESS START\nTO PLAY", align: :centre)
 Cauldron2D.Font.render(font, "GAME OVER", colour: {255, 220, 0, 255}, shadow: {0, 0, 0, 255})
 ```
 
-A glyph is trimmed of the empty columns on its right unless `fixed: true`, so the font is
-proportional. `:spacing`, `:space`, `:line`, `:fallback` and `:upcase` fill in the rest:
-spacing between glyphs, the advance of a glyph with no pixels, the distance from one
-line's top to the next, the character drawn for one the font lacks, and whether lowercase
-letters the font lacks are drawn as capitals. Characters are graphemes; `"\n"` breaks a
-line.
+`fixed: true` keeps every glyph cell. Otherwise the font trims each glyph's empty
+right-hand columns, so its spacing is proportional. `:spacing`, `:space`, `:line`,
+`:fallback` and `:upcase` fill in the rest. They set the spacing between glyphs, the
+advance of a glyph with no pixels, and the distance from one line's top to the next. They
+also say which character stands in for one the font lacks, and whether lowercase letters
+the font lacks are drawn as capitals. Characters are graphemes; `"\n"` breaks a line.
 
-`Font.height/2` is how tall a string is, `Font.width/2` how wide its widest line is, and
-`Font.layout/3` where each glyph goes, with `:align` and `:wrap` (a width in pixels at
-which lines break between words). `Font.render/3` draws a string onto a raster just big
+`Font.height/2` is how tall a string is, and `Font.width/2` how wide its widest line is.
+`Font.layout/3` says where each glyph goes, with `:align` and `:wrap` (a width in pixels
+at which lines break between words). `Font.render/3` draws a string onto a raster big
 enough for it, with `:colour`, `:shadow` and `:outline`, and `Font.silhouette/1` turns
 every glyph pixel white while keeping its alpha.
 
@@ -338,9 +337,9 @@ from knight; colour C #c02020; flip h
 from walk; frame 2; over hat 0 -2
 ```
 
-The `from` picture is a `.pic` in the directory or another derived art. Palettes are
-merged by `over`, and a key the two pictures use for different colours is refused. A
-derivation that leads back to itself is an error, and so is one that starts from nothing.
+The `from` picture is a `.pic` in the directory or another derived art. `over` merges the
+palettes, and refuses a key the two pictures use for different colours. A derivation that
+leads back to itself is an error, and so is one that starts from nothing.
 
 A manifest line may also name an art the directory has no file for, when a face or a pose
 gives the picture; `Atlas.load/3` builds it from those.

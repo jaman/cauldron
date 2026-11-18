@@ -93,7 +93,7 @@ names those props itself and reads them here.
 Each tick the world applies the input that arrived since the last one and runs the steps
 that have come due. After a tick that stepped, it drains the game's events once and
 sends a frame to every player whose frame is due. The next tick is timed only once the
-last has run, so the world's mailbox never holds more than one tick: input sent while a
+last has run, so the world's mailbox never holds more than one tick. Input sent while a
 slow tick runs is applied before the next step, however far behind the world is. Steps
 more than `Cauldron.Loop`'s `:max_steps` behind are dropped, not owed.
 
@@ -110,10 +110,9 @@ A world started with `tick: :on_input` has no clock. It runs one step, with a `d
 `1 / hz`, each time a player's input arrives, and sends its views after it. Nothing
 happens between inputs. `pause/1` does not stop a world that steps on input.
 
-Because a step applies every action held in any input sent since the last step, a key
-pressed and released between two steps still counts for one step; see
-`Cauldron.World.Pending`. That is what makes a quick tap on a turn-based world's key
-arrive at all.
+A step applies every action held in any input sent since the last step (see
+`Cauldron.World.Pending`), so a key pressed and released between two steps still counts
+for one step. That is what makes a quick tap on a turn-based world's key arrive at all.
 
 ## Views per player
 
@@ -135,8 +134,8 @@ frames come is the player's choice:
 :ok = Cauldron.Player.frames(world, :alice, false)
 ```
 
-`true`, the default, is every tick that steps; a number is at most that many frames a
-second; `false` is none, for a second seat played from a process that already receives
+`true`, the default, is every tick that steps. A number is at most that many frames a
+second. `false` is none, for a second seat played from a process that already receives
 frames as another player. A player that never gets a frame never has `view/2` called for
 it.
 
@@ -185,13 +184,13 @@ separately.
 %{players: 2, hz: 50, steps: 501, ticks: 256, behind: 0} = Cauldron.World.stats(world)
 ```
 
-`stats/1` reports the players present, the tick rate, the steps run, and over the last
-256 ticks that ran a step: how many they were, the microseconds a tick took as a mean, a
-95th percentile and the longest, and `behind`, how many had more than one step due. A
-tick that is routinely behind is a game doing too much in `step/2` or `view/2`, or an
-`:hz` too high for the machine.
+`stats/1` reports the players present, the tick rate and the steps run. Over the last
+256 ticks that ran a step it also reports how many there were, and the microseconds a
+tick took as a mean, a 95th percentile and the longest. `behind` is how many of those
+ticks had more than one step due. A tick that is routinely behind is a game doing too
+much in `step/2` or `view/2`, or an `:hz` too high for the machine.
 
-`Cauldron.World.pause/1` stops a clocked world stepping until `resume/1`; time paused is
+`Cauldron.World.pause/1` stops a clocked world stepping until `resume/1`. Time paused is
 not owed afterwards, and input sent meanwhile is applied on resume.
 `Cauldron.World.paused?/1` says which.
 
@@ -232,11 +231,12 @@ A world can follow another instead of running its own copy of the thinking:
 ```
 
 The follower has no clock. After each of the host's ticks it applies the joins, leaves
-and input the host applied and runs the steps the host ran, then sends its own players
-their frames. Only joins, leaves and input cross between the machines, never views. With
-`rollback: true` the other world runs its own clock and both sides replay late input; a
-host plays with rollback against one world at a time. `follow: {:link, address, port}`
-reaches a world behind a `Cauldron.Link` listener without Erlang distribution.
+and input the host applied, and runs the steps the host ran. It then sends its own
+players their frames. Only joins, leaves and input cross between the machines, never
+views. With `rollback: true` the other world runs its own clock and both sides replay
+late input; a host plays with rollback against one world at a time.
+`follow: {:link, address, port}` reaches a world behind a `Cauldron.Link` listener
+without Erlang distribution.
 
 ## Where to go next
 

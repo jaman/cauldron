@@ -37,9 +37,9 @@ until the node stops, and takes `--port PORT` and `--drawing server|client|split
 
 `:before` is where a game registers its worlds. It runs once the application has started and
 before the endpoint does, so the worlds are there when the first player arrives. Without
-`:secret_key_base` the pages can sign settings only for this run, so settings a player saved
-in a browser last for the run; a game that keeps them across restarts gives the endpoint a
-secret of its own, which means writing its own endpoint, as below.
+`:secret_key_base` the pages can sign settings only for this run, so settings a player
+saved in a browser last for the run. A game that keeps them across restarts gives the
+endpoint a secret of its own, which means writing its own endpoint, as below.
 
 The pages name the player by the `name` query param — `/play?name=alice` — and keep it in a
 cookie for the pages after it. A socket connection is named by its `username` or `name`
@@ -52,7 +52,7 @@ endpoint.
 
 ## In your own Phoenix app
 
-Four pieces, in the app's own names.
+The app needs four pieces, in its own names.
 
 ```elixir
 # lib/my_game_web/endpoint.ex
@@ -103,8 +103,8 @@ The `/api` forward is only needed to let clients on other machines join — an E
 with `Cauldron.Net.Remote`, `Cauldron.Net.Link.World`, or a desktop window joining over the
 socket. A game that serves only browsers leaves it out.
 
-This is also the path to take when the pages must sit under a path of the app's own. The
-pages build their links from the path they are mounted at, so `forward "/game", ...` gives
+Serving in your own app also lets the pages sit under a path of the app's own. The pages
+build their links from the path they are mounted at, so `forward "/game", ...` gives
 `/game/settings`, `/game/atlas.png` and the rest without further configuration.
 
 ## Pages and their options
@@ -145,7 +145,7 @@ pushes for one client under that setting.
 | `:split` | The scene, and the screen as an overlay picture | The browser draws the world, the server the scene's `:screen` and `:outlines` |
 | `[world: part, screen: part]` | Either, per part | A mix of the two, each part `:server` or `:client` |
 
-It is read from the first of these that is set: the `:drawing` option given to
+The module reads the first of these that is set: the `:drawing` option given to
 `Cauldron2D.Net.Drawer` or to `Cauldron2D.Net.Serve` — its `--drawing` flag first, then its
 option — then `CAULDRON_DRAWING` (`server`, `client` or `split`), then
 `config :cauldron_2d_net, drawing: ...`, then `:client`.
@@ -157,8 +157,8 @@ import Config
 config :cauldron_2d_net, drawing: :client
 ```
 
-A scene with a `:picture` — one the game draws with a function of its own — is drawn by the
-server whatever the setting. The browser shows the picture it is sent.
+Whatever the setting, the server draws a scene with a `:picture` — one the game draws with
+a function of its own. The browser shows the picture it is sent.
 
 The channel pushes `"drawing"` once per world, as `%{world: part, screen: part}`, so a page
 knows which side is drawing before the first frame arrives.
@@ -176,8 +176,8 @@ path. The drawer names the URL to the browser as `:sheet_url`:
 | `Serve.run/2`, which forwards `/play` itself | `"/play/atlas.png"`, set for you |
 | `forward "/game", ...` | `"/game/atlas.png"` |
 
-The default is `"/atlas.png"`, which is right only when the pages are at the root. A
-`{module, function}` may be given instead, called each time a sheet is sent, for a URL that
+The default is `"/atlas.png"`, which is right only when the pages are at the root. A game
+can give a `{module, function}` instead, called each time a sheet is sent, for a URL that
 changes with the sheet — a cache-busting digest, say.
 
 The sheet is pushed when a player joins and again when the game's atlas changes, so a game

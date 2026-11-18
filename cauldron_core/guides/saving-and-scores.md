@@ -1,9 +1,9 @@
 # Saving and scores
 
-Cauldron keeps three kinds of progress for a game, each in its own place: saved games
-from `Cauldron.Save`, a local high-score table from `Cauldron.Scores`, and every player's
-results and the boards made from them from `Cauldron.Ledger`. None of them is a process
-except the ledger.
+Cauldron keeps three kinds of progress for a game, each in its own place. Saved games
+come from `Cauldron.Save`, the local high-score table from `Cauldron.Scores`, and every
+player's results and the boards made from them from `Cauldron.Ledger`. None of them is a
+process except the ledger.
 
 ## Where the files live
 
@@ -42,8 +42,9 @@ A save is a game state under a slot name. The natural state to keep is the world
 
 `Cauldron.Save.write/3` stores `%{saved_at: DateTime.utc_now(), state: state}` as an
 Erlang term and replaces what was there. `read/2` gives `{:ok, state}`, or
-`{:error, :enoent}` when there is no slot, `{:error, :corrupt}` when the file is not a
-save, and `{:error, :bad_slot}` for a slot name that is not one path segment.
+`{:error, :enoent}` when there is no slot. A file that is not a save gives
+`{:error, :corrupt}`, and a slot name that is not one path segment gives
+`{:error, :bad_slot}`.
 
 | Function | Does |
 | --- | --- |
@@ -53,15 +54,16 @@ save, and `{:error, :bad_slot}` for a slot name that is not one path segment.
 | `Cauldron.Save.list/1` | Every slot, oldest first, with when it was written |
 | `Cauldron.Save.delete/2` | Forget a slot |
 
-A slot name is one path segment: anything with a separator or `..` is refused, so a
-player's typed name can be used as a slot without escaping the saves directory. The
-state is any term the game already knows; it is read with `:erlang.binary_to_term/2`'s
-`:safe`, so a file cannot introduce an atom the running node does not have.
+A slot name is one path segment: anything with a separator or `..` is refused. A
+player's typed name can therefore be used as a slot without escaping the saves
+directory. The state is any term the game already knows; it is read with
+`:erlang.binary_to_term/2`'s `:safe`, so a file cannot introduce an atom the running node
+does not have.
 
 A world started from a saved state does not call the game's `init/1`, and it starts with
-no players: the game's `join/3` is called for each player as they join again. A game
-whose saved state refers to players should therefore treat `join/3` as "take my place in
-this state", not "make a new player", when the id is already in it.
+no players. The game's `join/3` is called for each player as they join again. A game
+whose saved state refers to players should treat `join/3` as "take my place in this
+state", not "make a new player", when the id is already in it.
 
 ## High scores
 
@@ -78,12 +80,12 @@ end
 ```
 
 `qualifies?/3` is true when the table has fewer than `keep` entries (default 8) or the
-score beats the last one's; a score of nought never qualifies. `add/3` inserts the entry,
-sorts by `:score` highest first and keeps the best `keep`. `read/1` gives `[]` when no
-table is kept.
+score beats the last one's. A score of nought never qualifies. `add/3` inserts the
+entry, sorts by `:score` highest first and keeps the best `keep`. `read/1` gives `[]`
+when no table is kept.
 
 The table is written to `scores.terms`. A table kept as `scores.exs`, an Elixir list of
-maps written as text, is read when there is no `scores.terms`; it is read as data only,
+maps written as text, is read when there is no `scores.terms`. It is read as data only,
 so nothing in the file runs. That is how a game can ship a starting table.
 
 ## Results and boards
@@ -120,7 +122,7 @@ Metrics are declared once, as a keyword list:
 `Cauldron.Ledger.board/4` ranks the accounts of a period by one metric: `:day` since
 midnight UTC, `:week` the last seven days, `:all` everything. Each entry has every
 metric's value, the rounds counted and the name last played under. The board is twenty
-accounts by default, `top: n` takes another number and `top: :all` takes every account;
+accounts by default, `top: n` takes another number and `top: :all` takes every account.
 `world:` narrows it to one world's results. Boards are computed from the table and kept
 for ten seconds.
 
@@ -136,7 +138,7 @@ for ten seconds.
 
 The file belongs to one operating system process at a time, held through
 `Cauldron.Ledger.Lock`. Starting a ledger on a held file fails with
-`{:error, {:held, pid}}`; `held: :idle` starts one that keeps nothing instead — its
+`{:error, {:held, pid}}`. `held: :idle` starts one that keeps nothing instead: its
 boards are empty, `record/4` answers `{:error, {:held, pid}}`, and `access/1` says who
 holds it. A DETS failure stops the ledger, and a restart reopens the file repaired.
 
@@ -147,19 +149,19 @@ for.
 
 ## Keeping a profile
 
-A player's profile is the front end's settings map, not a file the game writes: key
-bindings, the preset, the effects and music levels, and the game's own options under
-`:options`. It is saved per player, per kind of client, and loaded before the world is
-joined. A game's part in it is small and worth getting right:
+A player's profile is the front end's settings map, not a file the game writes. It holds
+the key bindings, the preset, the effects and music levels, and the game's own options
+under `:options`. It is saved per player, per kind of client, and loaded before the world
+is joined. A game's part in it is small and worth getting right:
 
 1. **Name the home.** Write `home/0` in the client module. It names the game in every
    path a front end chooses — the settings, the rendered music — and it is the name to
    give `Cauldron.Save`, `Cauldron.Scores` and `Cauldron.Ledger`. Without it the module's
    first name is used, which works until the module is renamed.
 2. **Declare the options.** `options/0` returns the game's own options and their
-   defaults, a map. The client keeps a player's choices under `:options`, saves them with
-   the rest, puts them on the look given to `scene/2` and sends them with every input, so
-   the game sees them as `input.options` and the menu does not need a special case.
+   defaults, a map. The client keeps a player's choices under `:options` and saves them
+   with the rest. It puts them on the look given to `scene/2` and sends them with every
+   input, so the game sees them as `input.options` and the menu needs no special case.
 3. **Label the player.** `player_label/1` is how a player id is written in a lobby and
    in chat. The ledger records ids as they are; a label is for people to read.
 4. **Record once.** Write a score or a result when the round ends — an event drained by

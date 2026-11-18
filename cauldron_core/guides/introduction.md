@@ -1,12 +1,12 @@
 # Introduction
 
-Cauldron is a family of Elixir packages for writing games on the BEAM. You write the
-game once, as plain data and pure functions, and Cauldron runs it for one player or
-many and puts it on a terminal, in a browser, in a desktop window, or on a phone.
+Cauldron is a game engine for the BEAM, written in Elixir. You write the
+game once, as plain data and pure functions. Cauldron runs it for one player or many,
+and puts it on a terminal, in a browser, in a desktop window, or on a phone.
 
 The engine is split so a game pays only for what it draws with. `cauldron_core` holds
-everything with no way of drawing in it; the 2D and 3D packages hold the drawing; and
-the front ends — terminal, browser, window, phone — are separate packages that take the
+everything with no way of drawing in it. The 2D and 3D packages hold the drawing. The
+front ends — terminal, browser, window, phone — are separate packages that take the
 same game.
 
 
@@ -23,8 +23,8 @@ world steps only when input arrives.
 
 **The client module** implements `Cauldron.Client.Game`. It tells every front end how to
 show the game: the title, the atlas of pictures, the actions and the keys that press
-them, the worlds a player can join, and how a view becomes a scene and a hud. It also
-gives the game's sounds and music.
+them, and the worlds a player can join. It says how a view becomes a scene and a hud,
+and gives the game's sounds and music.
 
 A front end takes the client module and runs the screens a player sees: the title, the
 lobby, the settings, the world, the summary when play is over, and the guide. The same

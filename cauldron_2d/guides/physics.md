@@ -2,7 +2,7 @@
 
 Cauldron2D does not have a physics engine. It has the pieces a 2D game needs to write
 one: a point mass that integrates, a box that walks and falls through tiles, a sweep that
-finds a surface, steering behaviours that want a velocity, shots and particles that age.
+finds a surface. Steering behaviours want a velocity; shots and particles age.
 
 The rule everywhere is that a step is a pure function of the state and `dt`. The engine
 moves values; the game decides what a wall is and what a hit means.
@@ -119,20 +119,18 @@ body =
 jump = Cauldron2D.Jump.step(jump, body, dt)
 ```
 
-Coyote time lets a body jump for a moment after it leaves a ledge, rising with the jump
-let go falls `cut` times as hard, and falling never passes a maximum. `Jump.ready?/3`,
+Coyote time lets a body jump for a moment after it leaves a ledge. Rising with the jump
+let go, gravity pulls `cut` times as hard. Falling never passes a maximum. `Jump.ready?/3`,
 `launch/3`, `step/3` and `fall/5` are the whole of it; the game keeps the jump value with
-the body. `Cauldron.Presses.buffered?/4` is what makes a jump pressed just before landing
-still count.
+the body. `Cauldron.Presses.buffered?/4` is what makes a jump pressed a moment before
+landing still count.
 
 `Cauldron2D.Walk` is for the games that do not use a velocity at all: it turns held
 actions into a direction, reads how hard a stick pushes, turns the direction to an eye's
-heading, and slides a step along walls.
-
-`Walk.direction/2` takes the action-to-step map, default
-`%{left: {-1, 0}, right: {1, 0}, up: {0, -1}, down: {0, 1}}`. `Walk.relative/2` turns the
-step to the eye. `Walk.slide/4` tries the full step, then only across, then only along,
-and is `:blocked` when no part of it is open.
+heading, and slides a step along walls. `Walk.direction/2` takes the action-to-step map,
+default `%{left: {-1, 0}, right: {1, 0}, up: {0, -1}, down: {0, 1}}`. `Walk.relative/2`
+turns the step to the eye. `Walk.slide/4` tries the full step, then only across, then only
+along, and is `:blocked` when no part of it is open.
 
 ## Sweeping against tiles
 
@@ -207,7 +205,7 @@ bat = Cauldron2D.Steering.steer(bat, wanted, 20.0, dt)
 | `Steering.steer/4` | the velocity turned toward the wanted one, then the move |
 
 `wander/4` returns the velocity, the new heading and the generator, so the game keeps
-both. `Steering` does not look at the map, so a steering bird flies through a wall unless
+all three. `Steering` does not look at the map, so a steering bird flies through a wall unless
 the game sweeps it or adds an avoidance behaviour of its own.
 
 `Cauldron2D.Steer.chase/6` is the grid alternative: eight directions, tried in a

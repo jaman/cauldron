@@ -42,10 +42,10 @@ end
 | `:backdrop` | Drawn behind the screens, as `Cauldron2D.Wx.Text` takes it | None |
 
 The window has a title screen, a lobby of worlds, settings, the world, a summary at the end
-of a round, the guide and the game's own pages. The game's own title and summary
-(`fronts/1`) are drawn and run in place of the window's, and its `start/0` decides where the
-window opens. A function flow is the terminal client's own, so the window opens on the title for
-one.
+of a round, the guide and the game's own pages. The window draws and runs the game's own
+title and summary (`fronts/1`) in place of its own, and the game's `start/0` decides where
+the window opens. A function flow works as it does in the terminal client, so the window
+opens on the title.
 
 Settings — the key preset, the effects and music levels, whether the pointer aims, the
 frame rate and the game's own options — are kept per player under
@@ -176,7 +176,7 @@ pauses a world of the player's own, `levels/3` sets the effects and music levels
 `show/2` shows a picture with no link joined, such as the game's title front. `leave/1`
 ends the join.
 
-`Cauldron2D.Wx.Text` is the panel the client's own screens are drawn on, and can be used
+`Cauldron2D.Wx.Text` is the panel the client draws its own screens on, and can be used
 the same way:
 
 ```elixir
@@ -206,7 +206,7 @@ A `true` means the window can open. A machine with wx but no display — a serve
 runner — can load the module and still cannot show a frame, so the window is for a machine
 someone is sitting at.
 
-Adding the dependency is the other half:
+The package also has to be a dependency:
 
 ```elixir
 def deps do

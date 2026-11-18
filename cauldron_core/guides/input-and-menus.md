@@ -29,7 +29,7 @@ with them; a bare key matches with any.
 
 A game gives its client module the actions and keymaps in `actions/0` and `keymaps/0`.
 The client keeps the player's keymap in their settings as `:bindings` and saves it with
-the rest, so a binding changed in a menu is the binding used next time.
+the rest. A binding changed in a menu is the binding used next time.
 
 ## Reading events
 
@@ -50,14 +50,14 @@ Cauldron.Input.state(input)
 ```
 
 `state/1` is what the game receives as `handle_input/3`'s input:
-`%{held: actions, aim: {x, y} | nil}`, with `:strength` for actions an analog control
-holds only partly and `:drag` while a mouse drag is under way. A mouse event's pointer
-position becomes the aim, and a drag adds the pointer's travel to `:drag`.
+`%{held: actions, aim: {x, y} | nil}`. It carries `:strength` for actions an analog
+control holds only partly, and `:drag` while a mouse drag is under way. A mouse event's
+pointer position becomes the aim, and a drag adds the pointer's travel to `:drag`.
 
 ## Two ways to hold a key
 
-A terminal may report key releases or not. Which one a client has decides how
-`Cauldron.Input` reads the events, and a game must not assume one:
+A terminal may report key releases or not. Which one it does decides how
+`Cauldron.Input` reads the events, and a game must not assume either:
 
 | `releases?: true` | `releases?: false` |
 | --- | --- |
@@ -91,8 +91,8 @@ input =
 
 ## Presses and releases
 
-A game that cares about the moment a key went down, not just that it is down, keeps a
-`Cauldron.Presses` in its state with each player. It is a plain value; no process:
+A game that cares about the moment a key went down, and not only that it is down, keeps
+a `Cauldron.Presses` in its state with each player. It is a plain value, not a process:
 
 ```elixir
 defmodule Tag.Game do
@@ -134,7 +134,7 @@ end
 `pressed/2` is what was taken up since the last step, `released/2` what was let go.
 `settle/3` is called once a step, after the game has acted, and remembers what was held.
 `buffered?/4` is whether an action was pressed within a window of seconds, this step or a
-recent one — a jump pressed just before landing. A game that acts on a buffered press
+recent one — a jump pressed a moment before landing. A game that acts on a buffered press
 calls `clear/2`, so one press does one thing. Presses older than a second are forgotten.
 
 ## Controllers
@@ -148,14 +148,14 @@ pad = Cauldron.Input.Pad.new(padmap, deadzone: 0.3)
 ```
 
 Feed each controller event map — the `%{type: :button | :axis | :disconnected, ...}` a
-client receives as `{:controller, event}` — to `Cauldron.Input.Pad.handle/2`; `held/1` is
-the set of actions held and `strength/1` how hard each axis-driven one is pushed. A stick
+client receives as `{:controller, event}` — to `Cauldron.Input.Pad.handle/2`. `held/1` is
+the set of actions held, and `strength/1` how hard each axis-driven one is pushed. A stick
 may aim instead of holding actions: give the padmap an `:aim` entry of
-`[{:stick, :left}]` or `[{:stick, :right}]` and `Cauldron.Input.Pad.aim/1` gives the
+`[{:stick, :left}]` or `[{:stick, :right}]`. `Cauldron.Input.Pad.aim/1` gives the
 direction it is pushed in, or `nil` inside the deadzone.
 
 A client derives a default padmap from the game's `actions/0` and first keymap through
-`Cauldron.Client.Game.padmap/3`, which uses `Cauldron.Input.Pad.default_map/3`; a game
+`Cauldron.Client.Game.padmap/3`, which uses `Cauldron.Input.Pad.default_map/3`. A game
 that wants its own writes `padmap/1`, given the client's props.
 
 On one machine there may be more than one player. A game names their keys in
@@ -167,9 +167,9 @@ together.
 
 ## Menus
 
-`Cauldron.Menu` is how a game's menu behaves: pages of rows, a cursor on each,
-going into a page and back, changing settings, waiting for a key to bind, taking typed
-text and asking yes or no. It knows nothing about how the menu looks.
+`Cauldron.Menu` is how a game's menu behaves: pages of rows, a cursor on each, going
+into a page and back. It changes settings, waits for a key to bind, takes typed text and
+asks yes or no. It knows nothing about how the menu looks.
 
 A page maps a name to a title and its items. `Cauldron.Menu.Item` builds the rows:
 
@@ -246,8 +246,8 @@ view when only so many rows fit, and `Cauldron.Menu.prompt/1` is what the menu i
 for, if anything. `Cauldron.Menu.pad?/1` says whether the last key came from a
 controller.
 
-The menu's own keys can be changed with `:keys` (over the defaults: arrows, wheel,
-`Enter`, space, `Esc`), the game's buttons can be mapped with `:actions`, and menu
+The menu's own keys can be changed with `:keys`, over the defaults: arrows, wheel,
+`Enter`, space, `Esc`. The game's buttons can be mapped with `:actions`, and menu
 sounds with `:sounds` from the game's `sounds/0` table.
 
 ## What the client owns

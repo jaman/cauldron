@@ -27,11 +27,11 @@ list; `Cauldron2D.Draw.density/2` says how many pixels a tile is drawn with in e
 
 ## Top-down
 
-The default. `Cauldron2D.Camera.view/1` reads a rectangle of cells around the focus, each
-tile is drawn at the atlas's own pixels, and movers are sprites at fractional positions
-over the grid. `Cauldron2D.Surface.compose/4` blends each distinct cell once into an ETS
-entry keyed by its art and tint, then builds each row by slicing tiles and joining the
-slices, so a frame with no movers copies no pixels.
+The default. `Cauldron2D.Camera.view/1` reads a rectangle of cells around the focus.
+Each tile is drawn at the atlas's own pixels, and movers are sprites at fractional
+positions over the grid. `Cauldron2D.Surface.compose/4` blends each distinct cell once
+into an ETS entry keyed by its art and tint, then builds each row by slicing tiles and
+joining the slices, so a frame with no movers copies no pixels.
 
 ```elixir
 Cauldron2D.Camera.view(
@@ -76,9 +76,9 @@ The art has to stand up: an art drawn with `height:` storeys and `faces:` shows 
 and sides, the two sides shaded differently. `:tilt` between
 `0.5` and `1.5` flattens or steepens the diamond.
 
-Up to 32 facings the view is blitted from stamps, one set per art per facing, built on
-first use and kept in the atlas cache. Above 32, and with `facings: :free`, the ground and
-the standing arts are sampled a pixel at a time instead; it turns to any angle, and costs
+Up to 32 facings the view blits from stamps, one set per art per facing, built on first
+use and kept in the atlas cache. Above 32, and with `facings: :free`, it samples the
+ground and the standing arts a pixel at a time instead. It turns to any angle, and costs
 upwards of fifteen times as much a frame.
 
 `Iso.project/3`, `unproject/3` and `tile_at/3` map between picture pixels and world
@@ -104,7 +104,7 @@ Cauldron2D.Projection.Oblique.compose(:my_game,
 ```
 
 `facings` is `1` or `4`. At four the view turns in quarters, which leaves the grid square
-on the screen, so nothing is resampled; a mover's pose is read from where it heads on the
+on the screen, so nothing is resampled. A mover's pose is read from where it heads on the
 screen rather than in the world. At `1` the view is fixed and `:facing` is ignored.
 
 It is the projection for a game that wants readable front faces — a platformer's bricks,
@@ -215,8 +215,8 @@ offering more than four facings must read `:heading`: pressing up then moves the
 across the picture however far the view has turned.
 
 A pointer goes the other way. `Draw.world_at/3` maps a fraction of the picture to the
-ground point under it — top-down directly, isometric, oblique and mode 7 through their
-`unproject/3` — and answers `nil` in first person. `Cauldron2D.Walk.relative/2` turns held
+ground point under it: top-down directly, isometric, oblique and mode 7 through their
+`unproject/3`. It answers `nil` in first person. `Cauldron2D.Walk.relative/2` turns held
 directions to an eye's heading for a game that walks through one.
 
 ## Switching
@@ -262,7 +262,7 @@ game.
 
 `Draw.density/2` decides how many pixels a tile gets before the pane scales the picture:
 half the atlas's tile for the isometric and oblique views, four pixels in first person and
-mode 7, and the view's own `:density` where the game sets one. The zoom levels are
+mode 7. The view's own `:density` is used where the game sets one. The zoom levels are
 `Draw.zoom_levels/3`; `Draw.fitting_zoom/3` pulls a zoom back until the tallest art fits.
 
 On a terminal with no pixel protocol, the isometric and oblique views can also be drawn as

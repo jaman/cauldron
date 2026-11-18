@@ -1,7 +1,7 @@
-# Serving over ssh and telnet
+# Serving over SSH and telnet
 
 `Cauldron2D.Drafter.Server` serves a game's terminal client to players who are not on this
-machine. Over ssh it carries accounts, a sound port per player, the game's web endpoint and
+machine. Over SSH it carries accounts, a sound port per player, the game's web endpoint and
 a beacon; over telnet it carries none of them.
 
 ```elixir
@@ -15,13 +15,13 @@ a beacon; over telnet it carries none of them.
 Cauldron2D.Drafter.Server.stop(server)
 ```
 
-`start/1` registers the surface widget, starts the accounts store, starts drafter's ssh
+`start/1` registers the surface widget, starts the accounts store, starts drafter's SSH
 daemon on `Cauldron2D.Drafter.Client`, starts the web endpoint when it is given one, and
 announces the server on the local network. It answers `{:ok, server}` with a map of
 `daemon`, `port`, `accounts`, `http`, `node`, `beacon` and `web`, or `{:error, reason}`.
 
-`stop/1` closes the ssh listener first, so the port can be served on again at once, then
-stops the endpoint and the beacon and disconnects each player from a process of its own,
+`stop/1` closes the SSH listener first, so the port can be served on again at once. It then
+stops the endpoint and the beacon, and disconnects each player from a process of its own,
 with `notice` shown on their terminal. `stop/2` takes that notice; it defaults to
 `"The server closed this session."`.
 
@@ -50,10 +50,10 @@ server starts.
 
 `:send_buffer` is the bytes of each connection's send buffer. Output beyond it waits, so a
 session that draws faster than its connection carries skips frames instead of falling
-behind. `:login_timeout` covers everything from connecting to logging in — ssh's host key
+behind. `:login_timeout` covers everything from connecting to logging in — SSH's host key
 question and the password included.
 
-Players connect with any ssh client:
+Players connect with any SSH client:
 
 ```
 ssh -p 2222 alice@arcade.example.com
@@ -66,10 +66,10 @@ PBKDF2-HMAC-SHA256 hashes with a random salt, never as text. A username is 1 to 
 characters from `A-Z`, `a-z`, `0-9`, `_` and `-`; a password is at least 8 characters. Five
 failures from one peer in fifteen minutes are refused until the window passes.
 
-The file is read from `Cauldron.Paths.data(home, "accounts.terms")`, `home` the game's
-`Cauldron.Client.Game.home/1`, or from the same name under the game's atlas name where a
-file is kept there and none under the home. A file that does not exist yet is started with
-no accounts, and is written on the first change.
+The server reads the file from `Cauldron.Paths.data(home, "accounts.terms")`, where `home`
+is the game's `Cauldron.Client.Game.home/1`. Where a file sits under the game's atlas name
+and none under the home, it reads that one. A file that does not exist yet starts with no
+accounts, and is written on the first change.
 
 New players register by logging in as `new@host`:
 
@@ -89,11 +89,11 @@ whatever else the game put there.
 
 ## Sound over a session
 
-Sound leaves the server as raw PCM and arrives through the player's own ssh connection.
+Sound leaves the server as raw PCM and arrives through the player's own SSH connection.
 Each account's number gives it a port: the first is `:sound_port`, the next is one more,
 and so on. It is kept in the account's props as `:pulse_port`.
 
-A session served over ssh whose props carry an integer `:pulse_port` plays through
+A session served over SSH whose props carry an integer `:pulse_port` plays through
 `{TuningFork.Sink.Tcp, port: pulse_port}` by default, which writes signed 16-bit
 little-endian PCM to `127.0.0.1:<pulse_port>` on the server. The player's `ssh -R` tunnel
 is what listens on that port and carries it to their machine:
@@ -140,7 +140,7 @@ in Erlang on first use and kept in drafter's user data directory's `ssh` directo
 `:filename.basedir(:user_data, "drafter")`, which is `~/.local/share/drafter/ssh` or
 `$XDG_DATA_HOME/drafter/ssh` on Linux, `~/Library/Application Support/drafter/ssh` on
 macOS, and `%LOCALAPPDATA%\drafter\ssh` on Windows. The key survives restarts, so a
-returning player's ssh client does not warn again. A key left in the earlier
+returning player's SSH client does not warn again. A key left in the earlier
 `drafter_ssh` temporary directory is copied there.
 
 To use keys of your own:
@@ -197,8 +197,8 @@ process, so a port already in use surfaces as an exit from that process.
 | `2299`, or `:beacon_port` | UDP | Outbound, for the beacon's broadcast; only needed to be found on the local network |
 | `4369`, and the VM's distribution port | TCP | When `:node` is on and other nodes join its worlds |
 
-The sound ports are not opened. The server writes to `127.0.0.1:<pulse_port>` and the ssh
-tunnel carries it to the player, so the traffic is inside the ssh connection. Nothing needs
+The sound ports are not opened. The server writes to `127.0.0.1:<pulse_port>` and the SSH
+tunnel carries it to the player, so the traffic is inside the SSH connection. Nothing needs
 forwarding for a player who does not want sound either.
 
 ## Where to go next

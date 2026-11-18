@@ -3,7 +3,7 @@
 `cauldron_native` turns an Elixir project into an iOS or an Android app. The app starts the
 Erlang runtime inside its own process and boots your release, so your application's
 supervision tree runs on the phone exactly as it runs anywhere else. One small native
-bridge, `CauldronNative`, connects it to the screen: your code shows a picture and draws
+bridge, `CauldronNative`, connects it to the screen. Your code shows a picture and draws
 shapes over it, and receives touches, the screen's size, game controllers and the app's
 lifecycle.
 
@@ -107,7 +107,7 @@ mix cauldron_native.build android --run
 ```
 
 The task runs itself again with `MIX_TARGET` set to the system (`ios`, `tvos`, `macos`
-or `android`) and `MIX_ENV` set to `prod` unless you set one, so each system's build has
+or `android`) and `MIX_ENV` set to `prod` unless you set one. Each system's build then has
 its own `_build/<system>_prod`. It then:
 
 1. builds OpenSSL and OTP for the platform, once
@@ -140,7 +140,7 @@ defaults read com.apple.dt.Xcode IDEProvisioningTeamByIdentifier
 ```
 
 A personal team makes a profile only for a device it has seen, so the device must be
-connected while the app is built: the build targets that device and registers it. The
+connected while the app is built. The build targets that device and registers it. The
 first time an app from a new team is opened on the device, iOS asks for that developer to
 be trusted: Settings → General → VPN & Device Management → your Apple ID → Trust.
 
@@ -149,11 +149,11 @@ paired, not connected, or Developer Mode off.
 
 ### Simulators, Apple TV and the Mac
 
-`--simulator` builds for the iOS or tvOS simulator of this Mac (OpenSSL and OTP are built
-for it once, as for a device) and installs into the simulator running, or the one
-`--device` names, starting it first. A simulator build needs no team. Simulators are added
-in Xcode under Window → Devices and Simulators, after their runtime under Settings →
-Components; the iPhone Duo's simulator shows the fold through `:posture` events.
+`--simulator` builds for the iOS or tvOS simulator of this Mac; OpenSSL and OTP are built
+for it once, as for a device. It installs into the simulator running, or the one `--device`
+names, starting it first. A simulator build needs no team. Simulators are added in Xcode
+under Window → Devices and Simulators, after their runtime under Settings → Components; the
+iPhone Duo's simulator shows the fold through `:posture` events.
 
 `tvos` builds an Apple TV app: the same screens, with tvOS's own controls where it lacks
 iOS's, moved through with the remote's focus. Apple TV has no photo or file picker,
@@ -194,10 +194,10 @@ starts after an install or update.
   `cauldron_2d_native`. Android needs a device or emulator with Vulkan 1.3.
 * **No processes.** The app is one process: `System.cmd/3`, `:os.cmd/1` and ports that
   run programs are not available.
-* **The network.** An Android app may use the network (the `INTERNET` permission), and
-  Elixir resolves host names with its own resolver against the DNS servers of the network
-  the phone was on when the app started, written to the app's `inetrc`
-  (`ERL_INETRC`). iOS resolves them as the system does.
+* **The network.** An Android app may use the network (the `INTERNET` permission). Elixir
+  resolves host names with its own resolver, against the DNS servers of the network the
+  phone was on when the app started, written to the app's `inetrc` (`ERL_INETRC`). iOS
+  resolves them as the system does.
 * **Quitting.** `CauldronNative.quit/0` closes an Android app. An iOS app does not close
   itself.
 * **Idle.** Schedulers do not spin while idle, so a game at rest does not keep the phone
@@ -208,8 +208,8 @@ starts after an install or update.
 An app links every NIF statically, so a dependency with native code takes part by adding a
 `static` target to its `Makefile`. The build runs it with `CC`, `AR`, `CFLAGS`,
 `ERTS_INCLUDE_DIR`, `STATIC_DIR` and `CAULDRON_TARGET` (`ios`, `tvos`, `macos` or
-`android`) set, and on Apple's systems `APPLE_SDK` and `APPLE_TARGET` for `xcrun -sdk` and
-a Swift or Metal compile's `-target`. For each
+`android`) set. On Apple's systems it also sets `APPLE_SDK` and `APPLE_TARGET`, for
+`xcrun -sdk` and a Swift or Metal compile's `-target`. For each
 NIF it writes `<name>.a` into `STATIC_DIR`, compiled with
 `-DSTATIC_ERLANG_NIF_LIBNAME=<name>`, and may write `<name>.ldflags` with the frameworks or
 system libraries the link needs:
@@ -236,9 +236,9 @@ its NIF. `CauldronNative.Build.Nifs` documents the convention.
 
 An app that is not a game is written as a `CauldronNative.App` and named in the config:
 `config :cauldron_native, app: MyApp.App`. Its screens are SwiftUI on iOS and Jetpack
-Compose with Material 3 on Android, drawn by the platform, so they take the device's
-fonts, text size, light or dark appearance, keyboard, scrolling and accessibility. The
-window keeps the status bar and draws under it, as the platform's own apps do.
+Compose with Material 3 on Android, drawn by the platform. They take the device's fonts,
+text size, light or dark appearance, keyboard, scrolling and accessibility. The window
+keeps the status bar and draws under it, as the platform's own apps do.
 
 * **State and events.** `mount/1` gives the first state, `render/1` the screen as
   `CauldronNative.UI` nodes, and `handle_event/3` the state after a control's event, with
@@ -251,30 +251,30 @@ window keeps the status bar and draws under it, as the platform's own apps do.
   sections. Each is the platform's own: a Material exposed dropdown on Android where iOS
   shows a menu, a list item where iOS shows a list row.
 * **Screens.** A navigation stack of screens, each with its bar's title, toolbar buttons
-  and menus, and a search field; tabs, which are a tab bar on a phone, a tab bar that
-  opens into a sidebar on an iPad, and a navigation rail on a large Android screen; sheets, alerts and action sheets
-  over a screen while the app's state says so. The platform does the back gesture and
-  the push and pop animations; the app is told how many screens remain (`on_back`) and
-  when a sheet or alert is swiped or tapped away (`on_dismiss`).
+  and menus, and a search field. Tabs are a tab bar on a phone, a tab bar that opens into a
+  sidebar on an iPad, and a navigation rail on a large Android screen. Sheets, alerts and
+  action sheets sit over a screen while the app's state says so. The platform does the back
+  gesture and the push and pop animations. The app is told how many screens remain
+  (`on_back`) and when a sheet or alert is swiped or tapped away (`on_dismiss`).
 * **Values.** A picker's options and tabs' ids are any terms, and a date picker's value is
-  a `Date`, `Time` or `NaiveDateTime`; the platform is sent positions and ISO 8601 text,
+  a `Date`, `Time` or `NaiveDateTime`. The platform is sent positions and ISO 8601 text,
   and the app gets its own terms back (`CauldronNative.UI.Value`).
 * **Icons** have names both platforms share (`:home`, `:search`, `:share`, …), drawn as
   SF Symbols on iOS and Material icons on Android; `ios:` and `android:` name a
   platform's own.
-* **Text fields** keep their own text, cursor and selection while the user types; the app
-  is sent each edit and may still replace the text, such as clearing it after a send.
+* **Text fields** keep their own text, cursor and selection while the user types. The app
+  is sent each edit, and may still replace the text, such as clearing it after a send.
 * **Modifiers.** `modifiers:` adjusts a control with the platform's own adjustments:
   padding, a text style, a colour role, a frame, rounded corners, opacity, bold, and any
   under `ios:` or `android:` for one platform.
 * **Video and the camera.** `video/2` plays a file or a web address in the platform's
   player (AVKit on iOS, Media3 on Android), with its controls, full screen and picture in
-  picture; `camera_preview/1` shows what the camera sees, once the app has the camera
+  picture. `camera_preview/1` shows what the camera sees, once the app has the camera
   permission.
 * **Charts and maps.** `chart/2` draws bars, lines, areas, points, pies and rings with
-  Swift Charts on iOS and Vico, a Material chart library, on Android; `map/1` is MapKit
-  on iOS and Google Maps on Android (which needs the app's `maps: [android_key: …]`),
-  with markers, the phone's position, and the marker tapped and the view moved as events.
+  Swift Charts on iOS and Vico, a Material chart library, on Android. `map/1` is MapKit
+  on iOS and Google Maps on Android, which needs the app's `maps: [android_key: …]`.
+  Markers, the phone's position, the marker tapped and the view moved arrive as events.
 * **Views of the app's own.** A SwiftUI view in the project's `native/ios` folder that
   conforms to `CauldronNativeView`, or a Kotlin object in `native/android` that
   implements it, is placed with `CauldronNative.UI.native/2` under the name it gives. The
@@ -333,12 +333,12 @@ its config. Apple's systems use it as an Xcode project's own catalog (its `Accen
 is the app's accent), and Android takes it converted into drawables, colours and vector
 drawables (`CauldronNative.Build.Assets`). Elixir shows an image of it with
 `image({:asset, "dough/blue-full"})`, a label or icon with `asset:`, and a colour with
-`{:asset, "AccentColorDimmed"}`; the app's own Swift reads `Image("dough/blue-full")`,
-and its Kotlin `cauldronAsset("dough/blue-full")`.
+`{:asset, "AccentColorDimmed"}`. The app's own Swift reads `Image("dough/blue-full")`; its
+Kotlin reads `cauldronAsset("dough/blue-full")`.
 
 The app learns its window's size, and whether it is a phone's narrow one, from
-`{:cauldron_native, :window, %{width, height, compact}}` in `handle_info/2`, to lay out
-for it as SwiftUI's size classes do. The Mac window's first and least size is
+`{:cauldron_native, :window, %{width, height, compact}}` in `handle_info/2`. It can lay out
+for that as SwiftUI's size classes do. The Mac window's first and least size is
 `window: [width: 1000, height: 650, min_width: 600, min_height: 450]`, and
 `menu_bar_extra/3` adds an item to the Mac's menu bar.
 
@@ -373,17 +373,17 @@ refresh as `{:cauldron_native, :background, :refresh}`, to be ended with
 `CauldronNative.Background.done/0`.
 
 A widget kind's sizes may include the Lock Screen's `:circular`, `:rectangular` and
-`:inline` on iOS, and its content may differ per size (`%{small: …, circular: …}`) and
-change on a timeline (`CauldronNative.Widget.timeline/2`). A Live Activity can count down
-to a time and show the app's own pictures and colours, and open a link when tapped.
+`:inline` on iOS. Its content may differ per size (`%{small: …, circular: …}`) and change on
+a timeline (`CauldronNative.Widget.timeline/2`). A Live Activity can count down to a time
+and show the app's own pictures and colours, and open a link when tapped.
 
 WeatherKit needs a paid Apple Developer Program membership; App Groups (which the
 widget extension needs) and in-app purchases work with a personal team too. `xcodebuild`
 does not register a new App Group with the team, so the first device build of an app
 with widgets fails with a profile that "doesn't match the entitlements file's value for
-the com.apple.security.application-groups entitlement": open `App.xcodeproj` in the
-build folder, choose the device and Product ▸ Build once, and Xcode registers
-`group.<app id>`; builds from the task work from then on.
+the com.apple.security.application-groups entitlement". Open `App.xcodeproj` in the build
+folder, choose the device and Product ▸ Build once, and Xcode registers `group.<app id>`.
+Builds from the task work from then on.
 
 A purchase's id in App Store Connect and the Play Console is the app's id, a dot and
 the product's key. The Xcode project carries a StoreKit

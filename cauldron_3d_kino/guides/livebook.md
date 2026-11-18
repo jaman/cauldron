@@ -32,14 +32,14 @@ from the cell.
 
 ## What it renders with
 
-The cell runs `cauldron_3d_net`'s browser client (`cauldron3d.js`) as a Kino asset, with
-its three.js imports pointed at jsDelivr's `+esm` builds by
-`Cauldron3D.Kino.Client.source/0`. `Cauldron3D.Kino.Client.path/0` is the client in
-`cauldron_3d_net`, and `rewrite/2` is the import rewrite, for a front end of your own.
+The cell runs `cauldron_3d_net`'s browser client (`cauldron3d.js`) as a Kino asset.
+`Cauldron3D.Kino.Client.source/0` points its three.js imports at jsDelivr's `+esm` builds.
+`Cauldron3D.Kino.Client.path/0` is the client in `cauldron_3d_net`, and `rewrite/2` is the
+import rewrite, for a front end of your own.
 
-Opening the notebook gives the browser the whole scene as a snapshot; each later
-`submit/2` is broadcast as a `Cauldron3D.Scene.Stream` batch, which the client applies.
-It draws what the browser client draws:
+Opening the notebook gives the browser the whole scene as a snapshot. Each later
+`submit/2` goes out as a `Cauldron3D.Scene.Stream` batch, which the client applies. It
+draws what the browser client draws:
 
 * physically based materials, lights and the directional light's shadows
 * fog, skies, bloom, tone mapping and coloured light styles
@@ -51,8 +51,8 @@ ignored. The full list is in [3D in a browser](https://hexdocs.pm/cauldron_3d_ne
 
 ## Building a scene
 
-Meshes, textures and materials are uploaded once and answered with handles. One
-`submit/2` is one tick: everything in the list changes at once.
+Upload a mesh, texture or material once and get a handle back. One `submit/2` is one
+tick: everything in the list changes at once.
 
 ```elixir
 alias Cauldron3D.Scene.{Camera, Environment, Instance, Light, Material, Mesh, Quat, Texture, Transform}
@@ -209,15 +209,15 @@ end)
 
 A view is a `Cauldron3D.Scene.Target`, so the `cauldron_gpu` converters and the scene
 modules of the examples upload to it as to a native renderer. A scene written against
-`Cauldron3D.Scene.Target` can be shown with one `submit/2` of what it uploaded and one camera.
+`Cauldron3D.Scene.Target` needs one `submit/2` of what it uploaded and one camera.
 
 The notebook `notebooks/scene.livemd` in the package builds a lit scene, turns a cube from
 a background loop and orbits the camera. The courtyard example shows loading glTF scenes
 into a view with `cauldron_3d_formats`.
 
-Large scenes are sent once and kept: a detailed scene's textures and meshes can be tens
-or hundreds of megabytes, so the first render of the cell takes as long as the browser
-takes to receive them. Later ticks send only what changed.
+A large scene is sent once and kept. A detailed scene's textures and meshes can be tens
+or hundreds of megabytes, so the first render of the cell waits for the browser to receive
+them. Later ticks send only what changed.
 
 ## Where to go next
 

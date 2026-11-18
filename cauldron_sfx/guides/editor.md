@@ -49,8 +49,8 @@ without this library.
 | `variants` | The recipes one of which is picked each time the event plays |
 
 A variant is one recipe. `"kind": "tone"` has a `shape` (`sine`, `square`, `saw` or
-`triangle`), a `freq`, a `decay` in seconds, a `sweep` as a multiple of the frequency, and
-optional `attack`, `sustain`, `hold`, `release`, `cutoff`, `highpass`, `fm`, `fmh`,
+`triangle`), a `freq`, a `decay` in seconds, and a `sweep` as a multiple of the frequency.
+It may also set `attack`, `sustain`, `hold`, `release`, `cutoff`, `highpass`, `fm`, `fmh`,
 `fmattack`, `detune` and `pan`. `"kind": "noise"` has no pitch: its `decay` and filters
 shape it. `"kind": "layers"` holds `parts`, each a `recipe` played `at_ms` after the
 event. `"kind": "sample"` plays a recording: `sound` names one of `TuningFork.Kit`'s, or
@@ -109,7 +109,7 @@ A name is typed in the editor after `n`: lowercase letters, digits and underscor
 `{:bomb, by}` stays in the game's own `sounds/0`, not in the bank.
 
 The keys change the recipe the selected variant holds. `s` says so when the variant is a
-noise or layers; pitch and sweep only exist for a tone; decay, cutoff, attack and release
+noise or layers. Pitch and sweep only exist for a tone; decay, cutoff, attack and release
 only for a tone or a noise. An event keeps at least one variant.
 
 ## The starter bank
@@ -144,9 +144,9 @@ $ mix cauldron.sfx.import thunder.wav --bank priv/sfx/thunder --event boom --sli
 | `--peak-db DB` | The level each cut is normalised to. Default `-1` |
 | `--gain GAIN` | The variants' gain in the bank. Default `0.8` |
 
-The cuts are written as `<event>-<n>.wav` in the bank's directory and listed with a
-relative `file`, so the bank directory can move. The bank is created when it does not
-exist, and existing events are kept. Only 16-bit PCM WAVs are read and written, and only
+The importer writes the cuts as `<event>-<n>.wav` in the bank's directory and lists them
+with a relative `file`, so the bank directory can move. It creates the bank when it does
+not exist, and keeps existing events. Only 16-bit PCM WAVs are read and written, and only
 mono and stereo.
 
 From code, `Cauldron.SFX.Import.add/3` does the same and answers the bank:

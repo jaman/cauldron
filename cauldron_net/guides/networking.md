@@ -2,8 +2,8 @@
 
 A Cauldron world is a process. `cauldron_net` carries it to players who are not in the
 same VM: a browser through a Phoenix channel, an Elixir program through a WebSocket or a
-local link. It carries the world and the player's input; what a client is sent to *show*
-is a drawer's business, and `cauldron_2d_net` supplies the drawer for 2D games.
+local link. It carries the world and the player's input. What a client is sent to *show*
+is the drawer's business, and `cauldron_2d_net` supplies the drawer for 2D games.
 
 ![Who talks to whom](assets/network.svg)
 
@@ -57,10 +57,10 @@ format a browser gets when it asks for none.
 | `voice` | Voice calls, when the socket has `voice: true` |
 
 The join params reach the game's `join_props/1` as `:params`. A `"saved"` param is the
-player's settings as a previous `"settings"` push signed them; `"audio"`,
-`%{"rate" => hertz, "channels" => 1 | 2}`, is the PCM format the browser wants, and
-`false` asks for no sound. `"preset"`, `"fps"` and `"pointer"` are the player's settings
-beside the world.
+player's settings as a previous `"settings"` push signed them. `"audio"`,
+`%{"rate" => hertz, "channels" => 1 | 2}`, is the PCM format the browser wants; `false`
+asks for no sound. `"preset"`, `"fps"` and `"pointer"` are the player's settings beside the
+world.
 
 From the browser the channel reads input and hands it to the session:
 
@@ -78,7 +78,7 @@ From the browser the channel reads input and hands it to the session:
 | `"levels"` | `sfx`, `music` | `Cauldron.Net.Session.levels/3` |
 | `"say"` | `text` | `Cauldron.Net.Session.say/2` |
 
-Keys go up as well as down, so a held action is let go when the key is. The channel also
+Keys go up as well as down, so a held action ends when its key does. The channel also
 answers `"music"`, `"pause"` and the game's menu. When the round is over and the game has
 a summary, the channel leaves the world, pushes `"front"` and runs the summary instead.
 
@@ -159,8 +159,8 @@ background.
 
 ## The wire
 
-`Cauldron.Net.Wire` is the Phoenix channel protocol (serializer 2.0.0) as an Elixir
-client speaks it, and the session's own pushes read into plain shapes.
+`Cauldron.Net.Wire` is the Phoenix channel protocol (serializer 2.0.0) as an Elixir client
+speaks it. It reads the session's own pushes into plain shapes.
 
 ```elixir
 payload = %{"hud" => [], "over" => nil, "subject" => nil, "focus" => nil}
@@ -168,9 +168,9 @@ Cauldron.Net.Wire.status(payload)
 ```
 
 `encode/5` gives a text frame. `decode/1` reads one, and `decode_binary/1` a binary push.
-`status/1` gives the hud rows, the outcome, the subject and the focus; `go/1` gives
-`:lobby`, `:settings` or `:title`; `field/2` reads a payload by atom key or by its text key
-for a payload decoded from JSON. A drawer's pushes are its own to read.
+`status/1` gives the hud rows, the outcome, the subject and the focus. `go/1` gives
+`:lobby`, `:settings` or `:title`. `field/2` reads a payload by atom key, or by its text
+key for a payload decoded from JSON. A drawer's pushes are its own to read.
 
 ## The drawer
 
@@ -195,7 +195,7 @@ named with `:drawer` wherever a session or a link starts, as a module or
 | `browser/0` | Optional: scripts, head HTML and join params for a browser |
 
 The behaviour asks for all of them but `browser/0`. A drawer that serves only browsers
-implements the server side and answers `:unknown` or `[]` on the client side; one that
+implements the server side and answers `:unknown` or `[]` on the client side. One that
 also serves Elixir clients implements `local/2` or `reader/1`, `read/4` and `remote/2`.
 
 Every callback that has something for the client returns pushes, `{event, payload}`
@@ -272,7 +272,7 @@ Cauldron.Net.Voice.call("alice", "bob")
 Cauldron.Net.Voice.state("alice")
 ```
 
-`:relay` lets a call fall back to the server's channel, `:stun` and `:turn` name the
+`:relay` lets a call fall back to the server's channel. `:stun` and `:turn` name the
 servers that help a direct route, and `:wait` is how long a call waits for one. A call
 needs both players: `call/2`, then `accept/2` or `decline/2`. `hang_up/2` ends it and
 `mute/2` turns a microphone off. `Cauldron.Net.Voice.Channel` is joined by a browser whose

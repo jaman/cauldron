@@ -36,10 +36,10 @@ One tick is what `Cauldron.World` does on one step:
 3. `drain_events/1` is called and its events are added to the driver's.
 
 `hold/5` is input for the *next* tick, not a switch that stays down. The driver clears
-its pending input after every tick, exactly as a world applies the input it has and
-waits for more. A game that wants an action to keep acting keeps it in its own state, in
-`handle_input/3`, and reads that state in `step/2`. That is also why a test that wants
-the input to change must call `hold` again.
+its pending input after every tick, as a world applies the input it has and waits for
+more. A game that wants an action to keep acting keeps it in its own state, in
+`handle_input/3`, and reads that state in `step/2`. A test that wants the input to
+change must call `hold` again.
 
 ## A game to test
 
@@ -136,11 +136,11 @@ defmodule Walk.GameTest do
 end
 ```
 
-The second test relies on the game's own state: the first `hold` is delivered at the
+The second test relies on the game's own state. The first `hold` is delivered at the
 first of the three ticks, and the player keeps its held set until the next input
 replaces it. The third test shows that the driver does not police ids the way a world
-does — `Cauldron.World` refuses an id another process already plays, while `join/3` here
-is simply the game's callback.
+does. `Cauldron.World` refuses an id another process already plays; `join/3` here is the
+game's callback.
 
 `hold/5` also takes an aim and how hard each action is held:
 
@@ -148,8 +148,8 @@ is simply the game's callback.
 driver = Cauldron.Test.hold(driver, :alice, [:fire], {120.0, 40.0}, %{fire: 0.5})
 ```
 
-The aim arrives as `:aim`, and a non-empty strength map as `:strength`, exactly as a
-client would send them.
+The aim arrives as `:aim`, and a non-empty strength map as `:strength`, as a client
+would send them.
 
 ## Waiting for something
 
@@ -171,13 +171,13 @@ rather than ignoring it.
 
 ## Reading views and events
 
-`view/2` calls the game's `view/2` on the spot; it is the same function the world would
+`view/2` calls the game's `view/2` on the spot. It is the same function the world would
 call, and it costs nothing but the call. `events/1` is every event drained since the
 driver was made, oldest first, so events from different ticks are all in one list.
 `state/1` is the whole game state, for the assertions a view does not expose.
 
-A test that wants to see what one player sees, and not another, is the reason `view/2`
-takes an id: join two players, hold different actions, tick once, and compare.
+`view/2` takes an id so a test can see what one player sees, and not another: join two
+players, hold different actions, tick once, and compare.
 
 ## Files in a test
 

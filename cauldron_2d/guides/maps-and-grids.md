@@ -2,8 +2,8 @@
 
 A Cauldron2D world is a grid, but a game does not have to keep one. It can read a level
 file into plain data, ask a function what is at a tile, and let the engine find what can
-be seen or where a way goes. This guide covers the three tile-map readers, the grid
-algorithms, and the sector maps that are not on a grid at all.
+be seen or where a way goes. Three modules read level files; the grid algorithms take a
+function over one tile; the sector maps are not on a grid at all.
 
 ## Three ways to have a map
 
@@ -42,8 +42,8 @@ xxxxxx
 EndOfMapdata
 ```
 
-Only three options are read by the engine: `mapwidth` and `mapheight` size the grid, and
-the option named by `:wrap` makes it wrap. Everything else is the game's:
+The engine reads only three options: `mapwidth` and `mapheight` size the grid, and the
+option named by `:wrap` makes it wrap. Everything else is the game's:
 
 ```elixir
 {:ok, map} = Cauldron2D.Map.parse_file("priv/maps/cavern.map", wrap: "edgewrap")
@@ -62,6 +62,7 @@ spawns = Cauldron2D.Map.positions(map, "@")
 `Cauldron2D.Map.at/2` is the character at a tile; outside the grid it is a space, or the wrapped tile
 when the map wraps. `Cauldron2D.Map.cells/2` calls the legend once per tile and keeps what it answers
 unless it is `nil`. `Cauldron2D.Map.positions/2` finds every occurrence of a character, row by row.
+
 `Cauldron2D.Map.option/4` converts a named option to `:string`, `:integer`, `:float` or `:boolean`,
 with `yes`, `true`, `on` and `1` true and `no`, `false`, `off` and `0` false. Option names
 ignore case. A multiline block with no closing marker runs to the end of the text; a row
@@ -223,11 +224,12 @@ searched. `:ahead` says how many regions past the one the start is in the steps 
 through; a way crossing more ends where the last of them meets the next. `waypoint/4`
 takes the last point of the path's first stretch that the body can reach in a clear
 straight line, so a chaser does not walk to every corner. `reachable?/3` answers whether
-a way exists at all, and `spots/1` gives one point in the middle of each region — useful for patrols and spawns.
+a way exists at all. `spots/1` gives one point in the middle of each region, useful for
+patrols and spawns.
 
 A step goes to one of the eight tiles around, diagonally only where both tiles beside the
-corner are open, and crossing beside a wall costs three times as much, so ways keep off
-walls where there is room. On a wrapping grid a path runs on across the edges instead of
+corner are open. Crossing beside a wall costs three times as much, so ways keep off walls
+where there is room. On a wrapping grid a path runs on across the edges instead of
 jumping back, so points may lie off the grid.
 
 `Cauldron2D.Steer.chase/6` is the cheap alternative when a path is too much: it tries the

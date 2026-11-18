@@ -2,7 +2,7 @@
 
 `cauldron_3d` draws 3D pictures on the CPU: cameras, polygons, meshes, BSP worlds and
 collision, with no graphics card and no window. A camera says where a picture is taken
-from, a list of polygons says what is in it, and the renderer answers a frame: a binary
+from, and a list of polygons says what is in it. The renderer answers a frame: a binary
 of pixels, one byte or four a pixel.
 
 Nothing in the package belongs to one game. Your game reads its own files into these
@@ -10,7 +10,7 @@ structures and decides what moves, what collides and what is drawn.
 
 The world is right-handed with `z` up. Yaw 0 faces `+x`, yaw `:math.pi() / 2` faces
 `+y`, and pitch above zero looks up. This is not the frame of `cauldron_3d_scene`, which
-is `+y` up; a scene camera is turned into this one by `Cauldron3D.Scene.Software`.
+is `+y` up. `Cauldron3D.Scene.Software` turns a scene camera into this one.
 
 ## What it draws
 
@@ -41,11 +41,11 @@ A `Cauldron3D.Polygon` is the unit of drawing: a flat, convex list of points and
 `Cauldron3D.Render.setups/3` clips each polygon to the near plane, projects it, and
 reduces it to the rows it covers, a plane for each attribute across the picture, and its
 edges. A polygon that is wholly behind the camera, edge-on, facing away, or off the
-picture becomes `nil` and is dropped.
+picture answers `nil`, and the renderer drops it.
 
 `Cauldron3D.Raster.rows/4` turns those setups into rows of pixels. Where two polygons
-overlap it solves for the pixel where they are equally near, so each pixel is painted
-once, by the polygon that owns it. There is no depth buffer.
+overlap it solves for the pixel where they are equally near, so the polygon that owns
+each pixel paints it once. There is no depth buffer.
 
 `Cauldron3D.Render.draw_setups/3` puts the rows together and answers a
 `Cauldron3D.Frame` of the view's size. `Cauldron3D.Render.draw/3` does both steps at
@@ -134,10 +134,10 @@ camera's leaf can see, plus the brush models placed with `:models`, and chooses 
 level by distance. Liquid faces ripple, sky faces show their layers, hidden faces are left
 out.
 
-Give a polygon `clear:` to make it see-through where its paint is that colour, and
-`depth: :always` to draw it over everything, as for a held weapon. See-through,
-always-on-top and blended polygons are painted after the solid ones: the unblended first,
-then the blended in the order given.
+A polygon with `clear:` is see-through where its paint is that colour. One with
+`depth: :always` draws over everything, as a held weapon does. The renderer paints
+see-through, always-on-top and blended polygons after the solid ones: the unblended
+first, then the blended in the order given.
 
 ## What it does not do
 
@@ -163,10 +163,10 @@ It is a renderer and a collision library, not a scene description.
 
 ## What it costs
 
-A frame costs what its polygons and pixels cost. Before any pixel is painted, every
-polygon is clipped, projected and set up; that work is split into chunks and run across
-schedulers. The picture is cut into bands of rows, one per scheduler by default, and each
-band receives only the polygons that cross its rows. Set `:bands` on
+A frame costs what its polygons and pixels cost. Before it paints a pixel, the renderer
+clips, projects and sets up every polygon. It splits that work into chunks and runs them
+across schedulers. It cuts the picture into bands of rows, one per scheduler by default,
+and each band gets only the polygons that cross its rows. Set `:bands` on
 `Cauldron3D.Render.draw/3` or `Cauldron3D.Render.draw_setups/3` to choose how many.
 
 Fill is usually the larger cost on a big picture. A 320×200 indexed frame is 64,000
@@ -178,8 +178,8 @@ Textured and lit runs are filled in C where the native library loaded
 more slowly.
 
 A BSP world pays once per surface. `Cauldron3D.Bsp.Surfaces.fetch/5` builds a face's lit
-texture at a mip level and keeps it in an ETS table until its light changes, so a
-static world with a static light spends its ticks on the polygons, not on the light.
+texture at a mip level and keeps it in an ETS table until its light changes. A static
+world with a static light then spends its ticks on the polygons, not on the light.
 
 Building the list is a cost too. `Cauldron3D.Bsp.Draw.polygons/3` walks the leaves the
 camera's leaf can see and allocates a polygon for each visible face;
@@ -188,8 +188,8 @@ camera's leaf can see and allocates a polygon for each visible face;
 ## Collision
 
 `Cauldron3D.Hull` is a BSP tree of planes whose leaves are contents. A box moves through
-a world by tracing a point through a hull pushed out by the box's size, and a world keeps
-one hull per box size it allows.
+a world by tracing a point through a hull pushed out by the box's size. A world keeps one
+hull per box size it allows.
 
 ```elixir
 hull = Cauldron3D.Hull.box({-16.0, -16.0, -24.0}, {16.0, 16.0, 32.0})
@@ -226,10 +226,10 @@ on a flat floor can go, as a grid of cells seen from above.
 | One picture, a HUD, a minimap, or a small pane | this package |
 | A machine with no usable graphics card | this package |
 
-The two are not exclusive. A BSP world and its models can be uploaded through
-`cauldron_3d_scene` and drawn on the card, while the same game keeps the software
-renderer for a machine without one — the scene package's `Cauldron3D.Scene.Software` is
-this renderer behind the scene protocol, and the terminal client falls back to it.
+The two are not exclusive. Upload a BSP world and its models through `cauldron_3d_scene`,
+and the game draws them on the card. The same game keeps the software renderer for a
+machine without one. `Cauldron3D.Scene.Software` in the scene package is this renderer
+behind the scene protocol, and the terminal client falls back to it.
 
 ## Where to go next
 

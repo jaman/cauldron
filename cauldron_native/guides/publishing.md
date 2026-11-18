@@ -1,10 +1,9 @@
 # Publishing
 
-This guide takes an app from a development build to the App Store and Google Play.
-Cauldron builds what each store requires: the icon, the launch screen, the privacy
-manifest, the build number, and a store build signed for upload. The accounts, the
-store listings and the review are yours: each app is published by the person or company
-whose name is on it.
+An app goes from a development build to the App Store and Google Play. Cauldron builds
+what each store requires: the icon, the launch screen, the privacy manifest, the build
+number, and a store build signed for upload. The accounts, the store listings and the
+review are yours: each app is published by the person or company whose name is on it.
 
 ## What Cauldron does and what you do
 
@@ -107,7 +106,7 @@ that apply to apps made with Cauldron:
 * **Permissions.** Ask for a permission when the user reaches the feature that needs
   it, not at launch, and write reasons that say what the user gets.
 * **Accounts.** An app that lets users make an account must let them delete it from
-  inside the app; an app that offers sign-in through another company must also offer
+  inside the app. An app that offers sign-in through another company must also offer
   Sign in with Apple.
 * **Purchases.** Digital goods and subscriptions sold in the app go through Apple's
   in-app purchase.
@@ -139,15 +138,15 @@ Google checks each release against the
 
 These need accounts of the app's own:
 
-* **Push on iOS:** `push: [ios: true]` adds the push entitlement; the App ID must have
+* **Push on iOS:** `push: [ios: true]` adds the push entitlement. The App ID must have
   Push Notifications turned on in the Apple Developer account, and the app's server
   sends through APNs with a key from the same account.
 * **Push on Android:** make a Firebase project, add the Android app with the app's
   `:id`, download its `google-services.json`, and name it: `push: [android:
   "config/google-services.json"]`. The server sends through Firebase Cloud Messaging.
 * **Maps on Android:** make a Google Maps Platform API key restricted to the app's
-  package and signing certificates (the upload key's and Play App Signing's), and give it
-  as `maps: [android_key: {:env, "MAPS_API_KEY"}]`. iOS maps need no key.
+  package and signing certificates (the upload key's and Play App Signing's). Give it as
+  `maps: [android_key: {:env, "MAPS_API_KEY"}]`. iOS maps need no key.
 
 ## Each update
 

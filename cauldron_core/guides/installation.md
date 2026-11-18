@@ -2,7 +2,7 @@
 
 A Cauldron game needs two things: an engine, which is this package, and something that
 puts the game in front of a player. `cauldron_core` is never added on its own in
-practice — a drawing package or a front end brings it with it.
+practice. A drawing package or a front end brings it with it.
 
 ## Pick a target
 
@@ -61,7 +61,7 @@ endpoint and a beacon on the local network:
 `server.port` is the port actually served on. The worlds are the game's, registered with
 [`Cauldron.Worlds`](worlds-and-players.html) before or after the server starts. Each
 account gets its own sound port, which the terminal client sends PCM to through the
-player's own tunnel; `stop/1` closes what `start/1` opened.
+player's own tunnel. `stop/1` closes what `start/1` opened.
 
 For a quick game with no accounts and no sound,
 `Cauldron2D.Drafter.Server.start_telnet/2` listens on a port and runs the terminal
@@ -91,7 +91,7 @@ end
 `--port` changes the port and `--drawing server|client|split` decides whether the server
 or the browser draws. A game with its own endpoint mounts
 `Cauldron2D.Net.Pages` and the socket in its router instead; the front end's README has
-that shape. `:before` is a function run once the application has started, the place to
+that shape. `:before` is a function run once the application has started: the place to
 register the game's worlds.
 
 ## A desktop window
@@ -149,18 +149,18 @@ mix cauldron_native.build android --run
 ```
 
 `cauldron_native` embeds the release, draws the screen and reads touch; `cauldron_2d_native`
-is what runs inside it. The phone shows the game's own title and summary and its worlds;
-it has no text screens for a lobby, settings or a guide, so a game reaches its options
-through its own menu. The
-[Mobile releases guide](https://hexdocs.pm/cauldron_native/building_apps.html) covers
+is what runs inside it. The phone shows the game's own title and summary, and its worlds.
+It has no text screens for a lobby, settings or a guide, so a game reaches its options
+through its own menu.
+The [Mobile releases guide](https://hexdocs.pm/cauldron_native/building_apps.html) covers
 signing and building.
 
 ## Requirements
 
 `cauldron_core` declares `elixir: "~> 1.18"`. The sound packages it depends on declare
-`~> 1.19` today, so a project that plays sound should run Elixir 1.19 or later; a project
-that pins older sound packages can stay on 1.18. No OTP version is pinned in the source:
-the floor is whatever the Elixir release you use needs.
+`~> 1.19`, so a project that plays sound should run Elixir 1.19 or later. A project that
+pins older sound packages can stay on 1.18. No OTP version is pinned in the source: the
+floor is whatever the Elixir release you use needs.
 
 What else your machine needs comes from the pieces you add:
 
