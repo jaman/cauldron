@@ -58,14 +58,21 @@ kind = fn
   11 -> :truck
 end
 
+parts = fn
+  :car, 2 -> [:car_l, :car_r]
+  :truck, 3 -> [:truck_l, :truck_mid, :truck_r]
+  :bus, 4 -> [:bus_l, :bus_mid, :bus_mid, :bus_r]
+end
+
 segment = fn lane, step ->
-  cond do
-    lane.row in 1..5 and step == 0 -> :log_left
-    lane.row in 1..5 and step == lane.length - 1 -> :log_right
-    lane.row in 1..5 -> :log_mid
-    step == if(lane.dir == 1, do: lane.length - 1, else: 0) -> :"#{kind.(lane.row)}_front"
-    step == 0 -> :"#{kind.(lane.row)}_back"
-    true -> :"#{kind.(lane.row)}_mid"
+  if lane.row in 1..5 do
+    cond do
+      step == 0 -> :log_left
+      step == lane.length - 1 -> :log_right
+      true -> :log_mid
+    end
+  else
+    Enum.at(parts.(kind.(lane.row), lane.length), step)
   end
 end
 
