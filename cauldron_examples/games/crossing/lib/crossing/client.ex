@@ -60,7 +60,7 @@ defmodule Crossing.Client do
               {art(lane, step, elapsed), {edge + step + 0.5, lane.row}, :east}
             end
           end)
-        end) ++ [{:snake_0, {snake.x + 0.5, 6}, :east}],
+        end) ++ if(visible_snake?(elapsed), do: [{:snake_0, {snake.x + 0.5, 6}, :east}], else: []),
       labels: []
     }
   end
@@ -77,6 +77,8 @@ defmodule Crossing.Client do
       :over -> [first, [{"over: ctrl-c twice to leave", {230, 130, 120}}]]
     end
   end
+
+  defp visible_snake?(elapsed), do: :math.fmod(elapsed, 20.0) < 8.0
 
   defp art(lane, step, elapsed) when lane.row in 1..5 do
     if lane.kind == :turtle do

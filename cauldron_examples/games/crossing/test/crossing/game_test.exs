@@ -70,11 +70,11 @@ defmodule Crossing.GameTest do
 
   test "a turtle that has gone under drops the frog" do
     game = game()
-    lane = Enum.find(game.lanes, &(&1.kind == :turtle))
+    lane = Enum.find(game.lanes, &(&1.cycle != nil))
     x = Enum.find(0..14, fn x -> Lanes.covers?(lane, x) end)
 
-    # the turtle lane is up for five seconds, then down for two and a half
-    game = %{game | frog: {x / 1, lane.row}, elapsed: 6.0}
+    # the diving lane is up for six seconds, then down for three
+    game = %{game | frog: {x / 1, lane.row}, elapsed: 7.0}
     game = Game.step(game, 1 / 60)
 
     assert game.lives == 2
@@ -83,7 +83,7 @@ defmodule Crossing.GameTest do
 
   test "a turtle that is up carries the frog" do
     game = game()
-    lane = Enum.find(game.lanes, &(&1.kind == :turtle))
+    lane = Enum.find(game.lanes, &(&1.cycle != nil))
     x = Enum.find(0..14, fn x -> Lanes.covers?(lane, x) end)
 
     game = %{game | frog: {x / 1, lane.row}, elapsed: 1.0}
@@ -93,12 +93,20 @@ defmodule Crossing.GameTest do
     assert carried.frog |> elem(0) > x
   end
 
-  test "the snake on the median bites" do
+  test "the snake bites while it is crossing" do
     game = game()
-    game = %{game | frog: {game.snake.x, 6}}
+    game = %{game | frog: {2.0, 6}, snake: %{x: 2.0}, elapsed: 1.0}
     game = Game.step(game, 1 / 60)
 
     assert game.lives == 2
+  end
+
+  test "the snake is away for part of the time" do
+    game = game()
+    game = %{game | frog: {2.0, 6}, snake: %{x: 2.0}, elapsed: 12.0}
+    game = Game.step(game, 1 / 60)
+
+    assert game.lives == 3
   end
 
   test "the last life ends the game" do

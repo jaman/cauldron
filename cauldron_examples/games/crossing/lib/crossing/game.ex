@@ -43,10 +43,10 @@ defmodule Crossing.Game do
     lanes =
       [
         Lanes.lane(1, 1, 1.2, 4, 3, 3, 0.0, kind: :log),
-        Lanes.lane(2, -1, 1.6, 3, 4, 2, 2.0, kind: :log),
-        Lanes.lane(3, 1, 1.0, 2, 5, 2, 5.0, kind: :turtle, cycle: {5.0, 2.5}),
+        Lanes.lane(2, -1, 1.6, 2, 5, 2, 2.0, kind: :turtle, cycle: nil),
+        Lanes.lane(3, 1, 1.0, 3, 4, 2, 5.0, kind: :log),
         Lanes.lane(4, -1, 2.0, 3, 3, 4, 1.0, kind: :log),
-        Lanes.lane(5, 1, 1.5, 4, 4, 2, 7.0, kind: :log),
+        Lanes.lane(5, 1, 1.5, 3, 3, 3, 7.0, kind: :turtle, cycle: {6.0, 3.0}),
         Lanes.lane(7, 1, 3.0, 2, 5, 3, 0.0, kind: :car),
         Lanes.lane(8, -1, 2.4, 3, 4, 3, 4.0, kind: :truck),
         Lanes.lane(9, 1, 3.6, 2, 6, 2, 1.0, kind: :car),
@@ -74,7 +74,8 @@ defmodule Crossing.Game do
   @impl true
   def step(%__MODULE__{status: :playing} = game, dt) do
     lanes = Enum.map(game.lanes, &Lanes.step(&1, dt))
-    game = %{game | lanes: lanes, elapsed: game.elapsed + dt, snake: snake(game.snake, dt)}
+    elapsed = game.elapsed + dt
+    game = %{game | lanes: lanes, elapsed: elapsed, snake: snake(game.snake, elapsed, dt)}
 
     cond do
       elem(game.frog, 1) == @home -> home(game)
@@ -160,18 +161,23 @@ defmodule Crossing.Game do
 
   defp lane_at(%__MODULE__{lanes: lanes}, row), do: Enum.find(lanes, &(&1.row == row))
 
-  # The snake patrols the median, turning at each end of it.
-  defp snake(%{x: x, dir: dir}, dt) do
-    x = x + dir * 2.6 * dt
+  # The snake comes and goes: it crosses the median for a few seconds, then is away.
+  @snake_period 20.0
+  @snake_crossing 8.0
 
-    cond do
-      x > @width - 1.2 -> %{x: @width - 1.2, dir: -1}
-      x < 0.6 -> %{x: 0.6, dir: 1}
-      true -> %{x: x, dir: dir}
+  defp snake(%{x: x}, elapsed, dt) do
+    if :math.fmod(elapsed, @snake_period) < @snake_crossing do
+      next = x + 2.6 * dt
+      %{x: if(next > @width + 1.5, do: -1.5, else: next)}
+    else
+      %{x: -1.5}
     end
   end
 
-  defp bitten?(%__MODULE__{frog: {x, 6}, snake: %{x: sx}}), do: abs(x - sx) < 0.9
+  defp bitten?(%__MODULE__{frog: {x, 6}, snake: %{x: sx}, elapsed: elapsed}) do
+    :math.fmod(elapsed, @snake_period) < @snake_crossing and abs(x - sx) < 0.9
+  end
+
   defp bitten?(%__MODULE__{}), do: false
 
   # --- the score, and the lives ---------------------------------------------------
