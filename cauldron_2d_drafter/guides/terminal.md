@@ -1,7 +1,7 @@
 # Running a game in a terminal
 
 `cauldron_2d_drafter` puts a [`cauldron_2d`](https://hexdocs.pm/cauldron_2d/tutorial.html)
-game in a terminal, through [drafter](https://hexdocs.pm/drafter/design_notes.html). The
+game in a terminal, through [drafter](https://hexdocs.pm/drafter). The
 game is written once, as a `Cauldron.Client.Game`, and this package runs it through the
 screens a player sees: the title, the lobby, the settings, the world and the summary.
 
