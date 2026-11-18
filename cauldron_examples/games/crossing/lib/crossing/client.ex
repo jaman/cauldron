@@ -39,7 +39,7 @@ defmodule Crossing.Client do
   def start, do: {:play, :crossing}
 
   @impl true
-  def look, do: %{projection: :top, zoom: 2}
+  def look, do: %{projection: :top, zoom: 1}
 
   @impl true
   def scene(view), do: scene(view, %{})
