@@ -5,11 +5,13 @@ struct DeformPush {
   Vertex *blend_source;
   uint2 *skin;
   float4 *bones;
+  float4 *morphs;
+  float *morph_weights;
   Vertex *target;
   uint count;
   float blend;
   uint bone_count;
-  uint pad;
+  uint morph_count;
 }
 
 [[vk::push_constant]] ConstantBuffer<DeformPush> push;
@@ -30,6 +32,15 @@ void compute_main(uint3 id : SV_DispatchThreadID) {
     Vertex other = push.blend_source[index];
     position = lerp(position, other.position_u.xyz, push.blend);
     normal = lerp(normal, other.normal_v.xyz, push.blend);
+  }
+  if (push.morph_count > 0 && push.morphs != nullptr) {
+    for (uint target = 0; target < push.morph_count; target++) {
+      float weight = push.morph_weights[target];
+      if (weight == 0) continue;
+      uint at = (target * push.count + index) * 2;
+      position += push.morphs[at].xyz * weight;
+      normal += push.morphs[at + 1].xyz * weight;
+    }
   }
   if (push.bone_count > 0 && push.skin != nullptr) {
     uint2 skin = push.skin[index];

@@ -1,7 +1,12 @@
 #include "internal.hpp"
 
+#if defined(CG_WINDOWS)
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_vulkan.h>
+#endif
+#if defined(__ANDROID__)
+#include <android/native_window.h>
+#endif
 
 #include <algorithm>
 #include <stdexcept>
@@ -20,8 +25,26 @@ vk::SurfaceFormatKHR choose_surface_format(vk::PhysicalDevice physical, vk::Surf
   throw std::runtime_error("surface offers no format cauldron_gpu can describe");
 }
 
+vk::SurfaceTransformFlagBitsKHR choose_transform(const vk::SurfaceCapabilitiesKHR &capabilities) {
+  if (capabilities.supportedTransforms & vk::SurfaceTransformFlagBitsKHR::eIdentity) return vk::SurfaceTransformFlagBitsKHR::eIdentity;
+  return capabilities.currentTransform;
+}
+
+bool quarter_turned(vk::SurfaceTransformFlagBitsKHR transform) {
+  return transform == vk::SurfaceTransformFlagBitsKHR::eRotate90 || transform == vk::SurfaceTransformFlagBitsKHR::eRotate270 ||
+         transform == vk::SurfaceTransformFlagBitsKHR::eHorizontalMirrorRotate90 ||
+         transform == vk::SurfaceTransformFlagBitsKHR::eHorizontalMirrorRotate270;
+}
+
+vk::Extent2D upright_extent(const vk::SurfaceCapabilitiesKHR &capabilities) {
+  vk::Extent2D extent = capabilities.currentExtent;
+  bool compositor_turns = choose_transform(capabilities) == vk::SurfaceTransformFlagBitsKHR::eIdentity &&
+                          quarter_turned(capabilities.currentTransform);
+  return compositor_turns ? vk::Extent2D{.width = extent.height, .height = extent.width} : extent;
+}
+
 vk::Extent2D choose_extent(const vk::SurfaceCapabilitiesKHR &capabilities, uint32_t width, uint32_t height) {
-  if (capabilities.currentExtent.width != UINT32_MAX) return capabilities.currentExtent;
+  if (capabilities.currentExtent.width != UINT32_MAX) return upright_extent(capabilities);
   return {
       .width = std::clamp(width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width),
       .height = std::clamp(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height),
@@ -78,7 +101,7 @@ Swapchain build_swapchain(cg_device &device, const vk::SurfaceCapabilitiesKHR &c
       .imageArrayLayers = 1,
       .imageUsage = usage,
       .imageSharingMode = vk::SharingMode::eExclusive,
-      .preTransform = capabilities.currentTransform,
+      .preTransform = choose_transform(capabilities),
       .compositeAlpha = choose_composite_alpha(capabilities),
       .presentMode = vk::PresentModeKHR::eFifo,
       .clipped = vk::True,
@@ -121,23 +144,18 @@ void destroy_surface(cg_device &device) {
   if (!surface.handle) return;
   device.queue.waitIdle();
   destroy_swapchain(device, surface.swapchain);
-  SDL_Vulkan_DestroySurface(device.instance, surface.handle, nullptr);
+  device.instance.destroySurfaceKHR(surface.handle);
   surface.handle = vk::SurfaceKHR{};
   surface.reported_format = CG_FORMAT_UNDEFINED;
 }
 
-bool attach_surface(cg_device &device, SDL_Window *window) {
+bool adopt_surface(cg_device &device, vk::SurfaceKHR created, int width, int height) {
   Surface &surface = device.surface;
-  VkSurfaceKHR created = VK_NULL_HANDLE;
-  if (!SDL_Vulkan_CreateSurface(window, device.instance, nullptr, &created)) throw std::runtime_error(SDL_GetError());
   surface.handle = created;
   if (!device.physical.getSurfaceSupportKHR(device.queue_family, surface.handle)) {
     destroy_surface(device);
     throw std::runtime_error("the chosen queue cannot present to this window");
   }
-  int width = 0;
-  int height = 0;
-  SDL_GetWindowSizeInPixels(window, &width, &height);
   surface.format = choose_surface_format(device.physical, surface.handle);
   surface.reported_format = from_vk_format(surface.format.format);
   surface.width = static_cast<uint32_t>(std::max(width, 0));
@@ -145,6 +163,24 @@ bool attach_surface(cg_device &device, SDL_Window *window) {
   surface.stale = true;
   return true;
 }
+
+#if defined(CG_WINDOWS)
+bool attach_surface(cg_device &device, SDL_Window *window) {
+  VkSurfaceKHR created = VK_NULL_HANDLE;
+  if (!SDL_Vulkan_CreateSurface(window, device.instance, nullptr, &created)) throw std::runtime_error(SDL_GetError());
+  int width = 0;
+  int height = 0;
+  SDL_GetWindowSizeInPixels(window, &width, &height);
+  return adopt_surface(device, created, width, height);
+}
+#endif
+
+#if defined(__ANDROID__)
+bool attach_native_surface(cg_device &device, ANativeWindow *window) {
+  vk::SurfaceKHR created = device.instance.createAndroidSurfaceKHR(vk::AndroidSurfaceCreateInfoKHR{.window = window});
+  return adopt_surface(device, created, ANativeWindow_getWidth(window), ANativeWindow_getHeight(window));
+}
+#endif
 
 }
 
@@ -185,6 +221,7 @@ void release_surface(cg_device &device) {
 }
 
 bool surface_attach(cg_device *device, void *sdl_window) noexcept {
+#if defined(CG_WINDOWS)
   std::lock_guard lock(device->surface.mutex);
   if (device->surface.handle) return true;
   try {
@@ -193,6 +230,28 @@ bool surface_attach(cg_device *device, void *sdl_window) noexcept {
     report_failure("surface_attach", error.what());
     return false;
   }
+#else
+  (void)device;
+  (void)sdl_window;
+  return false;
+#endif
+}
+
+bool surface_attach_native(cg_device *device, void *window) noexcept {
+#if defined(__ANDROID__)
+  std::lock_guard lock(device->surface.mutex);
+  if (device->surface.handle) return true;
+  try {
+    return attach_native_surface(*device, static_cast<ANativeWindow *>(window));
+  } catch (const std::exception &error) {
+    report_failure("surface_attach_native", error.what());
+    return false;
+  }
+#else
+  (void)device;
+  (void)window;
+  return false;
+#endif
 }
 
 void surface_detach(cg_device *device) noexcept {

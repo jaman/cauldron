@@ -1,0 +1,267 @@
+:root {
+  --ink: #1b1a17;
+  --muted: #5c5850;
+  --paper: #fbf8f1;
+  --rule: #d9d2c3;
+  --teal: #0d6b63;
+  --amber: #a85a13;
+  --clay: #8a5a44;
+}
+
+@page {
+  size: A4;
+  margin: 17mm 16mm 18mm 16mm;
+}
+
+@page :first { margin: 0; }
+
+html { font-size: 10.5pt; }
+
+body {
+  font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  line-height: 1.52;
+  margin: 0;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ---------- cover ---------- */
+
+.cover {
+  box-sizing: border-box;
+  position: relative;
+  width: 210mm;
+  height: 297mm;
+  margin: 0;
+  padding: 26mm 20mm 16mm 20mm;
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  page-break-after: always;
+  background:
+    radial-gradient(120% 90% at 8% 0%, #123c3a 0%, #0b1f22 55%, #071417 100%);
+  color: #f4efe3;
+}
+
+.cover .kicker {
+  font-size: 9pt;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: #d9b36a;
+  margin: 0 0 10mm 0;
+}
+
+.cover h1.cover-title {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-size: 38pt;
+  line-height: 1.02;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0 0 6mm 0;
+  color: #f7f1e3;
+  border: 0;
+  padding: 0;
+}
+
+.cover .cover-sub {
+  font-size: 13pt;
+  line-height: 1.45;
+  color: #c9c1ae;
+  max-width: 150mm;
+  margin: 0;
+}
+
+.cover .cover-art {
+  position: absolute;
+  left: 18mm;
+  right: 18mm;
+  bottom: 34mm;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3mm;
+}
+
+.cover .cover-art figure {
+  margin: 0;
+  break-inside: avoid;
+}
+
+.cover .cover-art img {
+  width: 100%;
+  height: 42mm;
+  object-fit: cover;
+  border-radius: 1.2mm;
+  display: block;
+  filter: saturate(0.95);
+}
+
+.cover .cover-art figcaption {
+  font-size: 7.4pt;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9aa8a0;
+  margin-top: 2mm;
+}
+
+.cover .cover-foot {
+  position: absolute;
+  left: 18mm;
+  right: 18mm;
+  bottom: 18mm;
+  padding-top: 4mm;
+  border-top: 0.4pt solid #33504c;
+  font-size: 8.4pt;
+  color: #8fa39b;
+  display: flex;
+  justify-content: space-between;
+}
+
+/* ---------- body ---------- */
+
+h1, h2, h3, h4 {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  color: #14201e;
+  line-height: 1.12;
+  break-after: avoid;
+}
+
+h1 {
+  font-size: 27pt;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0 0 5mm 0;
+  padding-top: 3mm;
+  border-top: 2.2pt solid var(--teal);
+  break-before: page;
+}
+
+h1:first-of-type { border-top: 0; }
+
+h2 {
+  font-size: 16.5pt;
+  font-weight: 600;
+  margin: 8mm 0 2.4mm 0;
+  color: var(--teal);
+}
+
+h3 {
+  font-size: 12.2pt;
+  font-weight: 600;
+  margin: 6mm 0 1.6mm 0;
+  color: var(--amber);
+}
+
+h4 {
+  font-size: 10.6pt;
+  font-weight: 600;
+  margin: 4.5mm 0 1.2mm 0;
+}
+
+p { margin: 0 0 2.7mm 0; orphans: 3; widows: 3; }
+
+strong { color: #0d1614; }
+
+a { color: var(--teal); text-decoration: none; }
+
+ul, ol { margin: 0 0 3mm 0; padding-left: 5.2mm; }
+li { margin: 0 0 1.3mm 0; }
+
+blockquote {
+  margin: 0 0 4mm 0;
+  padding: 2.4mm 5mm;
+  border-left: 2.4pt solid #d9b36a;
+  background: #f4eddd;
+  color: #4c463c;
+  font-family: "Iowan Old Style", Palatino, Georgia, serif;
+  font-size: 12pt;
+  font-style: italic;
+}
+
+blockquote p { margin: 0; }
+
+hr {
+  border: 0;
+  border-top: 0.5pt solid var(--rule);
+  margin: 7mm 0;
+}
+
+/* ---------- tables ---------- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 8.1pt;
+  line-height: 1.35;
+  margin: 3mm 0 5mm 0;
+  break-inside: avoid;
+}
+
+thead { background: #14312e; color: #f5efe2; }
+
+th {
+  text-align: left;
+  font-weight: 600;
+  padding: 1.6mm 1.8mm;
+  vertical-align: bottom;
+  letter-spacing: 0.01em;
+}
+
+td {
+  padding: 1.5mm 1.8mm;
+  border-bottom: 0.4pt solid var(--rule);
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) { background: #f4eee2; }
+
+td:first-child, th:first-child { padding-left: 2.2mm; }
+
+/* ---------- images ---------- */
+
+img {
+  max-width: 100%;
+  border-radius: 1.4mm;
+  display: block;
+  margin: 3mm auto 1.5mm auto;
+  break-inside: avoid;
+}
+
+p > img { margin-top: 1mm; }
+
+/* a hero image after a pitch title */
+h1 + p > img { margin-top: 0; }
+
+code {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 8.4pt;
+  background: #eee7d8;
+  padding: 0.2mm 1mm;
+  border-radius: 0.8mm;
+}
+
+pre {
+  background: #12211f;
+  color: #e8e2d2;
+  padding: 3mm 4mm;
+  border-radius: 1.2mm;
+  font-size: 8.2pt;
+  overflow: hidden;
+  break-inside: avoid;
+}
+
+pre code { background: transparent; color: inherit; padding: 0; }
+
+/* ---------- pdf-specific ---------- */
+
+@page { @bottom-center { content: ""; } }
+
+.cover + h1 { break-before: auto; }
+
+table, blockquote, img { break-inside: avoid; }
+
+h1 + p, h1 + blockquote { break-before: avoid; }
+
+/* The appendix earns its own page. */
+h2#appendix-the-art-in-this-document { break-before: page; }

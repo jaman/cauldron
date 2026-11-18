@@ -47,8 +47,8 @@ defmodule Cauldron2D.Sectors.Frame do
   picture in Elixir, many times slower.
   """
 
+  alias Cauldron2D.Raster
   alias Cauldron2D.Sectors.Pictures
-  alias FrenchCurve.Raster
 
   @on_load :load_nif
 
@@ -86,7 +86,7 @@ defmodule Cauldron2D.Sectors.Frame do
   @doc false
   def load_nif do
     "sector_nif"
-    |> Cauldron2D.Native.path()
+    |> Cauldron2D.Nifs.path()
     |> :erlang.load_nif(0)
     |> then(&:persistent_term.put({__MODULE__, :native}, &1 == :ok))
   end

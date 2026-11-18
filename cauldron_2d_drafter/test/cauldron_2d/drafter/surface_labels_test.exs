@@ -94,5 +94,10 @@ defmodule Cauldron2D.Drafter.SurfaceLabelsTest do
 
     {again, _clear, _region} = Surface.image(%{state | mode: :kitty}, rect(20, 10), :map)
     refute IO.iodata_to_binary(again) =~ "a=t,i=#{id}"
+
+    {gone, _clear, _region} =
+      Surface.image(%{state | mode: :kitty, labels: []}, rect(20, 10), :map)
+
+    assert IO.iodata_to_binary(gone) =~ "a=d,d=i,i=#{id}"
   end
 end

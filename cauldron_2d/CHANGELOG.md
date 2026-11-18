@@ -1,5 +1,98 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- `Cauldron2D.Native`, the folder of the compiled NIFs, is `Cauldron2D.Nifs`; `Cauldron2D.Native` names the modules of `cauldron_2d_native`.
+
+### Added
+
+- `Cauldron2D.Draw.props/4` passes a scene's `:gpu` and `:gpu_size` on, for a drawer that sends 3D scenes.
+- Picture modules for games, so a game needs no other package: `Cauldron2D.Picture` (sprites as text, headings, `.png` and `.pic` files, flips, turns, tints, scaling, frames), `Cauldron2D.Shapes` (lines, rectangles, circles, polygons), `Cauldron2D.Raster` (a picture's pixels) and `Cauldron2D.Font` (an atlas's pixel fonts); `Cauldron2D.Palette.names/0`. The atlas manifest's docs list the derivation operations.
+
+### Breaking changes
+
+- The parts of the engine with no way of drawing moved to the new `cauldron_core` package, under `Cauldron.*`: games and worlds (`Cauldron.Game`, `Cauldron.World`, `Cauldron.Worlds`, `Cauldron.Player`, `Cauldron.Robot`, `Cauldron.Replay`, `Cauldron.Test`), play across machines, input, menus, the shared client modules (`Cauldron.Client.*`), sound, saving and the game-state helpers. `Cauldron2D.X` for any of them is now `Cauldron.X`. Tile worlds, atlases, drawing, projections, maps, grids, sectors and 2D bodies stay here.
+- The shared client contract is `Cauldron.Client.Game`, with a new required `view/0`. `Cauldron2D.Client.Game` is now the 2D contract over it: a game writes `use Cauldron2D.Client.Game` (a game that declared `@behaviour Cauldron2D.Client.Game` writes the `use` instead), which names the 2D view, `Cauldron2D.Client.View`, and declares `atlas/0`.
+- `Cauldron2D.Client.Look.given/4` is `Cauldron.Client.View.given/4`.
+- `Cauldron.Client.Hud.colour/2` takes the lookup for named colours: `&Cauldron2D.Palette.rgb/1`.
+- `config :cauldron_2d, sweeper:` and `beacon_port:` are `config :cauldron_core, ...`.
+
+### Added
+
+- `Cauldron2D.Client.View`, the `Cauldron.Client.View` of a 2D game; `Cauldron2D.Palette`, the colour names the 2D front ends draw.
+- `Cauldron.Client.Stage.rest/1` and `wake/1`: the player stepped away from the client and came back. `rest/1` opens the game's menu unless it is open (pausing a world of the player's own), or pauses a game without a menu; `wake/1` resumes a game without a menu.
+- A `static` target in the Makefile builds the NIFs as static archives for `cauldron_mobile`.
+
+- `Cauldron.Menu.pad?/1`: whether the last key came from a controller. A confirm prompt opened from a controller reads `A YES  B NO` instead of `Y / N`.
+
+### Fixed
+
+- A press that begins and ends between two of a world's steps counts for one step (`Cauldron.World.Pending`); a quick tap on a phone's on-screen button was lost.
+
+- A controller's `A`, d-pad and `B` (`{:key, key, [:pad]}`) work menus and fronts again: `Cauldron.Input.spec_of/1` no longer treats the `:pad` marker as a modifier.
+
+### Breaking changes
+
+- `Cauldron.Client.Game`'s optional `map/1` callback and the `static_map/2` function are
+  removed. No front end draws a static layer any more: every front end draws the scene
+  from `scene/1` (or `scene/2`) with `Cauldron2D.Draw`. Delete a game's `map/1`.
+
+### Added
+
+- `Cauldron2D.Draw`: a scene drawn as one picture — the world from the atlas in its
+  projection, parallax layers, movers, labels, volumes, and the `:screen` and
+  `:outlines` over them. It is the renderer of every front end: the terminal's
+  `Cauldron2D.Drafter.Surface`, the desktop window and the browser all draw through it.
+- The client modules every front end shares, under `Cauldron2D.Client`: `Look` (the
+  view and how input turns with it), `Keys` (the client's own keys and controller
+  buttons), `Menus` (the game's own menu), `Start` (where a client starts), `Fronts` (the
+  game's own title and summary), `Stage` (a player's client-side state in a world, for a
+  client run in Elixir), `Controls` (what a player holds, from raw key, mouse and
+  controller events), `Party` (the players on one machine and which controller plays
+  whom), `Seats` (the further players on one machine) and `Controllers` (controllers by
+  name, and which player each plays).
+- `Cauldron.Chat`, started by the `:cauldron_2d` application: rooms `:lobby` and
+  `{:world, id}` that a terminal, a desktop and a browser share. It replaces
+  `Cauldron2D.Drafter.Chat`.
+- `Cauldron.Client.Game.player_label/2` (how a player's id is written in a lobby and a
+  chat line), `frame_rates/1` (the frame rates a settings screen offers) and `padmap/3`
+  (the game's `padmap/1`, or the default map passing over the buttons the client keeps).
+- `Cauldron.Client.Game`'s moduledoc lists which front end reads which callback.
+- `use Cauldron.Client.Game`: overridable `toggles/0`, `hud/1`, `listener/1`,
+  `sounds/0`, `music/0`, `cue/2`, and `scene/1` from the game's `scene/2`.
+- `Cauldron.Launch`: one order for a run's settings — the option given, the game's saved
+  launch values, the environment, application config, the default.
+- Gameplay modules: `Projectiles`, `Projectiles.Pattern`, `Box`, `BoxBody`, `Jump`,
+  `Presses`, `Walk`, `Moves`, `Impact`, `Effects`, `Timers`, `Scores`, `Steering`, `Ease`,
+  `Tween`, `Grid.Ray`, `Particles.Emitter`, `Map.Tiled` and `Map.Ldtk`; camera bounds
+  and a deadzone in `Camera` and `Camera.Follow`; `States` counted in seconds; a scene's
+  `:outlines`.
+- `Cauldron.Menu` and `Cauldron.Menu.Item`: how a game's menu behaves — pages, the cursor,
+  toggles, choices, sliders, key binding, typed text, yes/no prompts — with nothing about
+  how it looks; it answers `open_menu/1` and `menu_event/3` as they are.
+- `Cauldron2D.Menu.Layout`: a menu as screen items in the game's own fonts, panel, cursor and
+  colours.
+- `Cauldron2D.Screen` and a scene's `:screen`: art, text, nine-slice panels, bars and fills
+  fixed to the pane by anchor and pivot, for huds, menus and titles.
+- `Cauldron.Front` and the client's `fronts/1`: a title or summary the game draws and runs
+  itself, the client keeping the moves between screens.
+- Pixel fonts on the atlas: `Atlas.put_font/3`, `font!/2`, `white_font!/2`, and
+  `Atlas.load/3`'s `:fonts`.
+- `Surface.sprite_rgba/5` takes a tint.
+- `Cauldron.Audio.Recording`: WAV files read as `%{rate:, channels:, pcm:}`.
+- A music layer can be a recording at any rate and channels,
+  `{:pcm, pcm, rate, channels}`, fitted to the stage's.
+- A game's `audio/0` can set the stage's `:rate`.
+- `Parallax.panorama/1` takes `cover: true`: the picture enlarged by whole pixels to fill
+  the pane's height, for a sky behind everything.
+
+### Fixed
+
+- Music recorded at a rate other than the stage's no longer plays slow and flat: a
+  recording given with its rate is fitted to the stage's.
+
 ## [0.3.3]
 
 ### Changed

@@ -1,6 +1,7 @@
 defmodule Cauldron2D.Drafter.Server do
   @moduledoc """
-  Serve a game over ssh, with its accounts, its web endpoint and its beacon.
+  Serve a game over ssh, with its accounts, its web endpoint and its beacon; or over
+  telnet with none of them (`start_telnet/2`).
 
       {:ok, server} = Cauldron2D.Drafter.Server.start(game: MyGame.Client, port: 2222, web: {:my_game, MyGame.Web.Endpoint, 2280})
       Cauldron2D.Drafter.Server.stop(server)
@@ -11,15 +12,17 @@ defmodule Cauldron2D.Drafter.Server do
   next, and so on — kept in its props as `:pulse_port`; the terminal client's audio
   goes as raw PCM through the `ssh -R <port>:127.0.0.1:4713` tunnel to a player
   program on the player's machine. The worlds are the game's, registered with
-  `Cauldron2D.Worlds` before or after the server starts.
+  `Cauldron.Worlds` before or after the server starts.
 
   ## Options
 
-    * `:game` — the module implementing `Cauldron2D.Client.Game`. Required
+    * `:game` — the module implementing `Cauldron.Client.Game`. Required
     * `:port` — the ssh port, `0` for any free one. Default `2222`
     * `:ip` — what to bind, as `Drafter.Server.start_ssh/2` takes it. Default `:any`
     * `:accounts` — the account file, or a running `Drafter.Accounts` server. Default
-      `Cauldron2D.Paths.data(atlas, "accounts.terms")`
+      `Cauldron.Paths.data(home, "accounts.terms")`, `home` the game's
+      `Cauldron.Client.Game.home/1`, or the file under the game's atlas name where one
+      is kept there and none under the home
     * `:accounts_name` — a name for the accounts server it starts. Default none
     * `:sound_port` — the first account's sound port, `false` for none. Default `24713`
     * `:system_dir` — the ssh host key directory. Default: drafter's temporary keys
@@ -32,8 +35,8 @@ defmodule Cauldron2D.Drafter.Server do
       ssh's host key question and the password included. Default `600000`
     * `:web` — `{otp_app, endpoint, port}`: the game's Phoenix endpoint, started on
       every IPv4 interface at that port. Default: none
-    * `:beacon` — call on the local network with `Cauldron2D.Beacon`. Default `true`
-    * `:beacon_port` — its port. Default `Cauldron2D.Beacon.port/0`
+    * `:beacon` — call on the local network with `Cauldron.Beacon`. Default `true`
+    * `:beacon_port` — its port. Default `Cauldron.Beacon.port/0`
     * `:node` — name this VM so other nodes can join its worlds, `false` for none.
       Default `<atlas>@<host>`, when the VM is not already named
 
@@ -42,7 +45,8 @@ defmodule Cauldron2D.Drafter.Server do
   started, leaving the worlds registered.
   """
 
-  alias Cauldron2D.{Beacon, Paths}
+  alias Cauldron.{Beacon, Paths}
+  alias Cauldron.Client.Game
 
   @supervisor Cauldron2D.Drafter.Server.Supervisor
   @sound_port 24_713
@@ -108,6 +112,26 @@ defmodule Cauldron2D.Drafter.Server do
     :ok
   end
 
+  @doc """
+  Serve `game` over telnet, with no accounts and no sound: every connection runs the
+  terminal client (`Cauldron2D.Drafter.Client`) on its own. Options: `:port` (default
+  `2323`, on every interface) and `:props`, more mount props for every session, the
+  game's own or the client's (`:username`, `:settings`).
+
+      {:ok, _listener} = Cauldron2D.Drafter.Server.start_telnet(MyGame.Client, port: 2323)
+  """
+  @spec start_telnet(module(), keyword()) :: {:ok, pid()}
+  def start_telnet(game, opts \\ []) do
+    Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
+    Drafter.Widget.Registry.register(Cauldron2D.Drafter.Surface)
+    props = Map.merge(Map.new(Keyword.get(opts, :props, [])), %{game: game, mute: true})
+
+    Drafter.Server.start_telnet(Cauldron2D.Drafter.Client,
+      port: Keyword.get(opts, :port, 2323),
+      mount_props: props
+    )
+  end
+
   defp disconnect(daemon, accounts, notice) do
     Drafter.Server.stop_ssh(daemon, notice)
     if is_pid(accounts) and Process.alive?(accounts), do: GenServer.stop(accounts)
@@ -120,11 +144,18 @@ defmodule Cauldron2D.Drafter.Server do
 
       path ->
         Drafter.Accounts.start_link(
-          path: path || Paths.data(game.atlas(), "accounts.terms"),
+          path: path || accounts_path(game),
           name: Keyword.get(opts, :accounts_name),
           default_props: sound_ports(Keyword.get(opts, :sound_port, @sound_port))
         )
     end
+  end
+
+  defp accounts_path(game) do
+    Paths.existing(
+      Paths.data(Game.home(game), "accounts.terms"),
+      Paths.data(game.atlas(), "accounts.terms")
+    )
   end
 
   defp sound_ports(false), do: fn _number -> %{} end

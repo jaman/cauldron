@@ -1,0 +1,51 @@
+:root {
+  color-scheme: dark;
+  --bg: #12131a;
+  --fg: #d7d9e3;
+  --dim: #6d7186;
+  --on: #ffd166;
+}
+
+body {
+  margin: 0;
+  padding: 2rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.sfx { max-width: 78rem; }
+h1 { margin: 0 0 .25rem; font-size: 1.1rem; letter-spacing: .08em; color: var(--on); }
+.summary, .keys { color: var(--dim); margin: .25rem 0 1.25rem; }
+.detail, .said { color: var(--dim); margin: .75rem 0 .25rem; }
+
+.events { list-style: none; margin: 0; padding: 0; }
+.events button {
+  display: flex; gap: .5rem; width: 100%; padding: .2rem .5rem;
+  background: none; border: 0; border-radius: 3px; color: var(--fg);
+  font: inherit; text-align: left; cursor: pointer;
+}
+.events .on button { background: #232634; color: var(--on); }
+.events .marker { width: 1ch; }
+.events button:hover { background: #1c1f2b; }
+
+.buttons { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0 0; }
+.buttons button {
+  padding: .25rem .6rem; border: 1px solid #2d3142; border-radius: 4px;
+  background: #1a1d28; color: var(--fg); font: inherit; cursor: pointer;
+}
+.buttons button:hover { border-color: var(--on); color: var(--on); }
+
+.new { display: flex; gap: .4rem; margin: 1rem 0 .25rem; }
+.new input {
+  flex: 0 1 22rem; padding: .3rem .5rem; border: 1px solid #2d3142; border-radius: 4px;
+  background: #1a1d28; color: var(--fg); font: inherit;
+}
+.new input:focus { outline: none; border-color: var(--on); }
+.new button {
+  padding: .3rem .7rem; border: 1px solid #2d3142; border-radius: 4px;
+  background: #1a1d28; color: var(--fg); font: inherit; cursor: pointer;
+}
+.new button:hover { border-color: var(--on); color: var(--on); }
+
+.player { width: 100%; margin-top: .75rem; height: 2.2rem; }

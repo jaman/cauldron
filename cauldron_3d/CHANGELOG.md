@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+- A `static` Makefile target builds the NIFs as static archives for `cauldron_mobile`, so the renderer has its C code in phone apps.
+
+### Added
+
+- `Cauldron3D.SpringBones`: bone chains that swing on their own (hair, sleeves, skirts),
+  posed with the rest of a skeleton: drag, stiffness, gravity and collision spheres.
+- `Cauldron3D.WalkGrid`: where something walking on a flat floor can go, as a grid of
+  cells built from triangles, with `free?/3`, `slide/4` and `reach/4`.
+- `Cauldron3D.Quat.axis_angle/2`, `multiply/2`, `conjugate/1` and `from_to/2`.
+
 ## [0.3.3]
 
 ### Changed

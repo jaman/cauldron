@@ -76,6 +76,19 @@ vec3 cauldronDisplayLit(vec3 albedo, vec3 light, vec3 emissive) {
 }
 `;
 
+const SMEAR_VERTEX = `
+varying vec2 vUv;
+#include <skinning_pars_vertex>
+#include <morphtarget_pars_vertex>
+void main() {
+  vUv = uv;
+  #include <morphinstance_vertex>
+  #include <skinbase_vertex>
+  vec3 transformed = vec3(position);
+  #include <morphtarget_vertex>
+  #include <skinning_vertex>
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(transformed, 1.0);
+}`;
 const SMEAR_FRAGMENT = `
 uniform sampler2D behind;
 uniform vec2 resolution;
@@ -174,6 +187,51 @@ vec2 warpedUv(sampler2D picture, vec2 uv) {
 }
 `;
 
+const IDENTITY_MATRIX = new THREE.Matrix4().elements;
+
+class PosedSkeleton extends THREE.Skeleton {
+  constructor(count) {
+    super(Array.from({ length: count }, () => new THREE.Bone()));
+    for (let bone = 0; bone < count; bone++) this.boneMatrices.set(IDENTITY_MATRIX, bone * 16);
+  }
+
+  update() {}
+
+  pose(bones) {
+    const available = bones.length / 12;
+    const matrices = this.boneMatrices;
+    for (let bone = 0; bone < this.bones.length; bone++) {
+      const offset = bone * 16;
+      if (available === 0) {
+        matrices.set(IDENTITY_MATRIX, offset);
+        continue;
+      }
+      const at = Math.min(bone, available - 1) * 12;
+      for (let row = 0; row < 3; row++) {
+        for (let column = 0; column < 4; column++) matrices[offset + column * 4 + row] = bones[at + row * 4 + column];
+      }
+    }
+    if (this.boneTexture) this.boneTexture.needsUpdate = true;
+  }
+}
+
+function addSkin(geometry, skin, vertexCount) {
+  const joints = new Uint16Array(vertexCount * 4);
+  const weights = new Uint8Array(vertexCount * 4);
+  let highest = 0;
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    for (let slot = 0; slot < 4; slot++) {
+      const joint = skin[vertex * 8 + slot];
+      joints[vertex * 4 + slot] = joint;
+      weights[vertex * 4 + slot] = skin[vertex * 8 + 4 + slot];
+      if (joint > highest) highest = joint;
+    }
+  }
+  geometry.setAttribute("skinIndex", new THREE.BufferAttribute(joints, 4));
+  geometry.setAttribute("skinWeight", new THREE.BufferAttribute(weights, 4, true));
+  return highest + 1;
+}
+
 class Reader {
   constructor(buffer) {
     this.view = new DataView(buffer);
@@ -183,6 +241,7 @@ class Reader {
   done() { return this.at >= this.view.byteLength; }
   u8() { return this.view.getUint8(this.at++); }
   u16() { const value = this.view.getUint16(this.at, true); this.at += 2; return value; }
+  i16() { const value = this.view.getInt16(this.at, true); this.at += 2; return value; }
   u32() { const value = this.view.getUint32(this.at, true); this.at += 4; return value; }
   f32() { const value = this.view.getFloat32(this.at, true); this.at += 4; return value; }
   floats(count) { const out = []; for (let i = 0; i < count; i++) out.push(this.f32()); return out; }
@@ -226,6 +285,10 @@ const SPRITE_BLENDS = [
   { blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor }
 ];
 
+function textureBytes(format) {
+  return format === 2 ? 8 : format === 3 ? 1 : 4;
+}
+
 function readLayer(reader) {
   const kind = reader.u8();
   const layer = { kind, target: reader.u32(), clear: reader.u8() !== 0, clearColour: reader.floats(4), port: reader.floats(4) };
@@ -239,10 +302,61 @@ function readLayer(reader) {
         scale: reader.floats(2), turn: reader.floats(2), colour: reader.floats(4)
       });
     }
+  } else if (kind === 3) {
+    layer.view = reader.floats(4);
+    layer.atlas = reader.u32();
+    layer.table = reader.u32();
+    layer.count = reader.u32();
+    const transparent = reader.u16();
+    layer.transparent = transparent === 0xFFFF ? -1 : transparent;
+    layer.pens = reader.u16();
+    const count = reader.u32();
+    layer.tiles = [];
+    for (let i = 0; i < count; i++) {
+      layer.tiles.push({
+        source: [reader.u16(), reader.u16(), reader.u8(), reader.u8()], position: [reader.i16(), reader.i16()],
+        flags: reader.u8(), base: reader.u16()
+      });
+    }
+  } else if (kind === 4 || kind === 5) {
+    layer.view = reader.floats(4);
+    layer.atlas = reader.u32();
+    layer.palette = reader.u32();
+    layer.shadows = kind === 5 ? reader.u32() : 0;
+    layer.coverage = reader.u32();
+    const transparent = reader.u16();
+    layer.transparent = transparent === 0xFFFF ? -1 : transparent;
+    layer.pens = reader.u16();
+    const count = reader.u32();
+    layer.tiles = [];
+    for (let i = 0; i < count; i++) {
+      layer.tiles.push({
+        source: [reader.u16(), reader.u16(), reader.u8(), reader.u8()], position: [reader.i16(), reader.i16()],
+        flags: reader.u8(), base: reader.u16()
+      });
+    }
+    layer.painted = kind === 5 && count > 0 && (layer.tiles[0].flags & 128) !== 0;
+  } else if (kind === 2) {
+    layer.view = reader.floats(4);
+    layer.atlas = reader.u32();
+    layer.palette = reader.u32();
+
+    const transparent = reader.u16();
+    layer.transparent = transparent === 0xFFFF ? -1 : transparent;
+    layer.pens = reader.u16();
+    const count = reader.u32();
+    layer.tiles = [];
+    for (let i = 0; i < count; i++) {
+      layer.tiles.push({
+        source: [reader.u16(), reader.u16(), reader.u8(), reader.u8()], position: [reader.i16(), reader.i16()],
+        flags: reader.u8(), base: reader.u16()
+      });
+    }
   } else {
     layer.source = reader.u32();
     const count = reader.u32();
-    layer.columns = new Float32Array(count * 4);
+    layer.columns
+ = new Float32Array(count * 4);
     for (let i = 0; i < count; i++) layer.columns.set(reader.floats(3), i * 4);
   }
   return layer;
@@ -276,7 +390,213 @@ class Layers2D {
     this.sprites.frustumCulled = false;
     this.spriteScene = new THREE.Scene();
     this.spriteScene.add(this.sprites);
+    this.tileMaterial = new THREE.ShaderMaterial({
+      uniforms: { atlas: { value: null }, atlasSize: { value: new THREE.Vector2(1, 1) }, palette: { value: null }, paletteSize: { value: 1 }, paletteRows: { value: 1 }, transparent: { value: -1 }, pens: { value: 65535 }, decode: { value: 0 } },
+      vertexShader: "attribute vec3 texels; varying vec3 vTexels; void main() { vTexels = texels; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: `uniform sampler2D atlas; uniform vec2 atlasSize; uniform sampler2D palette; uniform float paletteSize; uniform float paletteRows; uniform float transparent; uniform float pens; uniform float decode; varying vec3 vTexels;
+        vec3 linearOf(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+        void main() {
+          vec4 texel = texture2D(atlas, (floor(vTexels.xy + 1.0 / 256.0) + 0.5) / atlasSize);
+          float pen = floor(texel.r * 255.0 + 0.5);
+          if (pen == transparent) discard;
+          if (mod(floor(pens / exp2(pen)), 2.0) < 0.5) discard;
+          vec4 shown = texture2D(palette, vec2((vTexels.z + pen + 0.5) / paletteSize, 0.5 / paletteRows));
+          gl_FragColor = decode > 0.5 ? vec4(linearOf(shown.rgb), shown.a) : shown;
+        }`,
+      transparent: false, blending: THREE.NoBlending, side: THREE.DoubleSide, depthTest: false, depthWrite: false
+    });
+    this.shadowMaterial = new THREE.ShaderMaterial({
+      uniforms: { atlas: { value: null }, atlasSize: { value: new THREE.Vector2(1, 1) }, table: { value: null }, count: { value: 1 }, behind: { value: null }, behindSize: { value: new THREE.Vector2(1, 1) }, transparent: { value: -1 }, pens: { value: 65535 }, decode: { value: 0 } },
+      vertexShader: "attribute vec3 texels; varying vec3 vTexels; void main() { vTexels = texels; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: `uniform sampler2D atlas; uniform vec2 atlasSize; uniform sampler2D table; uniform float count; uniform sampler2D behind; uniform vec2 behindSize; uniform float transparent; uniform float pens; uniform float decode; varying vec3 vTexels;
+        vec3 linearOf(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+        vec3 srgbOf(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
+        void main() {
+          vec4 texel = texture2D(atlas, (floor(vTexels.xy + 1.0 / 256.0) + 0.5) / atlasSize);
+          float pen = floor(texel.r * 255.0 + 0.5);
+          if (pen == transparent) discard;
+          if (mod(floor(pens / exp2(pen)), 2.0) < 0.5) discard;
+          vec3 under = texture2D(behind, gl_FragCoord.xy / behindSize).rgb;
+          if (decode > 0.5) under = srgbOf(under);
+          vec3 result = under;
+          for (int i = 0; i < 255; i++) {
+            if (float(i) >= count) break;
+            vec3 source = texture2D(table, vec2((float(i) + 0.5) / count, 0.25)).rgb;
+            if (all(lessThan(abs(source - under), vec3(0.6 / 255.0)))) {
+              result = texture2D(table, vec2((float(i) + 0.5) / count, 0.75)).rgb;
+              break;
+            }
+          }
+          gl_FragColor = vec4(decode > 0.5 ? linearOf(result) : result, 1.0);
+        }`,
+      transparent: false, blending: THREE.NoBlending, side: THREE.DoubleSide, depthTest: false, depthWrite: false
+    });
+    this.priorityMaterial = new THREE.ShaderMaterial({
+      uniforms: {
+        atlas: { value: null }, atlasSize: { value: new THREE.Vector2(1, 1) }, palette: { value: null }, paletteSize: { value: new THREE.Vector2(1, 1) },
+        coverage: { value: null }, behind: { value: null }, targetSize: { value: new THREE.Vector2(1, 1) },
+        shadows: { value: 0 }, transparent: { value: -1 }, pens: { value: 65535 }, decode: { value: 0 }
+      },
+      vertexShader: "attribute vec3 texels; varying vec3 vTexels; varying float vFlags; void main() { vTexels = texels; vFlags = position.z; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: `uniform sampler2D atlas; uniform vec2 atlasSize; uniform sampler2D palette; uniform vec2 paletteSize; uniform sampler2D coverage; uniform sampler2D behind; uniform vec2 targetSize;
+        uniform float shadows; uniform float transparent; uniform float pens; uniform float decode; varying vec3 vTexels; varying float vFlags;
+        vec3 linearOf(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+        vec3 srgbOf(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
+        vec4 paletteAt(float index, float row) { return texture2D(palette, vec2((index + 0.5) / paletteSize.x, (row + 0.5) / paletteSize.y)); }
+        void main() {
+          vec4 texel = texture2D(atlas, (floor(vTexels.xy + 1.0 / 256.0) + 0.5) / atlasSize);
+          float pen = floor(texel.r * 255.0 + 0.5);
+          if (pen == transparent) discard;
+          if (mod(floor(pens / exp2(pen)), 2.0) < 0.5) discard;
+          vec2 at = gl_FragCoord.xy / targetSize;
+          vec4 under = texture2D(behind, at);
+          float flags = floor(vFlags + 0.5);
+          float priority = mod(floor(flags / 8.0), 8.0);
+          float shadow = mod(floor(flags / 64.0), 2.0);
+          float covered = floor(texture2D(coverage, at).r * 255.0 + 0.5);
+          bool shown = priority > 0.5 && (covered < 0.5 || priority >= covered);
+          if (!shown) { gl_FragColor = under; return; }
+          if (shadow < 0.5) {
+            vec4 colour = paletteAt(vTexels.z + pen, 0.0);
+            gl_FragColor = decode > 0.5 ? vec4(linearOf(colour.rgb), colour.a) : colour;
+            return;
+          }
+          vec3 below = decode > 0.5 ? srgbOf(under.rgb) : under.rgb;
+          vec3 result = below;
+          for (int i = 0; i < 255; i++) {
+            if (float(i) >= shadows) break;
+            vec3 source = paletteAt(float(i), 1.0).rgb;
+            if (all(lessThan(abs(source - below), vec3(0.6 / 255.0)))) {
+              result = paletteAt(float(i), 2.0).rgb;
+              break;
+            }
+          }
+          gl_FragColor = vec4(decode > 0.5 ? linearOf(result) : result, 1.0);
+        }`,
+      transparent: false, blending: THREE.NoBlending, side: THREE.DoubleSide, depthTest: false, depthWrite: false
+    });
+    this.priorityScene = new THREE.Scene();
+    const paintedVertex = "attribute vec3 texels; uniform float tileCount; uniform float reverse; varying vec3 vTexels; varying float vFlags; varying float vId; void main() { vTexels = texels; vFlags = position.z; float id = floor(float(gl_VertexID) / 6.0); vId = id; float depth = (id + 0.5) / tileCount; if (reverse > 0.5) depth = 1.0 - depth; gl_Position = vec4(position.xy, depth * 2.0 - 1.0, 1.0); }";
+    const paintedHead = `uniform sampler2D atlas; uniform vec2 atlasSize; uniform sampler2D coverage; uniform sampler2D firstKey; uniform sampler2D lastKey; uniform sampler2D behind; uniform vec2 targetSize;
+        uniform float transparent; uniform float pens; varying vec3 vTexels; varying float vFlags; varying float vId;
+        bool pending() {
+          vec4 texel = texture2D(atlas, (floor(vTexels.xy + 1.0 / 256.0) + 0.5) / atlasSize);
+          float pen = floor(texel.r * 255.0 + 0.5);
+          if (pen == transparent) return false;
+          if (mod(floor(pens / exp2(pen)), 2.0) < 0.5) return false;
+          return true;
+        }
+        float penOf() { return floor(texture2D(atlas, (floor(vTexels.xy + 1.0 / 256.0) + 0.5) / atlasSize).r * 255.0 + 0.5); }
+        float keyId(vec4 key) { return floor(key.r * 255.0 + 0.5) + 256.0 * floor(key.g * 255.0 + 0.5); }
+        float keyPriority(vec4 key) { return floor(key.b * 255.0 + 0.5); }
+        bool passes(float priority, float covered) { return priority > 0.5 && (covered < 0.5 || priority >= covered); }
+        float ownId() { return floor(vId + 0.5) + 1.0; }
+        float ownFlag(float divisor) { return mod(floor(floor(vFlags + 0.5) / divisor), 2.0); }
+        float ownPriority() { return mod(floor(floor(vFlags + 0.5) / 8.0), 8.0); }`;
+    const paintedState = { transparent: false, blending: THREE.NoBlending, side: THREE.DoubleSide, depthTest: false, depthWrite: false };
+    const paintedUniforms = () => ({
+      atlas: { value: null }, atlasSize: { value: new THREE.Vector2(1, 1) }, coverage: { value: null }, firstKey: { value: null }, lastKey: { value: null },
+      behind: { value: null }, targetSize: { value: new THREE.Vector2(1, 1) }, transparent: { value: -1 }, pens: { value: 65535 },
+      tileCount: { value: 1 }, reverse: { value: 0 }, palette: { value: null }, paletteSize: { value: new THREE.Vector2(1, 1) }, shadows: { value: 0 }, decode: { value: 0 }
+    });
+    this.keyMaterial = new THREE.ShaderMaterial({
+      uniforms: paintedUniforms(),
+      vertexShader: paintedVertex,
+      fragmentShader: `${paintedHead}
+        void main() {
+          if (ownFlag(64.0) > 0.5 || !pending()) discard;
+          float id = ownId();
+          gl_FragColor = vec4(mod(id, 256.0) / 255.0, floor(id / 256.0) / 255.0, ownPriority() / 255.0, 1.0);
+        }`,
+      transparent: false, blending: THREE.NoBlending, side: THREE.DoubleSide, depthTest: true, depthWrite: true, depthFunc: THREE.LessDepth
+    });
+    this.paintMaterial = new THREE.ShaderMaterial({
+      uniforms: paintedUniforms(),
+      vertexShader: paintedVertex,
+      fragmentShader: `${paintedHead}
+        uniform sampler2D palette; uniform vec2 paletteSize; uniform float decode;
+        vec3 linearOf(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+        void main() {
+          if (ownFlag(64.0) > 0.5 || !pending()) discard;
+          vec2 at = gl_FragCoord.xy / targetSize;
+          float covered = floor(texture2D(coverage, at).r * 255.0 + 0.5);
+          float first = keyId(texture2D(firstKey, at));
+          bool drawn = first != ownId() || passes(ownPriority(), covered);
+          if (!drawn) { gl_FragColor = texture2D(behind, at); return; }
+          vec4 colour = texture2D(palette, vec2((vTexels.z + penOf() + 0.5) / paletteSize.x, 0.5 / paletteSize.y));
+          gl_FragColor = decode > 0.5 ? vec4(linearOf(colour.rgb), colour.a) : colour;
+        }`,
+      ...paintedState
+    });
+    this.paintedShadowMaterial = new THREE.ShaderMaterial({
+      uniforms: paintedUniforms(),
+      vertexShader: paintedVertex,
+      fragmentShader: `${paintedHead}
+        uniform sampler2D palette; uniform vec2 paletteSize; uniform float shadows; uniform float decode;
+        vec3 linearOf(vec3 c) { return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)); }
+        vec3 srgbOf(vec3 c) { return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c)); }
+        vec4 paletteAt(float index, float row) { return texture2D(palette, vec2((index + 0.5) / paletteSize.x, (row + 0.5) / paletteSize.y)); }
+        void main() {
+          if (ownFlag(64.0) < 0.5 || !pending()) discard;
+          vec2 at = gl_FragCoord.xy / targetSize;
+          vec4 under = texture2D(behind, at);
+          float covered = floor(texture2D(coverage, at).r * 255.0 + 0.5);
+          vec4 firstSeen = texture2D(firstKey, at);
+          float first = keyId(firstSeen);
+          float last = keyId(texture2D(lastKey, at));
+          float id = ownId();
+          bool marked = first > 0.5 && first < id;
+          bool open = marked || passes(ownPriority(), covered);
+          bool firstClosed = first > 0.5 && first == last && !passes(keyPriority(firstSeen), covered);
+          if (!(open && (id > last || firstClosed))) { gl_FragColor = under; return; }
+          vec3 below = decode > 0.5 ? srgbOf(under.rgb) : under.rgb;
+          vec3 result = below;
+          for (int i = 0; i < 255; i++) {
+            if (float(i) >= shadows) break;
+            vec3 source = paletteAt(float(i), 1.0).rgb;
+            if (all(lessThan(abs(source - below), vec3(0.6 / 255.0)))) {
+              result = paletteAt(float(i), 2.0).rgb;
+              break;
+            }
+          }
+          gl_FragColor = vec4(decode > 0.5 ? linearOf(result) : result, 1.0);
+        }`,
+      ...paintedState
+    });
+    this.paintedScenes = new Map();
+    this.keyTargets = new Map();
+    this.scratches = new Map();
+    this.copyMaterial = new THREE.ShaderMaterial({
+      uniforms: { source: { value: null } },
+      vertexShader: "varying vec2 vUv; void main() { vUv = position.xy * 0.5 + 0.5; gl_Position = vec4(position.xy, 0.0, 1.0); }",
+      fragmentShader: "uniform sampler2D source; varying vec2 vUv; void main() { gl_FragColor = texture2D(source, vUv); }",
+      transparent: false, blending: THREE.NoBlending, depthTest: false, depthWrite: false
+    });
+    this.copyScene = new THREE.Scene();
+    this.copyScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.copyMaterial));
+    this.tileGeometry = new THREE.BufferGeometry();
+    this.tileCapacity = 0;
+
+    this.tileScene = new THREE.Scene();
+    const tiles = new THREE.Mesh(this.tileGeometry, this.tileMaterial);
+    tiles.frustumCulled = false;
+    this.tileScene.add(tiles);
+    this.shadowScene = new THREE.Scene();
+    const shadows = new THREE.Mesh(this.tileGeometry, this.shadowMaterial);
+    shadows.frustumCulled = false;
+    this.shadowScene.add(shadows);
+    const priority = new THREE.Mesh(this.tileGeometry, this.priorityMaterial);
+    priority.frustumCulled = false;
+    this.priorityScene.add(priority);
+    for (const [name, material] of [["key", this.keyMaterial], ["paint", this.paintMaterial], ["shadow", this.paintedShadowMaterial]]) {
+      const scene = new THREE.Scene();
+      const mesh = new THREE.Mesh(this.tileGeometry, material);
+      mesh.frustumCulled = false;
+      scene.add(mesh);
+      this.paintedScenes.set(name, scene);
+    }
     this.columnsMaterial = new THREE.ShaderMaterial({
+
       uniforms: { source: { value: null }, sourceSize: { value: new THREE.Vector2(1, 1) }, table: { value: null }, count: { value: 1 } },
       vertexShader: "attribute vec2 local; varying vec2 vLocal; void main() { vLocal = local; gl_Position = vec4(position.xy, 0.0, 1.0); }",
       fragmentShader: `uniform sampler2D source; uniform vec2 sourceSize; uniform sampler2D table; uniform float count; varying vec2 vLocal;
@@ -314,12 +634,14 @@ class Layers2D {
 
   readCanvas(reader, textures) {
     const id = reader.u32();
-    const linear = reader.u8() !== 0;
+    const flags = reader.u8();
+    const linear = (flags & 1) !== 0;
+    const srgb = (flags & 2) !== 0;
     const width = reader.u32();
     const height = reader.u32();
     const filter = linear ? THREE.LinearFilter : THREE.NearestFilter;
-    const target = new THREE.WebGLRenderTarget(width, height, { depthBuffer: false, magFilter: filter, minFilter: filter });
-    target.texture.userData.canvas = { width, height, linear };
+    const target = new THREE.WebGLRenderTarget(width, height, { depthBuffer: false, magFilter: filter, minFilter: filter, colorSpace: srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace });
+    target.texture.userData.canvas = { width, height, linear, srgb };
     this.drop(id);
     textures.get(id)?.dispose();
     this.canvases.set(id, target);
@@ -338,6 +660,9 @@ class Layers2D {
   }
 
   drop(id) {
+    const dropped = this.canvases.get(id);
+    this.scratches.get(dropped)?.dispose();
+    this.scratches.delete(dropped);
     this.canvases.get(id)?.dispose();
     this.canvases.delete(id);
   }
@@ -361,7 +686,8 @@ class Layers2D {
       this.renderer.setRenderTarget(target);
       if (clearColour) {
         target.scissorTest = false;
-        this.renderer.setClearColor(new THREE.Color().setRGB(clearColour[0], clearColour[1], clearColour[2], THREE.NoColorSpace), clearColour[3]);
+        const clearSpace = target.texture.colorSpace === THREE.SRGBColorSpace ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+        this.renderer.setClearColor(new THREE.Color().setRGB(clearColour[0], clearColour[1], clearColour[2], clearSpace), clearColour[3]);
         this.renderer.clear(true, false, false);
       }
       const port = this.port(layer, target);
@@ -369,6 +695,9 @@ class Layers2D {
       target.scissorTest = true;
       this.renderer.setRenderTarget(target);
       if (layer.kind === 0) this.drawSprites(layer, target, port, textures);
+      else if (layer.kind === 2) this.drawTiles(layer, target, port, textures);
+      else if (layer.kind === 3) this.drawShadows(layer, target, port, textures);
+      else if (layer.kind === 4 || layer.kind === 5) this.drawPriority(layer, target, port, textures);
       else this.drawColumns(layer, target, port, textures);
       target.scissorTest = false;
     }
@@ -425,7 +754,192 @@ class Layers2D {
     }
   }
 
+  fillTiles(layer, target, port) {
+    const viewWhole = layer.view[2] === 0 || layer.view[3] === 0;
+    const view = viewWhole ? [0, 0, port[2], port[3]] : layer.view;
+    const count = layer.tiles.length * 6;
+    if (count > this.tileCapacity) {
+      this.tileCapacity = Math.max(count, this.tileCapacity * 2, 6000);
+      this.tileBuffer = new Float32Array(this.tileCapacity * 6);
+      const interleaved = new THREE.InterleavedBuffer(this.tileBuffer, 6);
+      interleaved.setUsage(THREE.DynamicDrawUsage);
+      this.tileInterleaved = interleaved;
+      this.tileGeometry.setAttribute("position", new THREE.InterleavedBufferAttribute(interleaved, 3, 0));
+      this.tileGeometry.setAttribute("texels", new THREE.InterleavedBufferAttribute(interleaved, 3, 3));
+    }
+    const buffer = this.tileBuffer;
+    const scaleX = port[2] / view[2], scaleY = port[3] / view[3];
+    let at = 0;
+    for (const tile of layer.tiles) {
+      const width = tile.source[2], height = tile.source[3];
+      const flipX = (tile.flags & 1) !== 0, flipY = (tile.flags & 2) !== 0, transpose = (tile.flags & 4) !== 0;
+      const drawnWidth = transpose ? height : width, drawnHeight = transpose ? width : height;
+      for (const [u, v] of QUAD) {
+        const across = transpose ? v : u, down = transpose ? u : v;
+        const px = port[0] + (tile.position[0] + u * drawnWidth - view[0]) * scaleX;
+        const py = port[1] + (tile.position[1] + v * drawnHeight - view[1]) * scaleY;
+        buffer[at++] = px / target.width * 2 - 1;
+        buffer[at++] = py / target.height * 2 - 1;
+        buffer[at++] = tile.flags;
+        buffer[at++] = tile.source[0] + (flipX ? 1 - across : across) * width;
+        buffer[at++] = tile.source[1] + (flipY ? 1 - down : down) * height;
+        buffer[at++] = tile.base;
+      }
+    }
+    this.tileInterleaved.needsUpdate = true;
+    this.tileGeometry.setDrawRange(0, count);
+  }
+
+  drawTiles(layer, target, port, textures) {
+    const atlas = textures.get(layer.atlas);
+    const palette = textures.get(layer.palette);
+    if (!atlas || !palette || layer.tiles.length === 0) return;
+    this.fillTiles(layer, target, port);
+    const atlasSize = this.textureSize(atlas);
+    const paletteSize = this.textureSize(palette);
+    const uniforms = this.tileMaterial.uniforms;
+    uniforms.atlas.value = atlas;
+    uniforms.atlasSize.value.set(atlasSize[0], atlasSize[1]);
+    uniforms.palette.value = palette;
+    uniforms.paletteSize.value = paletteSize[0];
+    uniforms.paletteRows.value = paletteSize[1];
+    uniforms.transparent.value = layer.transparent;
+    uniforms.pens.value = layer.pens;
+    uniforms.decode.value = target.texture.colorSpace === THREE.SRGBColorSpace ? 1 : 0;
+    this.renderer.render(this.tileScene, this.camera);
+  }
+
+  scratchFor(target) {
+    let scratch = this.scratches.get(target);
+    if (!scratch || scratch.width !== target.width || scratch.height !== target.height) {
+      scratch?.dispose();
+      scratch = new THREE.WebGLRenderTarget(target.width, target.height, {
+        depthBuffer: false, magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter, colorSpace: target.texture.colorSpace
+      });
+      this.scratches.set(target, scratch);
+    }
+    return scratch;
+  }
+
+  copyInto(scratch, target) {
+    this.copyMaterial.uniforms.source.value = target.texture;
+    scratch.scissorTest = false;
+    this.renderer.setRenderTarget(scratch);
+    this.renderer.render(this.copyScene, this.camera);
+    this.renderer.setRenderTarget(target);
+  }
+
+  drawShadows(layer, target, port, textures) {
+    const atlas = textures.get(layer.atlas);
+    const table = textures.get(layer.table);
+    if (!atlas || !table || layer.tiles.length === 0) return;
+    const scratch = this.scratchFor(target);
+    this.copyInto(scratch, target);
+    this.fillTiles(layer, target, port);
+    const atlasSize = this.textureSize(atlas);
+    const uniforms = this.shadowMaterial.uniforms;
+    uniforms.atlas.value = atlas;
+    uniforms.atlasSize.value.set(atlasSize[0], atlasSize[1]);
+    uniforms.table.value = table;
+    uniforms.count.value = layer.count;
+    uniforms.behind.value = scratch.texture;
+    uniforms.behindSize.value.set(target.width, target.height);
+    uniforms.transparent.value = layer.transparent;
+    uniforms.pens.value = layer.pens;
+    uniforms.decode.value = target.texture.colorSpace === THREE.SRGBColorSpace ? 1 : 0;
+    this.renderer.render(this.shadowScene, this.camera);
+  }
+
+  keyTarget(target, name) {
+    const key = `${name}:${target.width}x${target.height}`;
+    let keyed = this.keyTargets.get(key);
+    if (!keyed) {
+      keyed = new THREE.WebGLRenderTarget(target.width, target.height, {
+        depthBuffer: true, magFilter: THREE.NearestFilter, minFilter: THREE.NearestFilter, colorSpace: THREE.NoColorSpace
+      });
+      this.keyTargets.set(key, keyed);
+    }
+    return keyed;
+  }
+
+  paintedPass(name, material, keyed, target, port, reverse) {
+    const destination = keyed || target;
+    this.renderer.setRenderTarget(destination);
+    if (keyed) {
+      keyed.scissorTest = false;
+      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.clear(true, true, false);
+      keyed.scissor.set(port[0], port[1], port[2], port[3]);
+      keyed.scissorTest = true;
+    }
+    material.uniforms.reverse.value = reverse ? 1 : 0;
+    this.renderer.render(this.paintedScenes.get(name), this.camera);
+    if (keyed) keyed.scissorTest = false;
+    this.renderer.setRenderTarget(target);
+  }
+
+  drawPainted(layer, target, port, atlas, palette, coverage) {
+    const first = this.keyTarget(target, "first");
+    const last = this.keyTarget(target, "last");
+    const scratch = this.scratchFor(target);
+    this.copyInto(scratch, target);
+    this.fillTiles(layer, target, port);
+    const atlasSize = this.textureSize(atlas);
+    const paletteSize = this.textureSize(palette);
+    const decode = target.texture.colorSpace === THREE.SRGBColorSpace ? 1 : 0;
+    const materials = [this.keyMaterial, this.paintMaterial, this.paintedShadowMaterial];
+    for (const material of materials) {
+      const uniforms = material.uniforms;
+      uniforms.atlas.value = atlas;
+      uniforms.atlasSize.value.set(atlasSize[0], atlasSize[1]);
+      uniforms.coverage.value = coverage;
+      uniforms.firstKey.value = first.texture;
+      uniforms.lastKey.value = last.texture;
+      uniforms.behind.value = scratch.texture;
+      uniforms.targetSize.value.set(target.width, target.height);
+      uniforms.transparent.value = layer.transparent;
+      uniforms.pens.value = layer.pens;
+      uniforms.tileCount.value = layer.tiles.length;
+      uniforms.palette.value = palette;
+      uniforms.paletteSize.value.set(paletteSize[0], paletteSize[1]);
+      uniforms.shadows.value = layer.shadows;
+      uniforms.decode.value = decode;
+    }
+    this.paintedPass("key", this.keyMaterial, first, target, port, false);
+    this.paintedPass("key", this.keyMaterial, last, target, port, true);
+    this.paintedPass("paint", this.paintMaterial, null, target, port, false);
+    this.copyInto(scratch, target);
+    this.paintedPass("shadow", this.paintedShadowMaterial, null, target, port, false);
+  }
+
+  drawPriority(layer, target, port, textures) {
+    const atlas = textures.get(layer.atlas);
+    const palette = textures.get(layer.palette);
+    const coverage = textures.get(layer.coverage);
+    if (!atlas || !palette || !coverage || layer.tiles.length === 0) return;
+    if (layer.painted) return this.drawPainted(layer, target, port, atlas, palette, coverage);
+    const scratch = this.scratchFor(target);
+    this.copyInto(scratch, target);
+    this.fillTiles(layer, target, port);
+    const atlasSize = this.textureSize(atlas);
+    const paletteSize = this.textureSize(palette);
+    const uniforms = this.priorityMaterial.uniforms;
+    uniforms.atlas.value = atlas;
+    uniforms.atlasSize.value.set(atlasSize[0], atlasSize[1]);
+    uniforms.palette.value = palette;
+    uniforms.paletteSize.value.set(paletteSize[0], paletteSize[1]);
+    uniforms.coverage.value = coverage;
+    uniforms.behind.value = scratch.texture;
+    uniforms.targetSize.value.set(target.width, target.height);
+    uniforms.shadows.value = layer.shadows;
+    uniforms.transparent.value = layer.transparent;
+    uniforms.pens.value = layer.pens;
+    uniforms.decode.value = target.texture.colorSpace === THREE.SRGBColorSpace ? 1 : 0;
+    this.renderer.render(this.priorityScene, this.camera);
+  }
+
   fill(vertices) {
+
     const count = vertices.length / SPRITE_FLOATS;
     if (count > this.capacity) {
       this.capacity = Math.max(count, this.capacity * 2, 600);
@@ -476,11 +990,34 @@ class Layers2D {
   }
 }
 
+const QUALITY_KEY = "cauldron3d.quality";
+const DEFAULT_QUALITY = { pixels: 1920 * 1080, fps: 60 };
+
+function parsePixels(text) {
+  if (text === "full" || text === "0") return 0;
+  const size = /^(\d+)x(\d+)$/.exec(text);
+  if (size) return Number(size[1]) * Number(size[2]);
+  const count = Number(text);
+  return Number.isFinite(count) && count > 0 ? count : DEFAULT_QUALITY.pixels;
+}
+
+function startingQuality() {
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(QUALITY_KEY) || "{}"); } catch (e) { saved = {}; }
+  const query = new URLSearchParams(location.search);
+  const asked = {};
+  if (query.has("pixels")) asked.pixels = parsePixels(query.get("pixels"));
+  if (query.has("fps")) asked.fps = Math.max(0, Number(query.get("fps")) || 0);
+  return Object.assign({}, DEFAULT_QUALITY, saved, asked);
+}
+
 class Scene3D {
   constructor(canvas) {
     this.canvas = canvas;
+    this.qualitySettings = startingQuality();
+    this.lastDrawn = 0;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setPixelRatio(this.pixelRatioFor(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -488,8 +1025,17 @@ class Scene3D {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(68, 1, 0.05, 1000);
     this.cameraState = null;
+    this.held = new Set();
+    this.local = null;
+    this.localMove = false;
+    this.lastFrame = 0;
+    this.trackKeys();
+    this.resumeVideos = this.resumeVideos.bind(this);
+    window.addEventListener("pointerdown", () => this.resumeVideos());
+    window.addEventListener("keydown", () => this.resumeVideos());
     this.meshes = new Map();
     this.textures = new Map();
+    this.videos = new Map();
     this.materials = new Map();
     this.materialData = new Map();
     this.instances = new Map();
@@ -593,10 +1139,40 @@ class Scene3D {
     this.renderer.render(this.screenScene, this.screenCamera);
   }
 
+  pixelRatioFor(width, height) {
+    const device = window.devicePixelRatio || 1;
+    const budget = this.qualitySettings.pixels;
+    if (!budget || width * height <= 0) return device;
+    return Math.min(device, Math.sqrt(budget / (width * height)));
+  }
+
+  quality(changes) {
+    if (changes) {
+      if (typeof changes.pixels === "string") changes = Object.assign({}, changes, { pixels: parsePixels(changes.pixels) });
+      Object.assign(this.qualitySettings, changes);
+      try { localStorage.setItem(QUALITY_KEY, JSON.stringify(this.qualitySettings)); } catch (e) {}
+      this.resize();
+    }
+    const buffer = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    return Object.assign({}, this.qualitySettings, { drawn: [buffer.x, buffer.y] });
+  }
+
+  due(now) {
+    const fps = this.qualitySettings.fps;
+    if (!fps || now - this.lastDrawn >= 1000 / fps - 2) {
+      this.lastDrawn = now;
+      return true;
+    }
+    return false;
+  }
+
   resize() {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
+    const ratio = this.pixelRatioFor(width, height);
+    this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(width, height, false);
+    this.composer.setPixelRatio(ratio);
     this.composer.setSize(width, height);
     const buffer = this.renderer.getDrawingBufferSize(new THREE.Vector2());
     this.behindTarget.setSize(buffer.x, buffer.y);
@@ -655,25 +1231,62 @@ class Scene3D {
     geometry.setAttribute("uv1", new THREE.BufferAttribute(uv1, 2));
     geometry.setAttribute("lightStyles", new THREE.BufferAttribute(styles, 4));
     if (colorBytes) geometry.setAttribute("color", new THREE.BufferAttribute(vertexColours(colorBytes), 4));
+    const boneCount = skin ? addSkin(geometry, skin, vertexCount) : 0;
     geometry.setIndex(new THREE.BufferAttribute(indices, 1));
     const groups = parts.length ? parts : [{ first: 0, count: indexCount }];
     groups.forEach((part, index) => geometry.addGroup(part.first, part.count, index));
     geometry.computeBoundingSphere();
-    this.meshes.set(id, { geometry, position, normal, skin, vertexCount, colored: colorBytes !== null });
+    this.meshes.set(id, { geometry, position, normal, boneCount, vertexCount, morphCount: 0, colored: colorBytes !== null });
+  }
+
+  readMorphs(reader) {
+    const id = reader.u32();
+    const count = reader.u32();
+    const mesh = this.meshes.get(id);
+    const positions = [];
+    const normals = [];
+    for (let target = 0; target < count; target++) {
+      positions.push(new THREE.BufferAttribute(new Float32Array(reader.slice(mesh.vertexCount * 12).buffer), 3));
+      normals.push(new THREE.BufferAttribute(new Float32Array(reader.slice(mesh.vertexCount * 12).buffer), 3));
+    }
+    mesh.geometry.morphAttributes.position = positions;
+    mesh.geometry.morphAttributes.normal = normals;
+    mesh.geometry.morphTargetsRelative = true;
+    mesh.morphCount = count;
+  }
+
+  readMorphWeights(reader) {
+    const id = reader.u32();
+    const count = reader.u32();
+    const weights = reader.floats(count);
+    const influences = this.instances.get(id)?.object.morphTargetInfluences;
+    if (!influences) return;
+    for (let target = 0; target < influences.length; target++) influences[target] = target < count ? weights[target] : 0;
   }
 
   readTexture(reader) {
     const id = reader.u32();
     const format = reader.u8();
+
     const linear = reader.u8() !== 0;
     const clamp = reader.u8() !== 0;
     const mipmaps = reader.u8() !== 0;
     const width = reader.u32();
     const height = reader.u32();
+    if (this.videos.has(id)) {
+      if (width <= 1 || height <= 1) {
+        reader.slice(width * height * textureBytes(format));
+        return;
+      }
+      this.dropVideo(id);
+    }
+
     const half = format === 2;
-    const bytes = reader.slice(width * height * (half ? 8 : 4));
+    const single = format === 3;
+    const bytes = reader.slice(width * height * textureBytes(format));
     const data = half ? new Uint16Array(bytes.buffer) : bytes;
-    const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, half ? THREE.HalfFloatType : THREE.UnsignedByteType);
+    const texture = new THREE.DataTexture(data, width, height, single ? THREE.RedFormat : THREE.RGBAFormat, half ? THREE.HalfFloatType : THREE.UnsignedByteType);
+    if (single) texture.unpackAlignment = 1;
     texture.colorSpace = format === 0 ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     texture.magFilter = linear ? THREE.LinearFilter : THREE.NearestFilter;
     texture.minFilter = mipmaps ? THREE.LinearMipmapLinearFilter : texture.magFilter;
@@ -683,6 +1296,99 @@ class Scene3D {
     texture.needsUpdate = true;
     this.textures.get(id)?.dispose();
     this.textures.set(id, texture);
+  }
+
+  replaceEncoded(id, texture, bytes, kind) {
+    const serial = ++texture.userData.serial;
+    const file = new Blob([bytes], { type: kind === 1 ? "image/png" : "image/jpeg" });
+    createImageBitmap(file, { imageOrientation: "none", premultiplyAlpha: "none", colorSpaceConversion: "none" })
+      .then((bitmap) => {
+        if (this.textures.get(id) !== texture || serial < (texture.userData.shown || 0)) return bitmap.close();
+        texture.userData.shown = serial;
+        if (texture.image && texture.image.close) texture.image.close();
+        texture.image = bitmap;
+        texture.needsUpdate = true;
+      })
+      .catch((error) => console.error("cauldron3d: texture " + id + " could not be decoded", error));
+  }
+
+  readEncodedTexture(reader) {
+    const id = reader.u32();
+    const format = reader.u8();
+    const linear = reader.u8() !== 0;
+    const clamp = reader.u8() !== 0;
+    const mipmaps = reader.u8() !== 0;
+    const kind = reader.u8();
+    reader.u32();
+    reader.u32();
+    const bytes = reader.slice(reader.u32());
+    const previous = this.textures.get(id);
+    if (previous && previous.userData.encoded && previous.image) return this.replaceEncoded(id, previous, bytes, kind);
+    const texture = new THREE.Texture();
+    texture.userData.encoded = true;
+    texture.userData.serial = 0;
+    texture.colorSpace = format === 0 ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    texture.magFilter = linear ? THREE.LinearFilter : THREE.NearestFilter;
+    texture.minFilter = mipmaps ? THREE.LinearMipmapLinearFilter : texture.magFilter;
+    texture.generateMipmaps = mipmaps;
+    texture.wrapS = texture.wrapT = clamp ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+    texture.flipY = false;
+    this.textures.get(id)?.dispose();
+    this.textures.set(id, texture);
+    const file = new Blob([bytes], { type: kind === 1 ? "image/png" : "image/jpeg" });
+    createImageBitmap(file, { imageOrientation: "none", premultiplyAlpha: "none", colorSpaceConversion: "none" })
+      .then((bitmap) => {
+        if (this.textures.get(id) !== texture) return bitmap.close();
+        texture.image = bitmap;
+        texture.needsUpdate = true;
+      })
+      .catch((error) => console.error("cauldron3d: texture " + id + " could not be decoded", error));
+  }
+
+  attractOrigin() {
+    if (window.COINOP_ATTRACT_ORIGIN) return window.COINOP_ATTRACT_ORIGIN;
+    const port = new URLSearchParams(location.search).get("attract") || "4321";
+    return location.protocol + "//" + location.hostname + ":" + port;
+  }
+
+  readVideo(reader) {
+    const id = reader.u32();
+    const length = reader.u32();
+    const url = new TextDecoder().decode(reader.slice(length));
+    const playing = this.videos.get(id);
+    if (playing && playing.url === url) return;
+    if (playing) this.dropVideo(id);
+
+    const video = document.createElement("video");
+    video.src = this.attractOrigin() + url;
+    video.loop = true;
+    video.muted = true;
+    video.playsInline = true;
+    video.crossOrigin = "anonymous";
+    video.preload = "auto";
+    video.play().catch(() => {});
+
+    const texture = new THREE.VideoTexture(video);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    texture.flipY = false;
+    this.textures.get(id)?.dispose();
+    this.textures.set(id, texture);
+    this.videos.set(id, { url, video, texture });
+    this.rebindMaterials(id);
+  }
+
+  dropVideo(id) {
+    const playing = this.videos.get(id);
+    if (!playing) return;
+    playing.video.pause();
+    playing.video.removeAttribute("src");
+    playing.video.load();
+    this.textures.get(id)?.dispose();
+    this.textures.delete(id);
+    this.videos.delete(id);
   }
 
   readMaterial(reader) {
@@ -1041,6 +1747,152 @@ class Scene3D {
     this.lights.delete(id);
   }
 
+  trackKeys() {
+    const move = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "KeyP", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown"];
+    window.addEventListener("keydown", (e) => {
+      if (!move.includes(e.code)) return;
+      this.localMove = true;
+      this.held.add(e.code);
+    });
+    window.addEventListener("keyup", (e) => {
+      if (!move.includes(e.code)) return;
+      this.held.delete(e.code);
+    });
+    window.addEventListener("blur", () => this.held.clear());
+  }
+
+  rebindMaterials(textureId) {
+    for (const [materialId, data] of this.materialData) {
+      if (!data || data.baseTexture !== textureId) continue;
+      const previous = this.materials.get(materialId);
+      const material = this.buildMaterial(data);
+      this.materials.set(materialId, material);
+      for (const instance of this.instances.values()) {
+        const current = instance.object.material;
+        if (Array.isArray(current)) {
+          instance.object.material = current.map((entry) => (entry === previous ? material : entry));
+        } else if (current === previous) {
+          instance.object.material = material;
+        }
+      }
+    }
+  }
+
+  resumeVideos() {
+    for (const playing of this.videos.values()) playing.video.play().catch(() => {});
+  }
+
+  cullVideos() {
+    if (!this.videos.size) return;
+    this.cullForward = this.cullForward || new THREE.Vector3();
+    this.cullForward.set(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    this.cullPoint = this.cullPoint || new THREE.Vector3();
+    for (const instance of this.instances.values()) {
+      const materials = Array.isArray(instance.object.material)
+        ? instance.object.material
+        : [instance.object.material];
+      const texture = materials.map((entry) => entry && entry.map).find((entry) => entry && entry.isVideoTexture);
+      if (!texture) continue;
+      instance.object.getWorldPosition(this.cullPoint);
+      this.cullPoint.sub(this.camera.position);
+      const distance = this.cullPoint.length();
+      const ahead = this.cullPoint.dot(this.cullForward) > 0;
+      const video = texture.image;
+      const near = ahead ? 8 : 5;
+      const far = ahead ? 12 : 8;
+      if (!video.paused && distance > far) video.pause();
+      else if (video.paused && distance < near) video.play().catch(() => {});
+    }
+  }
+
+  obstacles() {
+    if (this.obstacleList) return this.obstacleList;
+    const obstacles = [];
+    for (const instance of this.instances.values()) {
+      const { position, scale } = instance.current;
+      if (Math.abs(scale.y) < 0.8) continue;
+      if (Math.abs(scale.x) * Math.abs(scale.z) > 50) continue;
+      obstacles.push({
+        x: position.x,
+        z: position.z,
+        halfX: Math.abs(scale.x) / 2,
+        halfZ: Math.abs(scale.z) / 2,
+      });
+    }
+    this.obstacleList = obstacles;
+    return obstacles;
+  }
+
+  collide(position) {
+    const radius = 0.3;
+    for (const obstacle of this.obstacles()) {
+      const halfX = obstacle.halfX + radius;
+      const halfZ = obstacle.halfZ + radius;
+      const dx = position.x - obstacle.x;
+      const dz = position.z - obstacle.z;
+      if (Math.abs(dx) >= halfX || Math.abs(dz) >= halfZ) continue;
+      const pushX = halfX - Math.abs(dx);
+      const pushZ = halfZ - Math.abs(dz);
+      if (pushX < pushZ) position.x = obstacle.x + Math.sign(dx || 1) * halfX;
+      else position.z = obstacle.z + Math.sign(dz || 1) * halfZ;
+    }
+  }
+
+  hallBounds() {
+    if (this.bounds) return this.bounds;
+    if (this.instances.size === 0) return null;
+    const min = new THREE.Vector3(Infinity, 0, Infinity);
+    const max = new THREE.Vector3(-Infinity, 0, -Infinity);
+    for (const instance of this.instances.values()) {
+      const { position, scale } = instance.current;
+      const halfX = Math.abs(scale.x) / 2;
+      const halfZ = Math.abs(scale.z) / 2;
+      min.x = Math.min(min.x, position.x - halfX);
+      min.z = Math.min(min.z, position.z - halfZ);
+      max.x = Math.max(max.x, position.x + halfX);
+      max.z = Math.max(max.z, position.z + halfZ);
+    }
+    const margin = 1.5;
+    this.bounds = {
+      min: new THREE.Vector3(min.x - margin, 0, min.z - margin),
+      max: new THREE.Vector3(max.x + margin, 0, max.z + margin),
+    };
+    return this.bounds;
+  }
+
+  walk(_now, delta) {
+    if (!this.localMove || !this.cameraState || delta === 0) return;
+    if (!this.local) {
+      const euler = new THREE.Euler().setFromQuaternion(this.camera.quaternion, "YXZ");
+      this.local = { position: this.camera.position.clone(), yaw: euler.y, pitch: euler.x };
+    }
+    const held = this.held;
+    const down = (codes) => (codes.some((code) => held.has(code)) ? 1 : 0);
+    const forward = down(["KeyW", "ArrowUp"]) - down(["KeyS", "ArrowDown"]);
+    const across = down(["KeyD"]) - down(["KeyA"]);
+    const yawIn = down(["KeyQ", "ArrowLeft"]) - down(["KeyE", "ArrowRight", "KeyP"]);
+    const pitchIn = down(["PageUp"]) - down(["PageDown"]);
+    const walk = 2.6 * delta;
+    const turn = 1.9 * delta;
+    const tilt = 1.2 * delta;
+    const pose = this.local;
+    pose.yaw += yawIn * turn;
+    pose.pitch = Math.max(-1.2, Math.min(1.2, pose.pitch + pitchIn * tilt));
+    const nx = Math.sin(pose.yaw);
+    const nz = Math.cos(pose.yaw);
+    pose.position.x += -nx * forward * walk + nz * across * walk;
+    pose.position.z += -nz * forward * walk - nx * across * walk;
+    const bounds = this.hallBounds();
+    if (bounds) {
+      const inset = 0.4;
+      pose.position.x = Math.max(bounds.min.x + inset, Math.min(bounds.max.x - inset, pose.position.x));
+      pose.position.z = Math.max(bounds.min.z + inset, Math.min(bounds.max.z - inset, pose.position.z));
+    }
+    this.collide(pose.position);
+    this.camera.position.copy(pose.position);
+    this.camera.quaternion.setFromEuler(new THREE.Euler(pose.pitch, pose.yaw, 0, "YXZ"));
+  }
+
   readCamera(reader) {
     const transform = { position: reader.vec3(), rotation: reader.quat(), scale: new THREE.Vector3(1, 1, 1) };
     const [fov, near, far] = reader.floats(3);
@@ -1201,7 +2053,14 @@ class Scene3D {
     for (const layer of [LAYER_SMEAR, LAYER_STANDING, LAYER_FRONT, LAYER_DOME]) this.camera.layers.enable(layer);
   }
 
+  stop() {
+    this.running = false;
+  }
+
   frame(now) {
+    const delta = this.lastFrame ? Math.min((now - this.lastFrame) / 1000, 0.1) : 0;
+    this.lastFrame = now;
+    this.walk(now, delta);
     const flatOnly = !this.cameraState && this.layers2d.layers.length > 0;
     const flat = this.layers2d.draw(this.textures, flatOnly);
     if (flatOnly) {
@@ -1219,7 +2078,8 @@ class Scene3D {
     this.lightUniforms.cauldronHasTable.value = table ? 1 : 0;
     this.frameIndex.value = (this.frameIndex.value + 1) % 65536;
     for (const instance of this.instances.values()) this.place(instance.object, instance, t);
-    if (this.cameraState) this.place(this.camera, this.cameraState, t);
+    this.cullVideos();
+    if (this.cameraState && !this.localMove) this.place(this.camera, this.cameraState, t);
     for (const light of this.lights.values()) {
       if (!light.isDirectionalLight) continue;
       const extent = this.shadowDistance || 60;
@@ -1263,7 +2123,22 @@ Scene3D.prototype.ops = {
   19: Scene3D.prototype.readOverlay,
   20: Scene3D.prototype.readScreenTint,
   21: function (reader) { this.layers2d.readCanvas(reader, this.textures); },
-  22: function (reader) { this.layers2d.readLayers(reader); }
+  22: function (reader) { this.layers2d.readLayers(reader); },
+  26: Scene3D.prototype.readVideo,
+  27: Scene3D.prototype.dropVideo,
+  30: function (reader) { reader.u32(); const count = reader.u32(); reader.floats(4 + count * 8); },
+  31: function (reader) { reader.u32(); },
+  32: function (reader) {
+    const instance = this.instances.get(reader.u32());
+    const scattered = reader.u32() !== 0;
+    reader.floats(6);
+    if (instance && scattered) instance.object.visible = false;
+  },
+  33: function (reader) { reader.u32(); reader.floats(5); },
+  34: function (reader) { reader.u32(); reader.floats(16); },
+  35: function (reader) { reader.u32(); reader.floats(11); },
+  36: function (reader) { reader.floats(4); },
+  37: function (reader) { reader.floats(reader.u32() * 4); }
 };
 
 const KEY_NAMES = {
@@ -1283,8 +2158,16 @@ function keyName(code) {
 
 function forwardInput(canvas, channel, scene) {
   const send = (message) => channel.push("event", message);
-  window.addEventListener("keydown", (e) => { send({ type: "key", action: "down", key: keyName(e.code), repeat: e.repeat }); e.preventDefault(); });
-  window.addEventListener("keyup", (e) => { send({ type: "key", action: "up", key: keyName(e.code), repeat: false }); e.preventDefault(); });
+  const mods = (e) => {
+    const held = [];
+    if (e.ctrlKey) held.push("ctrl");
+    if (e.shiftKey) held.push("shift");
+    if (e.altKey) held.push("alt");
+    if (e.metaKey) held.push("meta");
+    return held;
+  };
+  window.addEventListener("keydown", (e) => { send({ type: "key", action: "down", key: keyName(e.code), code: e.code, mods: mods(e), repeat: e.repeat }); e.preventDefault(); });
+  window.addEventListener("keyup", (e) => { send({ type: "key", action: "up", key: keyName(e.code), code: e.code, mods: mods(e), repeat: false }); e.preventDefault(); });
   canvas.addEventListener("mousemove", (e) => send({ type: "mouse_motion", x: e.offsetX, y: e.offsetY, dx: e.movementX, dy: e.movementY }));
   canvas.addEventListener("mousedown", (e) => { canvas.focus(); send({ type: "mouse_button", action: "down", button: e.button + 1, x: e.offsetX, y: e.offsetY }); });
   canvas.addEventListener("mouseup", (e) => send({ type: "mouse_button", action: "up", button: e.button + 1, x: e.offsetX, y: e.offsetY }));
@@ -1302,7 +2185,20 @@ export function start(canvas, settings) {
   channel.on("changes", (payload) => scene.apply(payload));
   channel.join().receive("error", (reply) => console.error("cauldron3d:", reply.reason));
   forwardInput(canvas, channel, scene);
-  const loop = (now) => { scene.frame(now); requestAnimationFrame(loop); };
+  const loop = (now) => { if (scene.due(now)) scene.frame(now); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  window.cauldron3d = scene;
+  return scene;
+}
+
+export function draw(canvas) {
+  const scene = new Scene3D(canvas);
+  scene.running = true;
+  const loop = (now) => {
+    if (!scene.running) return;
+    if (scene.due(now)) scene.frame(now);
+    requestAnimationFrame(loop);
+  };
   requestAnimationFrame(loop);
   window.cauldron3d = scene;
   return scene;

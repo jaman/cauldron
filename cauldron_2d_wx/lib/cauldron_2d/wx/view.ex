@@ -1,67 +1,78 @@
 defmodule Cauldron2D.Wx.View do
   @moduledoc """
-  A wx panel that shows a world: the canvas drawn from the sheet around the focus, the
-  hud beside or below it if the game sends one, the keys and the pointer as input, the
-  sound through the speaker.
+  A wx panel that shows a world: its picture scaled to the canvas, the hud beside or
+  below it if the game sends one, the keys, the pointer and the mouse as input, the
+  sound through the speaker. The picture is the one every front end shows — the
+  scene drawn by `Cauldron2D.Draw`, here through the link — so the game's layers,
+  projections, `:screen`, `:outlines` and menu look as they do in the terminal.
 
-      view = Cauldron2D.Wx.View.new(parent, keymap: keymap, steering: [:left, :right], on_over: fn over -> ... end)
+      view = Cauldron2D.Wx.View.new(parent, on_go: fn to -> ... end)
       Cauldron2D.Wx.View.join(view, {:socket, url: url, token: token, topic: "world:main", params: %{}})
-      Cauldron2D.Wx.View.join(view, {:local, game: MyGame.Web, world: pid, name: "alice", props: %{}})
+      Cauldron2D.Wx.View.join(view, {:local, game: MyGame.Client, world: pid, name: "alice", props: %{}})
       Cauldron2D.Wx.View.leave(view)
+
+  Without a link the view shows what `show/2` gives it — a picture its owner drew, such
+  as a game's title front — and hands every key to `:on_key`.
+
+  The pane — how many of the atlas's tiles the canvas shows across and down at zoom 1 —
+  is the canvas's size over the tile's size in pixels times `:scale`; the view tells
+  the link whenever it changes, and the picture comes back drawn over it. Keys reach the
+  link as they go down and up, the mouse's buttons, wheel and moves with the pointer as
+  fractions of the picture, and the controllers' events as they come: the session reads
+  them as every front end's are read (`Cauldron.Client.Controls`, the client's own keys
+  and the game's menu first), so the view holds no keymap of its own.
+
+  In a game with a chat, the hud panel lists the last messages of the world's room
+  under the hud rows; the game's talk key opens a line there, typed into until `Enter`
+  says it or `Esc` drops it, the game's keys standing idle meanwhile.
 
   ## Options
 
-    * `:keymap` — wx key codes and `{:mouse, button}` to actions, as `Cauldron2D.Wx.Input.new/2` takes
-    * `:steering` — the actions the pointer also drives
     * `:size` — the least the canvas is, in pixels, default `{800, 600}`; it grows with the window
-    * `:scale` — pixels per sheet pixel, default `1`
+    * `:scale` — screen pixels a picture pixel, default `2`
     * `:hud` — where the hud rows go: `:right` (default), `:bottom`, or `:none` for no hud panel
     * `:hud_size` — the hud panel's width (right) or height (bottom) in pixels, default `300`
     * `:hud_colours` — `%{background: rgb, text: rgb}` for the hud panel, default a dark panel with light text
     * `:font` — the hud's font in points, default `12`
-    * `:on_over` — called with the outcome when the round is over for this player; the
-      game draws what it likes then, the canvas draws nothing of its own
+    * `:on_over` — called with the outcome when the round is over for this player
     * `:on_closed` — called with the reason when the link ends
     * `:on_refused` — called with the reason when the join is refused
-    * `:on_key` — called with the wx key code of a key that went down and means no action
+    * `:on_go` — called with `:lobby`, `:settings` or `:title` when the game's menu or
+      the client's keys send the player there
+    * `:on_settings` — called with the player's settings when the game's menu changed them
+    * `:on_key` — called with the wx key code of every key that goes down while no link is joined
+    * `:on_pad` — called with each controller button pressed while no link is joined
+    * `:on_world` — called with the new world's id when the world moved the player to another
+    * `:controllers` — whether the view reads this machine's game controllers (`Gamepad`), default `true`
     * `:sound` — `false` for no sound
-    * `:input_every` — milliseconds between input messages, default `100`
-    * `:pointer` — whether the pointer aims, default `true`; `pointer/2` changes it later
-    * `:zoom` — `true` lets the player zoom: `+`/`=` in, `-` out, `0` back to the
-      game's scale, the wheel either way, from a tile of 2 pixels (or the whole map in
-      view, whichever is larger) to 64; `zoom/2` sets a tile size from outside.
-      Default `false`. A whole map that fits in 4096 pixels a side is drawn from one
-      bitmap of it at the current size, so zooming out to see all of it costs nothing
-      a frame; the sheet at each size is kept for the view's life, its bitmaps in one
-      table the painter reads, so a zoom never takes a sheet from under a paint in
-      progress. Watching — joined with `spectate` among the link's props or params —
-      the view can also be panned: the arrows and a drag with the left button move
-      it, the wheel zooms about the pointer, `0` recentres it as well, and a frame
-      whose subject is not the one the pan was taken on drops the pan
-    * `:on_stats` — called once a second with `%{frames: n, draws: n}`, the frames
+    * `:on_stats` — called once a second with `%{frames: n, draws: n}`, the pictures
       received and the times the canvas was painted in that second
     * `:show_stats` — draw those numbers in the canvas's top left corner, default
       `false`; `show_stats/2` changes it later
-
-  The canvas is cleared to the sheet's void colour. Input goes to the link on every
-  change and every `:input_every` ms.
   """
 
   @behaviour :wx_object
 
   import Bitwise
 
-  alias Cauldron2D.Client.Hud
-  alias Cauldron2D.Net.{Link, Sound}
-  alias Cauldron2D.Wx.{Const, Input, Painter, Sheet}
+  alias Cauldron.Client.Hud
+  alias Cauldron.Net.{Link, Sound}
+  alias Cauldron2D.{Draw, Raster, Surface}
+  alias Cauldron2D.Wx.{Const, Keys}
 
   require Record
 
   Record.defrecordp(:wx, Record.extract(:wx, from_lib: "wx/include/wx.hrl"))
   Record.defrecordp(:wxKey, Record.extract(:wxKey, from_lib: "wx/include/wx.hrl"))
   Record.defrecordp(:wxMouse, Record.extract(:wxMouse, from_lib: "wx/include/wx.hrl"))
+  Record.defrecordp(:wxSize, Record.extract(:wxSize, from_lib: "wx/include/wx.hrl"))
 
   @hud_line 15
+  @move_ms 33
+  @chat_kept 12
+  @said_most 500
+  @default_tile 16
+  @pans %{left: {-1, 0}, right: {1, 0}, up: {0, -1}, down: {0, 1}}
 
   @doc "The world panel under `parent`."
   @spec new(term(), keyword()) :: term()
@@ -69,19 +80,30 @@ defmodule Cauldron2D.Wx.View do
 
   @doc """
   Join a world through a link: `{:socket, opts}` or `{:local, opts}`, the options of the
-  link module less `:owner`. Option `:opening` is rows of runs (`Cauldron2D.Client.Hud`)
-  drawn centred on the canvas until the world's first frame arrives; default none.
+  link module less `:owner`; the `:drawer` is `Cauldron2D.Net.Drawer` unless given. Option `:opening` is rows of runs (`Cauldron.Client.Hud`)
+  drawn centred on the canvas until the world's first picture arrives; default none.
+  Option `:watching` — `true` for a player who joined to watch — makes the arrow keys
+  and a drag with the left button move the view (the link's `pan/2`) instead of
+  reaching the world; default `false`.
   """
-  @spec join(term(), {:socket | :local, keyword()}, keyword()) :: :ok
+  @spec join(term(), {:socket | :local, keyword()}, keyword()) :: :ok | {:error, term()}
   def join(world, link, opts \\ []), do: :wx_object.call(world, {:join, link, opts})
 
   @doc "Leave the world."
   @spec leave(term()) :: :ok
   def leave(world), do: :wx_object.call(world, :leave)
 
-  @doc "Read keys by another keymap from now on, as `new/2`'s `:keymap`; what was held is let go."
-  @spec keymap(term(), map()) :: :ok
-  def keymap(view, keymap), do: :wx_object.cast(view, {:keymap, keymap})
+  @doc "Show `raster` scaled to the canvas, for a picture drawn without a link."
+  @spec show(term(), Raster.t()) :: :ok
+  def show(view, raster), do: :wx_object.cast(view, {:show, raster})
+
+  @doc "The tiles across and down the canvas shows at zoom 1, for an atlas whose tile is `tile` pixels."
+  @spec pane(term(), pos_integer()) :: {pos_integer(), pos_integer()}
+  def pane(view, tile), do: :wx_object.call(view, {:pane, tile})
+
+  @doc "The player's settings changed beside the world — `:preset`, `:pointer`, `:fps` — told to the link."
+  @spec configure(term(), map()) :: :ok
+  def configure(view, changes), do: :wx_object.cast(view, {:configure, changes})
 
   @doc "Pause or resume a world of the player's own, through the link."
   @spec pause(term()) :: :ok
@@ -95,17 +117,9 @@ defmodule Cauldron2D.Wx.View do
   @spec window(term()) :: term()
   def window(world), do: :wx_object.call(world, :window)
 
-  @doc "Draw tiles `pixels` wide from now on, within the zoom's limits."
-  @spec zoom(term(), pos_integer()) :: :ok
-  def zoom(view, pixels), do: :wx_object.cast(view, {:zoom, pixels})
-
   @doc "Whether the frames and draws a second are drawn on the canvas from now on."
   @spec show_stats(term(), boolean()) :: :ok
   def show_stats(view, on?), do: :wx_object.cast(view, {:show_stats, on?})
-
-  @doc "Whether the pointer aims from now on."
-  @spec pointer(term(), boolean()) :: :ok
-  def pointer(view, on?), do: :wx_object.cast(view, {:pointer, on?})
 
   @doc "Give the canvas the keyboard."
   @spec focus(term()) :: :ok
@@ -162,51 +176,64 @@ defmodule Cauldron2D.Wx.View do
           :middle_up,
           :motion,
           :mousewheel,
-          :kill_focus
+          :kill_focus,
+          :size,
+          :char
         ],
         do: :wxPanel.connect(canvas, event)
 
-    :ets.insert(scene, [{:counts, 0, 0}, {:stats, nil}])
+    :ets.insert(scene, [
+      {:counts, 0, 0},
+      {:stats, nil},
+      {:bitmap, nil},
+      {:void, {0, 0, 0}},
+      {:status, nil},
+      {:opening, []},
+      {:chat, {[], nil}}
+    ])
 
     :wxPanel.connect(canvas, :paint,
-      callback: fn _event, _obj ->
-        paint_canvas(canvas, scene, font, :wxWindow.getClientSize(canvas))
-      end
+      callback: fn _event, _obj -> paint_canvas(canvas, scene, font) end
     )
 
     state = %{
       panel: panel,
       canvas: canvas,
       hud: hud,
-      scale: Keyword.get(opts, :scale, 1),
-      zoom?: Keyword.get(opts, :zoom, false),
-      pixels: nil,
-      pan: {0.0, 0.0},
-      subject: nil,
-      watching?: false,
-      drag: nil,
-      png: nil,
-      index: nil,
-      layer: nil,
-      input_every: Keyword.get(opts, :input_every, 100),
-      pointer?: Keyword.get(opts, :pointer, true),
-      input:
-        Input.new(Keyword.get(opts, :keymap, %{}), steering: Keyword.get(opts, :steering, [])),
+      scale: Keyword.get(opts, :scale, 2),
+      tile: @default_tile,
+      pane: nil,
+      raster: nil,
+      drawn_scene: nil,
+      overlay: nil,
+      down: %{},
+      moved_at: 0,
       link: nil,
-      sheet: nil,
-      sheets: %{},
-      bitmaps: :ets.new(Sheet, [:set, :public]),
-      map: nil,
-      frame: nil,
-      opening: [],
       font: font,
       scene: scene,
       sound: if(Keyword.get(opts, :sound, true), do: start_sound(), else: nil),
       callbacks:
-        Map.new(Keyword.take(opts, [:on_over, :on_closed, :on_refused, :on_key, :on_stats])),
+        Map.new(
+          Keyword.take(opts, [
+            :on_over,
+            :on_closed,
+            :on_refused,
+            :on_key,
+            :on_stats,
+            :on_go,
+            :on_settings,
+            :on_pad,
+            :on_world
+          ])
+        ),
+      controllers: controllers(Keyword.get(opts, :controllers, true)),
+      chat: [],
+      typing: nil,
       show_stats?: Keyword.get(opts, :show_stats, false),
       over: nil,
-      ticking?: false
+      ticking?: false,
+      watching?: false,
+      drag: nil
     }
 
     {panel, state}
@@ -228,6 +255,13 @@ defmodule Cauldron2D.Wx.View do
     hud
   end
 
+  defp controllers(false), do: false
+
+  defp controllers(true) do
+    if Gamepad.available?(), do: Gamepad.start_link(sink: self())
+    true
+  end
+
   defp start_sound do
     {:ok, sound} = Sound.start_link()
     sound
@@ -238,46 +272,41 @@ defmodule Cauldron2D.Wx.View do
     state = drop_link(state)
     module = link_module(kind)
 
-    unless state.ticking? do
-      Process.send_after(self(), :send_input, state.input_every)
-      Process.send_after(self(), :stats, 1000)
-    end
+    unless state.ticking?, do: Process.send_after(self(), :stats, 1000)
 
-    state = %{state | ticking?: true}
+    :ets.insert(state.scene, [
+      {:bitmap, nil},
+      {:status, nil},
+      {:opening, Keyword.get(join_opts, :opening, [])}
+    ])
 
-    case module.start_link([owner: self()] ++ opts) do
-      {:ok, link} ->
-        {:reply, :ok,
-         %{
-           state
-           | link: {module, link},
-             map: nil,
-             frame: nil,
-             opening: Keyword.get(join_opts, :opening, []),
-             over: nil,
-             pan: {0.0, 0.0},
-             subject: nil,
-             drag: nil,
-             watching?: watching?(opts)
-         }}
+    state = %{
+      state
+      | ticking?: true,
+        raster: nil,
+        drawn_scene: nil,
+        overlay: nil,
+        pane: nil,
+        over: nil,
+        watching?: Keyword.get(join_opts, :watching, false),
+        drag: nil
+    }
 
-      :ignore ->
-        {:reply, :ok, state}
-
-      {:error, reason} ->
-        {:reply, {:error, reason}, state}
+    case module.start_link(
+           [owner: self()] ++ Keyword.put_new(opts, :drawer, Cauldron2D.Net.Drawer)
+         ) do
+      {:ok, link} -> {:reply, :ok, %{state | link: {module, link}}}
+      :ignore -> {:reply, :ok, state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
   def handle_call(:leave, _from, state), do: {:reply, :ok, drop_link(state)}
   def handle_call(:window, _from, state), do: {:reply, state.panel, state}
 
-  defp watching?(opts) do
-    props = Keyword.get(opts, :props, %{})
-    params = Keyword.get(opts, :params, %{})
-
-    Map.get(props, :spectate, false) == true or
-      Map.get(params, "spectate", false) in [true, "1", "true"]
+  def handle_call({:pane, tile}, _from, state) do
+    state = %{state | tile: tile}
+    {:reply, pane_of(state), state}
   end
 
   defp link_module(:socket), do: Link.Socket
@@ -298,24 +327,21 @@ defmodule Cauldron2D.Wx.View do
 
   def handle_cast(:pause, state), do: {:noreply, state}
 
-  def handle_cast({:keymap, keymap}, state),
-    do: {:noreply, %{state | input: Input.new(keymap, steering: state.input.steering)}}
+  def handle_cast({:show, raster}, state), do: {:noreply, pictured(state, raster)}
+
+  def handle_cast({:configure, changes}, %{link: {module, link}} = state) do
+    module.configure(link, changes)
+    {:noreply, state}
+  end
+
+  def handle_cast({:configure, _changes}, state), do: {:noreply, state}
 
   def handle_cast({:levels, sfx, music}, %{link: {module, link}} = state) do
     module.levels(link, sfx, music)
     {:noreply, state}
   end
 
-  def handle_cast({:pointer, on?}, state),
-    do:
-      {:noreply,
-       %{
-         state
-         | pointer?: on?,
-           input: if(on?, do: state.input, else: Input.aim(state.input, nil))
-       }}
-
-  def handle_cast({:zoom, pixels}, state), do: {:noreply, zoom_to(state, pixels)}
+  def handle_cast({:levels, _sfx, _music}, state), do: {:noreply, state}
 
   def handle_cast({:show_stats, on?}, state) do
     unless on?, do: :ets.insert(state.scene, {:stats, nil})
@@ -330,26 +356,78 @@ defmodule Cauldron2D.Wx.View do
   def handle_cast(_message, state), do: {:noreply, state}
 
   @impl :wx_object
-  def handle_info({:cauldron_link, :sheet, index, png}, state) do
-    pixels = state.pixels || index.tile * state.scale
-    {:noreply, %{state | index: index, png: png, sheets: %{}} |> resheet(pixels) |> staged()}
+  def handle_info({:cauldron_link, :sheet, sheet, _png}, state) do
+    :ets.insert(state.scene, {:void, sheet.void})
+    {:noreply, repaned(%{state | tile: sheet.tile})}
   end
 
-  def handle_info({:cauldron_link, :map, map}, state),
-    do: {:noreply, %{state | map: map} |> relayer() |> staged()}
+  def handle_info({:cauldron_link, :drawing, _drawing}, state), do: {:noreply, repaned(state)}
 
-  def handle_info({:cauldron_link, :frame, frame}, state) do
-    :ets.update_counter(state.scene, :counts, {2, 1})
-    state = staged(%{state | frame: frame} |> followed())
-    :wxWindow.refresh(state.canvas, eraseBackground: false)
+  def handle_info({:gamepad, event}, %{link: {module, link}} = state) do
+    module.pad_event(link, event)
+    {:noreply, state}
+  end
+
+  def handle_info({:gamepad, %{type: :button, button: button, pressed: true}}, state),
+    do: callback(state, :on_pad, button)
+
+  def handle_info({:gamepad, _event}, state), do: {:noreply, state}
+
+  def handle_info({:cauldron_link, :status, status}, state) do
+    :ets.insert(state.scene, {:status, status})
     if state.hud, do: :wxWindow.refresh(state.hud, eraseBackground: false)
 
-    case frame.over do
-      nil -> {:noreply, state}
-      over when state.over == nil -> callback(state, :on_over, over)
+    case status.over do
+      nil -> {:noreply, %{state | over: nil}}
+      over when state.over == nil -> callback(%{state | over: over}, :on_over, over)
       _seen -> {:noreply, state}
     end
-    |> then(fn {:noreply, s} -> {:noreply, %{s | over: frame.over}} end)
+  end
+
+  def handle_info({:cauldron_link, :picture, raster}, state) do
+    :ets.update_counter(state.scene, :counts, {2, 1})
+    :ets.insert(state.scene, {:opening, []})
+    {:noreply, pictured(state, raster)}
+  end
+
+  def handle_info({:cauldron_link, :scene, view}, state) do
+    :ets.update_counter(state.scene, :counts, {2, 1})
+    :ets.insert(state.scene, {:opening, []})
+    {:noreply, scened(%{state | drawn_scene: view})}
+  end
+
+  def handle_info({:cauldron_link, :overlay, overlay}, state) do
+    state = %{state | overlay: overlay}
+    {:noreply, if(state.drawn_scene, do: scened(state), else: state)}
+  end
+
+  def handle_info({:cauldron_link, :chat_history, messages}, state),
+    do: {:noreply, chatted(%{state | chat: Enum.take(messages, -@chat_kept)})}
+
+  def handle_info({:cauldron_link, :chat, message}, state),
+    do: {:noreply, chatted(%{state | chat: Enum.take(state.chat ++ [message], -@chat_kept)})}
+
+  def handle_info({:cauldron_link, :talk}, state), do: {:noreply, chatted(%{state | typing: ""})}
+
+  def handle_info({:cauldron_link, :world, id}, state) do
+    :ets.insert(state.scene, {:bitmap, nil})
+    callback(%{state | raster: nil, drawn_scene: nil, overlay: nil, over: nil}, :on_world, id)
+  end
+
+  def handle_info({:cauldron_link, :go, to}, state), do: callback(state, :on_go, to)
+
+  def handle_info({:cauldron_link, :settings, settings}, state),
+    do: callback(state, :on_settings, settings)
+
+  def handle_info({:cauldron_link, :clipboard, text}, state) do
+    clipboard = :wxClipboard.get()
+
+    if :wxClipboard.open(clipboard) do
+      :wxClipboard.setData(clipboard, :wxTextDataObject.new(text: String.to_charlist(text)))
+      :wxClipboard.close(clipboard)
+    end
+
+    {:noreply, state}
   end
 
   def handle_info({:cauldron_link, :pcm, chunk}, %{sound: sound} = state) when sound != nil do
@@ -374,11 +452,6 @@ defmodule Cauldron2D.Wx.View do
   def handle_info({:cauldron_link, :closed, reason}, state),
     do: callback(%{state | link: nil}, :on_closed, reason)
 
-  def handle_info(:send_input, state) do
-    Process.send_after(self(), :send_input, state.input_every)
-    {:noreply, push_input(state)}
-  end
-
   def handle_info(:stats, state) do
     Process.send_after(self(), :stats, 1000)
     [{:counts, frames, draws}] = :ets.lookup(state.scene, :counts)
@@ -393,119 +466,76 @@ defmodule Cauldron2D.Wx.View do
 
   def handle_info(_message, state), do: {:noreply, state}
 
-  defp staged(state) do
-    :ets.insert(
-      state.scene,
-      {:scene, state.sheet, state.map, shown(state), state.layer, state.opening}
-    )
-
-    state
-  end
-
-  defp shown(%{frame: nil}), do: nil
-
-  defp shown(%{frame: %{focus: {fx, fy}} = frame, pan: {px, py}}),
-    do: %{frame | focus: {fx + px, fy + py}}
-
-  defp followed(%{frame: %{subject: subject}, subject: subject} = state), do: state
-
-  defp followed(%{frame: %{subject: subject}} = state),
-    do: %{state | pan: {0.0, 0.0}, subject: subject}
-
-  defp followed(state), do: state
-
-  defp pan_by(%{pan: {px, py}} = state, {dx, dy}) do
-    state = %{state | pan: {px + dx, py + dy}} |> staged()
-    :wxWindow.refresh(state.canvas, eraseBackground: false)
-    state
-  end
-
-  defp zoom_about(
-         %{watching?: true, frame: frame, map: map, sheet: %Sheet{} = sheet} = state,
-         factor,
-         point
-       )
-       when frame != nil and map != nil do
-    from = Sheet.pixels(sheet)
-    zoomed = zoom_by(state, factor)
-    to = Sheet.pixels(zoomed.sheet)
-    {fx, fy} = frame.focus
-
-    {nx, ny} =
-      Painter.zoom_about(
-        shown(state),
-        map,
-        :wxWindow.getClientSize(state.canvas),
-        from,
-        to,
-        point
-      )
-
-    if to == from, do: zoomed, else: pan_by(%{zoomed | pan: {0.0, 0.0}}, {nx - fx, ny - fy})
-  end
-
-  defp zoom_about(state, factor, _point), do: zoom_by(state, factor)
-
-  @pan_keys %{314 => {-1, 0}, 315 => {0, -1}, 316 => {1, 0}, 317 => {0, 1}}
-  @pan_pixels 64
-
-  @zoom_steps [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64]
-  @layer_limit 4096
-
-  defp zoom_to(%{index: nil} = state, _pixels), do: state
-
-  defp zoom_to(state, pixels) do
+  defp pane_of(state) do
     {width, height} = :wxWindow.getClientSize(state.canvas)
-    whole = if state.map, do: min(width / state.map.width, height / state.map.height), else: 0
-    least = Enum.find(@zoom_steps, 64, &(&1 >= whole))
-    pixels = pixels |> max(least) |> min(64)
-    if pixels == state.pixels, do: state, else: state |> resheet(pixels) |> staged()
+    pixels = state.tile * state.scale
+    {max(1, round(width / pixels)), max(1, round(height / pixels))}
   end
 
-  defp zoom_by(state, factor) do
-    current = state.pixels || (state.index && state.index.tile * state.scale) || 16
-    wanted = current * factor
-
-    next =
-      if factor > 1,
-        do: Enum.find(@zoom_steps, 64, &(&1 >= wanted - 0.01)),
-        else: @zoom_steps |> Enum.reverse() |> Enum.find(2, &(&1 <= wanted + 0.01))
-
-    zoom_to(state, next)
+  defp repaned(%{link: {module, link}} = state) do
+    pane = pane_of(state)
+    if pane != state.pane, do: module.pane(link, pane)
+    %{state | pane: pane}
   end
 
-  defp resheet(state, pixels) do
-    sheet =
-      Map.get_lazy(state.sheets, pixels, fn ->
-        Sheet.load(state.index, state.png, pixels / state.index.tile, bitmaps: state.bitmaps)
-      end)
+  defp repaned(state), do: state
 
-    %{state | sheet: sheet, sheets: Map.put(state.sheets, pixels, sheet), pixels: pixels}
-    |> relayer()
+  defp chatted(state) do
+    :ets.insert(state.scene, {:chat, {state.chat, state.typing}})
+    if state.hud, do: :wxWindow.refresh(state.hud, eraseBackground: false)
+    state
   end
 
-  defp relayer(%{sheet: %Sheet{} = sheet, map: map} = state) when map != nil do
-    pixels = Sheet.pixels(sheet)
+  defp scened(%{pane: nil} = state), do: state
 
-    if map.width * pixels <= @layer_limit and map.height * pixels <= @layer_limit do
-      bitmap = :wxBitmap.new(map.width * pixels, map.height * pixels)
-      dc = :wxMemoryDC.new(bitmap)
-      :wxDC.setBackground(dc, :wxBrush.new(sheet.void))
-      :wxDC.clear(dc)
-
-      for {index, x, y} <- Painter.layer_blits(map, pixels, except: Sheet.animated(sheet)),
-          tile = Sheet.bitmap(sheet, index),
-          tile != nil,
-          do: :wxDC.drawBitmap(dc, tile, {x, y}, useMask: true)
-
-      :wxMemoryDC.destroy(dc)
-      %{state | layer: bitmap}
-    else
-      %{state | layer: nil}
+  defp scened(state) do
+    case Draw.picture(state.drawn_scene, state.pane) do
+      nil -> state
+      raster -> pictured(state, overlaid(raster, state.overlay))
     end
   end
 
-  defp relayer(state), do: %{state | layer: nil}
+  defp overlaid(raster, %FrenchCurve.Raster{width: width, height: height} = overlay)
+       when raster.width == width and raster.height == height,
+       do: Surface.stack(raster, overlay)
+
+  defp overlaid(raster, _overlay), do: raster
+
+  defp pictured(state, raster) do
+    # A still frame is already on the canvas; do not make and scale a new bitmap.
+    if state.raster == raster do
+      state
+    else
+      old = lookup(state.scene, :bitmap)
+      :ets.insert(state.scene, {:bitmap, bitmap(raster, :wxWindow.getClientSize(state.canvas))})
+      :wxWindow.refresh(state.canvas, eraseBackground: false)
+      # The bitmap is a native resource; letting every frame wait for the GC is how a
+      # window at 30 fps grows to gigabytes.
+      case old do
+        {bitmap, _at} -> :wxBitmap.destroy(bitmap)
+        nil -> :ok
+        bitmap -> :wxBitmap.destroy(bitmap)
+      end
+      %{state | raster: raster}
+    end
+  end
+
+  defp bitmap(%FrenchCurve.Raster{width: width, height: height} = raster, {canvas_w, canvas_h}) do
+    rgb = for <<r, g, b, _a <- Raster.to_rgba_binary(raster)>>, into: <<>>, do: <<r, g, b>>
+    image = :wxImage.new(width, height, rgb)
+
+    scale = min(canvas_w / width, canvas_h / height)
+    shown_w = max(1, round(width * scale))
+    shown_h = max(1, round(height * scale))
+
+    scaled =
+      :wxImage.scale(image, shown_w, shown_h, quality: Const.image_quality_nearest())
+
+    bitmap = :wxBitmap.new(scaled)
+    :wxImage.destroy(scaled)
+    :wxImage.destroy(image)
+    {bitmap, {div(canvas_w - shown_w, 2), div(canvas_h - shown_h, 2)}}
+  end
 
   defp callback(state, name, argument) do
     case Map.get(state.callbacks, name) do
@@ -516,102 +546,159 @@ defmodule Cauldron2D.Wx.View do
     {:noreply, state}
   end
 
-  defp push_input(%{link: {module, link}} = state) do
-    module.input(link, Input.state(state.input))
-    state
-  end
-
-  defp push_input(state), do: state
-
   @impl :wx_object
-  def handle_event(wx(event: wxKey(type: :key_down, keyCode: code)), %{zoom?: true} = state)
-      when code in [?=, ?+, 388] do
-    {:noreply, zoom_by(state, 1.5)}
+  def handle_event(wx(event: wxSize()), state) do
+    state = repaned(state)
+
+    cond do
+      state.drawn_scene -> {:noreply, scened(state)}
+      state.raster -> {:noreply, pictured(state, state.raster)}
+      true -> {:noreply, state}
+    end
   end
 
-  def handle_event(wx(event: wxKey(type: :key_down, keyCode: code)), %{zoom?: true} = state)
-      when code in [?-, 390] do
-    {:noreply, zoom_by(state, 1 / 1.5)}
+  def handle_event(wx(event: wxKey(type: :key_down, keyCode: code)), %{typing: text} = state)
+      when text != nil do
+    {:noreply, typed(state, code)}
   end
 
-  def handle_event(wx(event: wxKey(type: :key_down, keyCode: code)), %{zoom?: true} = state)
-      when code in [?0, 380] do
-    {:noreply,
-     state
-     |> zoom_to(state.index.tile * state.scale)
-     |> Map.put(:pan, {0.0, 0.0})
-     |> pan_by({0.0, 0.0})}
+  def handle_event(wx(event: wxKey(type: :char, uniChar: char)), %{typing: text} = state)
+      when text != nil and char >= 32 and char != 127 do
+    {:noreply, chatted(%{state | typing: String.slice(text <> <<char::utf8>>, 0, @said_most)})}
   end
 
-  def handle_event(
-        wx(event: wxKey(type: :key_down, keyCode: code)),
-        %{watching?: true, sheet: %Sheet{} = sheet} = state
-      )
-      when is_map_key(@pan_keys, code) do
-    {dx, dy} = Map.fetch!(@pan_keys, code)
-    pixels = Sheet.pixels(sheet)
-    {:noreply, pan_by(state, {dx * @pan_pixels / pixels, dy * @pan_pixels / pixels})}
-  end
+  def handle_event(wx(event: wxKey(type: :char)), state), do: {:noreply, state}
 
-  def handle_event(wx(event: wxKey(type: :key_down, keyCode: code)), state) do
+  def handle_event(wx(event: wxKey(type: :key_down, keyCode: code) = key), state) do
     :wxWindow.setFocus(state.canvas)
-    {input, handled?} = Input.press(state.input, code)
-    unless handled?, do: callback(state, :on_key, code)
-    {:noreply, changed(state, input, handled?)}
+    {:noreply, key_down(state, code, key)}
   end
+
+  def handle_event(wx(event: wxKey(type: :key_up, keyCode: code) = key), state),
+    do: {:noreply, key_up(state, code, key)}
 
   def handle_event(
         wx(event: wxMouse(type: :mousewheel, wheelRotation: rotation, x: x, y: y)),
-        %{zoom?: true} = state
+        state
       ) do
-    {:noreply, zoom_about(state, if(rotation > 0, do: 1.5, else: 1 / 1.5), {x, y})}
+    moused(state, %{type: :scroll, direction: if(rotation > 0, do: :up, else: :down)}, {x, y})
+    {:noreply, state}
   end
 
-  def handle_event(wx(event: wxMouse(type: :mousewheel)), state), do: {:noreply, state}
-
-  def handle_event(wx(event: wxKey(type: :key_up, keyCode: code)), state) do
-    {input, handled?} = Input.release(state.input, code)
-    {:noreply, changed(state, input, handled?)}
+  def handle_event(wx(event: wxMouse(type: :motion, x: x, y: y)), %{drag: {dx, dy}} = state) do
+    panned(state, fraction(state, {dx - x, dy - y}))
+    {:noreply, %{state | drag: {x, y}}}
   end
 
-  def handle_event(
-        wx(event: wxMouse(type: :motion, x: x, y: y, leftDown: true)),
-        %{watching?: true, drag: {fx, fy}, sheet: %Sheet{} = sheet} = state
-      ) do
-    pixels = Sheet.pixels(sheet)
-    {:noreply, pan_by(%{state | drag: {x, y}}, {(fx - x) / pixels, (fy - y) / pixels})}
-  end
+  def handle_event(wx(event: wxMouse(type: :motion, x: x, y: y)), state) do
+    now = System.monotonic_time(:millisecond)
 
-  def handle_event(wx(event: wxMouse(type: :motion, x: x, y: y)), %{pointer?: true} = state) do
-    {:noreply, %{state | input: Input.aim(state.input, world_at(state, {x, y}))}}
+    if now - state.moved_at >= @move_ms do
+      moused(state, %{type: :move}, {x, y})
+      {:noreply, %{state | moved_at: now}}
+    else
+      {:noreply, state}
+    end
   end
-
-  def handle_event(wx(event: wxMouse(type: :motion)), state), do: {:noreply, state}
 
   def handle_event(wx(event: wxMouse(type: :left_down, x: x, y: y)), %{watching?: true} = state) do
     :wxWindow.setFocus(state.canvas)
     {:noreply, %{state | drag: {x, y}}}
   end
 
-  def handle_event(wx(event: wxMouse(type: :left_up)), %{watching?: true} = state),
+  def handle_event(wx(event: wxMouse(type: :left_up)), %{drag: {_x, _y}} = state),
     do: {:noreply, %{state | drag: nil}}
 
   def handle_event(wx(event: wxMouse(type: type, x: x, y: y)), state)
       when type in [:left_down, :right_down, :middle_down] do
     :wxWindow.setFocus(state.canvas)
-    input = state.input |> Input.aim(world_at(state, {x, y})) |> Input.button(button(type), true)
-    {:noreply, changed(state, input, true)}
+    moused(state, %{type: :mouse_down, button: button(type)}, {x, y})
+    {:noreply, state}
   end
 
-  def handle_event(wx(event: wxMouse(type: type)), state)
+  def handle_event(wx(event: wxMouse(type: type, x: x, y: y)), state)
       when type in [:left_up, :right_up, :middle_up] do
-    {:noreply, changed(state, Input.button(state.input, button(type), false), true)}
+    moused(state, %{type: :mouse_up, button: button(type)}, {x, y})
+    {:noreply, state}
   end
 
-  def handle_event(wx(event: {:wxFocus, :kill_focus, _}), state),
-    do: {:noreply, changed(state, Input.drop(state.input), true)}
+  def handle_event(wx(event: {:wxFocus, :kill_focus, _}), state), do: {:noreply, let_go(state)}
 
   def handle_event(_event, state), do: {:noreply, state}
+
+  defp typed(%{link: {module, link}} = state, 13) do
+    if String.trim(state.typing) != "", do: module.say(link, state.typing)
+    chatted(%{state | typing: nil})
+  end
+
+  defp typed(state, 13), do: chatted(%{state | typing: nil})
+  defp typed(state, 27), do: chatted(%{state | typing: nil})
+  defp typed(state, 8), do: chatted(%{state | typing: String.slice(state.typing, 0..-2//1)})
+  defp typed(state, _code), do: state
+
+  defp key_down(%{link: {_module, _link}} = state, code, key) do
+    case Keys.input_key(code) do
+      nil -> state
+      name -> pressed(state, name, code, key)
+    end
+  end
+
+  defp key_down(state, code, _key) do
+    callback(state, :on_key, code)
+    state
+  end
+
+  defp pressed(%{watching?: true} = state, name, _code, _key) when is_map_key(@pans, name) do
+    {x, y} = Map.fetch!(@pans, name)
+    {width, height} = :wxWindow.getClientSize(state.canvas)
+    step = max(width, height) / 8
+    panned(state, {x * step / max(width, 1), y * step / max(height, 1)})
+    state
+  end
+
+  defp pressed(%{link: {module, link}} = state, name, code, key) do
+    module.key(link, name, mods(key), true)
+    %{state | down: Map.put(state.down, code, name)}
+  end
+
+  defp key_up(%{link: {module, link}} = state, code, key) do
+    case Map.pop(state.down, code) do
+      {nil, _down} ->
+        state
+
+      {name, down} ->
+        module.key(link, name, mods(key), false)
+        %{state | down: down}
+    end
+  end
+
+  defp key_up(state, _code, _key), do: state
+
+  defp let_go(%{link: {module, link}} = state) do
+    for {_code, name} <- state.down, do: module.key(link, name, [], false)
+    %{state | down: %{}}
+  end
+
+  defp let_go(state), do: %{state | down: %{}}
+
+  defp moused(%{link: {module, link}} = state, event, point),
+    do: module.mouse(link, Map.put(event, :at, fraction(state, point)))
+
+  defp moused(_state, _event, _point), do: :ok
+
+  defp panned(%{link: {module, link}}, fraction), do: module.pan(link, fraction)
+  defp panned(_state, _fraction), do: :ok
+
+  defp mods(wxKey(controlDown: ctrl, shiftDown: shift, altDown: alt, metaDown: meta)) do
+    for {down?, mod} <- [{ctrl, :ctrl}, {shift, :shift}, {alt, :alt}, {meta, :meta}],
+        down?,
+        do: mod
+  end
+
+  defp fraction(state, {x, y}) do
+    {width, height} = :wxWindow.getClientSize(state.canvas)
+    {x / max(width, 1), y / max(height, 1)}
+  end
 
   defp button(:left_down), do: :left
   defp button(:left_up), do: :left
@@ -619,44 +706,36 @@ defmodule Cauldron2D.Wx.View do
   defp button(:right_up), do: :right
   defp button(_middle), do: :middle
 
-  defp changed(state, input, false), do: %{state | input: input}
-  defp changed(state, input, true), do: push_input(%{state | input: input})
-
-  defp world_at(%{frame: frame, map: map, sheet: %Sheet{} = sheet} = state, point)
-       when frame != nil and map != nil,
-       do:
-         Painter.world_at(
-           shown(state),
-           map,
-           :wxWindow.getClientSize(state.canvas),
-           Sheet.pixels(sheet),
-           point
-         )
-
-  defp world_at(_state, _point), do: nil
-
-  defp scene(table) do
-    case :ets.lookup(table, :scene) do
-      [{:scene, sheet, map, frame, layer, opening}] -> {sheet, map, frame, layer, opening}
-      [] -> {nil, nil, nil, nil, []}
-    end
+  defp lookup(table, key) do
+    [{^key, value}] = :ets.lookup(table, key)
+    value
   end
 
-  defp paint_canvas(canvas, table, font, size) do
-    {sheet, map, frame, layer, opening} = scene(table)
+  defp paint_canvas(canvas, table, font) do
     :ets.update_counter(table, :counts, {3, 1})
     dc = :wxBufferedPaintDC.new(canvas)
-    :wxDC.setBackground(dc, :wxBrush.new(if(sheet, do: sheet.void, else: {0, 0, 0})))
+    :wxDC.setBackground(dc, :wxBrush.new(lookup(table, :void)))
     :wxDC.clear(dc)
-    draw_world(dc, sheet, map, frame, layer, size)
-    draw_labels(dc, sheet, map, frame, size)
-    draw_opening(dc, font, frame, opening, size)
-    draw_stats(dc, font, :ets.lookup(table, :stats))
+
+    case lookup(table, :bitmap) do
+      nil ->
+        draw_opening(dc, font, lookup(table, :opening), :wxWindow.getClientSize(canvas))
+
+      {bitmap, at} ->
+        :wxDC.drawBitmap(dc, bitmap, at)
+
+      bitmap ->
+        :wxDC.drawBitmap(dc, bitmap, {0, 0})
+    end
+
+    draw_stats(dc, font, lookup(table, :stats))
     :wxBufferedPaintDC.destroy(dc)
     :ok
   end
 
-  defp draw_opening(dc, font, nil, [_ | _] = rows, {width, height}) do
+  defp draw_opening(_dc, _font, [], _size), do: :ok
+
+  defp draw_opening(dc, font, rows, {width, height}) do
     :wxDC.setFont(dc, font)
     {_width, line} = :wxDC.getTextExtent(dc, "M")
     top = div(height - line * length(rows), 2)
@@ -668,16 +747,19 @@ defmodule Cauldron2D.Wx.View do
       {row_width, _height} = :wxDC.getTextExtent(dc, Hud.text(row))
 
       Enum.reduce(runs, div(width - row_width, 2), fn {text, _style} = run, x ->
-        draw_run(dc, text, Hud.colour(run) || {255, 255, 255}, {x, top + index * line})
+        draw_run(
+          dc,
+          text,
+          Hud.colour(run, &Cauldron2D.Palette.rgb/1) || {255, 255, 255},
+          {x, top + index * line}
+        )
       end)
     end)
 
     :ok
   end
 
-  defp draw_opening(_dc, _font, _frame, _rows, _size), do: :ok
-
-  defp draw_stats(dc, font, [{:stats, text}]) when is_binary(text) do
+  defp draw_stats(dc, font, text) when is_binary(text) do
     :wxDC.setFont(dc, font)
     :wxDC.setTextForeground(dc, {255, 255, 255})
     :wxDC.drawText(dc, text, {6, 4})
@@ -685,77 +767,20 @@ defmodule Cauldron2D.Wx.View do
 
   defp draw_stats(_dc, _font, _none), do: :ok
 
-  defp draw_labels(dc, %Sheet{} = sheet, map, %{labels: [_ | _] = labels} = frame, size)
-       when map != nil do
-    pixels = Sheet.pixels(sheet)
-
-    for {text, x, y, colour, scale} <- labels,
-        {px, py} <- Painter.label_blits(frame, map, size, pixels, {x, y}) do
-      :wxDC.setFont(
-        dc,
-        :wxFont.new(
-          max(6, round(pixels * 0.45 * scale)),
-          Const.teletype(),
-          Const.normal(),
-          Const.fontweight_normal()
-        )
-      )
-
-      :wxDC.setTextForeground(dc, label_colour(colour))
-      :wxDC.drawText(dc, text, {px, py})
-    end
-
-    :ok
-  end
-
-  defp draw_labels(_dc, _sheet, _map, _frame, _size), do: :ok
-
-  defp label_colour("#" <> hex),
-    do: hex |> Base.decode16!(case: :mixed) |> then(fn <<r, g, b>> -> {r, g, b} end)
-
-  defp label_colour(_none), do: {255, 255, 255}
-
-  defp draw_world(dc, %Sheet{} = sheet, map, frame, nil, size) when map != nil and frame != nil do
-    now = System.monotonic_time(:millisecond)
-
-    for {index, x, y} <- Painter.blits(frame, map, size, Sheet.pixels(sheet)),
-        bitmap = Sheet.bitmap_at(sheet, index, now),
-        bitmap != nil do
-      :wxDC.drawBitmap(dc, bitmap, {x, y}, useMask: true)
-    end
-
-    :ok
-  end
-
-  defp draw_world(dc, %Sheet{} = sheet, map, frame, layer, size)
-       when map != nil and frame != nil do
-    pixels = Sheet.pixels(sheet)
-    now = System.monotonic_time(:millisecond)
-
-    for {x, y} <- Painter.layer_offsets(frame, map, size, pixels),
-        do: :wxDC.drawBitmap(dc, layer, {x, y})
-
-    for {index, x, y} <-
-          Painter.cell_blits(frame, map, size, pixels, Sheet.animated(sheet)) ++
-            Painter.mover_blits(frame, map, size, pixels),
-        bitmap = Sheet.bitmap_at(sheet, index, now),
-        bitmap != nil do
-      :wxDC.drawBitmap(dc, bitmap, {x, y}, useMask: true)
-    end
-
-    :ok
-  end
-
-  defp draw_world(_dc, _sheet, _map, _frame, _layer, _size), do: :ok
-
   defp paint_hud(hud, table, font, colours) do
-    {_sheet, _map, frame, _layer, _opening} = scene(table)
     dc = :wxBufferedPaintDC.new(hud)
     :wxDC.setBackground(dc, :wxBrush.new(colours.background))
     :wxDC.clear(dc)
     :wxDC.setFont(dc, font)
 
-    frame |> hud_rows() |> Enum.with_index() |> Enum.each(&draw_row(dc, &1, colours.text))
+    rows = table |> lookup(:status) |> hud_rows()
+    rows |> Enum.with_index() |> Enum.each(&draw_row(dc, &1, colours.text))
+    {messages, typing} = lookup(table, :chat)
+
+    (Enum.map(messages, &[{&1.from <> " ", "#7fd6ff"}, {&1.text, nil}]) ++ typing_row(typing))
+    |> Enum.with_index(length(rows) + 1)
+    |> Enum.each(&draw_row(dc, &1, colours.text))
+
     :wxBufferedPaintDC.destroy(dc)
   end
 
@@ -771,6 +796,9 @@ defmodule Cauldron2D.Wx.View do
     {width, _height} = :wxDC.getTextExtent(dc, text)
     x + width
   end
+
+  defp typing_row(nil), do: []
+  defp typing_row(text), do: [[{"say: ", "#ffd060"}, {text <> "_", nil}]]
 
   defp hud_rows(%{hud: hud}), do: hud
   defp hud_rows(nil), do: []

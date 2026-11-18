@@ -24,7 +24,10 @@ enum RequestOp : uint8_t {
   RequestResize = 5,
   RequestRelativeMouse = 6,
   RequestFrames = 7,
-  RequestClose = 8
+  RequestClose = 8,
+  RequestStream = 9,
+  RequestStopStream = 10,
+  RequestFrameShown = 11
 };
 
 struct Mapping {
@@ -121,22 +124,22 @@ void info_term(Term &term, const cg_device_info &info) {
   term.atom("frame_generation").boolean(info.frame_generation);
 }
 
-void capture_term(Term &term, const Capture *capture, const std::string &shared_memory) {
+void capture_term(Term &term, const char *tag, const Capture *capture, const std::string &shared_memory) {
   if (!capture || !capture->pixels) {
-    term.tuple(2).atom("capture").atom("error");
+    term.tuple(2).atom(tag).atom("error");
     return;
   }
   size_t size = size_t(capture->width) * capture->height * 4;
   if (shared_memory.empty()) {
-    term.tuple(4).atom("capture").integer(capture->width).integer(capture->height).binary(capture->pixels, size);
+    term.tuple(4).atom(tag).integer(capture->width).integer(capture->height).binary(capture->pixels, size);
     return;
   }
   std::string error;
   if (!write_shared_memory(shared_memory, capture->pixels, size, error)) {
-    term.tuple(2).atom("capture").tuple(2).atom("error").binary(error);
+    term.tuple(2).atom(tag).tuple(2).atom("error").binary(error);
     return;
   }
-  term.tuple(4).atom("capture").integer(capture->width).integer(capture->height).tuple(2).atom("shared_memory").binary(shared_memory);
+  term.tuple(4).atom(tag).integer(capture->width).integer(capture->height).tuple(2).atom("shared_memory").binary(shared_memory);
 }
 
 Term reply_header(uint32_t tag) {
@@ -191,6 +194,15 @@ bool Session::handle(std::vector<uint8_t> packet) {
       return true;
     case RequestFrames:
       frames(request);
+      return true;
+    case RequestStream:
+      stream(request);
+      return true;
+    case RequestStopStream:
+      stop_stream(request);
+      return true;
+    case RequestFrameShown:
+      frame_shown();
       return true;
     case RequestClose:
       return false;
@@ -269,10 +281,45 @@ void Session::capture(Request &request) {
   Channel &channel = channel_;
   auto reply = [&channel, tag, shared_memory](const Capture *picture) {
     Term term = reply_header(tag);
-    capture_term(term, picture, shared_memory);
+    capture_term(term, "capture", picture, shared_memory);
     channel.send(term);
   };
   if (!window_ || !window_->capture(generated, reply)) reply_closed(tag);
+}
+
+void Session::stream(Request &request) {
+  uint32_t tag = request.u32();
+  uint32_t ahead = request.u32();
+  uint32_t fps = request.u32();
+  auto names = std::make_shared<std::vector<std::string>>();
+  for (uint32_t count = request.u8(); count > 0 && !request.failed(); count--) names->push_back(request.text(request.u8()));
+  if (request.failed() || fps == 0) {
+    Term term = reply_header(tag);
+    term.tuple(2).atom("error").binary("malformed stream request");
+    channel_.send(term);
+    return;
+  }
+  Channel &channel = channel_;
+  auto next = std::make_shared<size_t>(0);
+  auto deliver = [&channel, names, next](const Capture *picture) {
+    std::string name = names->empty() ? std::string() : (*names)[(*next)++ % names->size()];
+    Term term;
+    term.tuple(2).atom("stream");
+    capture_term(term, "frame", picture, name);
+    channel.send(term);
+  };
+  if (!window_ || !window_->stream(deliver, ahead, static_cast<float>(fps))) return reply_closed(tag);
+  channel_.send(reply_header(tag).atom("ok"));
+}
+
+void Session::stop_stream(Request &request) {
+  uint32_t tag = request.u32();
+  if (!window_ || !window_->stop_stream()) return reply_closed(tag);
+  channel_.send(reply_header(tag).atom("ok"));
+}
+
+void Session::frame_shown() {
+  if (window_) window_->frame_shown();
 }
 
 void Session::resize(Request &request) {

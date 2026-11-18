@@ -10,7 +10,8 @@ namespace {
 
 cg_format texture_format(TextureFormat format) {
   switch (format) {
-    case TextureFormat::Rgba8Linear: return CG_FORMAT_RGBA8_UNORM;
+    case TextureFormat::Rgba8Linear:
+    case TextureFormat::R8: return CG_FORMAT_RGBA8_UNORM;
     case TextureFormat::Rgba16Float: return CG_FORMAT_RGBA16F;
     default: return CG_FORMAT_RGBA8_SRGB;
   }
@@ -38,6 +39,7 @@ uint32_t mip_count(uint32_t width, uint32_t height) {
 Resources::~Resources() {
   for (auto &[id, mesh] : meshes_) destroy_mesh(mesh);
   for (auto &[id, texture] : textures_) backend_->texture_destroy(device_, texture.texture);
+  for (auto &[id, scatter] : scatters_) backend_->buffer_destroy(device_, scatter.placements);
   if (white_.texture) backend_->texture_destroy(device_, white_.texture);
   if (black_.texture) backend_->texture_destroy(device_, black_.texture);
   for (cg_sampler *sampler : {samplers_.nearest_repeat, samplers_.nearest_clamp, samplers_.linear_repeat, samplers_.linear_clamp})
@@ -72,6 +74,11 @@ const GpuTexture *Resources::texture(uint32_t id) const {
   return found == textures_.end() ? nullptr : &found->second;
 }
 
+const GpuScatter *Resources::scatter(uint32_t id) const {
+  auto found = scatters_.find(id);
+  return found == scatters_.end() ? nullptr : &found->second;
+}
+
 void Resources::apply(cg_cmd *cmd, Changes &changes) {
   if (!defaults_uploaded_) {
     const uint8_t white[4] = {255, 255, 255, 255};
@@ -82,8 +89,10 @@ void Resources::apply(cg_cmd *cmd, Changes &changes) {
   }
   for (uint32_t id : changes.dropped_meshes) drop_mesh(id);
   for (uint32_t id : changes.dropped_textures) drop_texture(id);
+  for (uint32_t id : changes.dropped_scatters) drop_scatter(id);
   for (auto &[id, mesh] : changes.meshes) put_mesh(cmd, id, mesh);
   for (auto &[id, texture] : changes.textures) put_texture(cmd, id, texture);
+  for (auto &[id, scatter] : changes.scatters) put_scatter(cmd, id, scatter);
   changes = Changes{};
   release_staging();
 }
@@ -109,6 +118,14 @@ void Resources::put_mesh(cg_cmd *cmd, uint32_t id, const MeshData &mesh) {
     gpu.skin = backend_->buffer_create(device_, mesh.skin.size(), CG_MEMORY_GPU, "mesh skin");
     if (gpu.skin) staged(cmd, mesh.skin.data(), mesh.skin.size(), gpu.skin);
   }
+  if (!mesh.morphs.empty()) {
+    size_t morph_bytes = mesh.morphs.size() * sizeof(float);
+    gpu.morphs = backend_->buffer_create(device_, morph_bytes, CG_MEMORY_GPU, "mesh morphs");
+    if (gpu.morphs) {
+      staged(cmd, mesh.morphs.data(), morph_bytes, gpu.morphs);
+      gpu.morph_count = mesh.morph_count;
+    }
+  }
   if (!mesh.colors.empty()) {
     gpu.colors = backend_->buffer_create(device_, mesh.colors.size(), CG_MEMORY_GPU, "mesh colors");
     if (gpu.colors) staged(cmd, mesh.colors.data(), mesh.colors.size(), gpu.colors);
@@ -122,7 +139,7 @@ void Resources::put_mesh(cg_cmd *cmd, uint32_t id, const MeshData &mesh) {
 }
 
 void Resources::put_canvas(cg_cmd *cmd, uint32_t id, const TextureData &texture) {
-  cg_texture_desc desc{CG_TEXTURE_2D, CG_FORMAT_RGBA8_UNORM, texture.width, texture.height, 1,
+  cg_texture_desc desc{CG_TEXTURE_2D, texture.srgb ? CG_FORMAT_RGBA8_SRGB : CG_FORMAT_RGBA8_UNORM, texture.width, texture.height, 1,
                        CG_TEXTURE_SAMPLED | CG_TEXTURE_RENDER_TARGET, "canvas"};
   cg_texture *created = backend_->texture_create(device_, &desc);
   if (!created) return;
@@ -132,7 +149,7 @@ void Resources::put_canvas(cg_cmd *cmd, uint32_t id, const TextureData &texture)
   pass.label = "canvas clear";
   backend_->cmd_begin_pass(cmd, &pass);
   backend_->cmd_end_pass(cmd);
-  textures_[id] = {created, backend_->texture_handle(created), sampler_handle(texture.linear_filter, true), texture.width, texture.height, true, texture.linear_filter};
+  textures_[id] = {created, backend_->texture_handle(created), sampler_handle(texture.linear_filter, true), texture.width, texture.height, true, texture.linear_filter, texture.srgb};
 }
 
 void Resources::put_texture(cg_cmd *cmd, uint32_t id, const TextureData &texture) {
@@ -143,16 +160,41 @@ void Resources::put_texture(cg_cmd *cmd, uint32_t id, const TextureData &texture
   cg_texture *created = backend_->texture_create(device_, &desc);
   if (!created) return;
   uint32_t bytes_per_pixel = texture.format == TextureFormat::Rgba16Float ? 8 : 4;
-  cg_buffer *staging = backend_->buffer_create(device_, texture.pixels.size(), CG_MEMORY_UPLOAD, "texture staging");
+  std::vector<uint8_t> expanded;
+  if (texture.format == TextureFormat::R8) {
+    expanded.resize(texture.pixels.size() * 4);
+    for (size_t at = 0; at < texture.pixels.size(); at++) {
+      expanded[at * 4] = texture.pixels[at];
+      expanded[at * 4 + 3] = 255;
+    }
+  }
+  const std::vector<uint8_t> &pixels = expanded.empty() ? texture.pixels : expanded;
+  cg_buffer *staging = backend_->buffer_create(device_, pixels.size(), CG_MEMORY_UPLOAD, "texture staging");
   if (!staging) {
     backend_->texture_destroy(device_, created);
     return;
   }
-  std::memcpy(backend_->buffer_contents(staging), texture.pixels.data(), texture.pixels.size());
+  std::memcpy(backend_->buffer_contents(staging), pixels.data(), pixels.size());
   backend_->cmd_copy_to_texture(cmd, staging, 0, texture.width * bytes_per_pixel, created, 0, 0, texture.width, texture.height);
   if (desc.mip_levels > 1) backend_->cmd_generate_mips(cmd, created);
   staging_.push_back(staging);
   textures_[id] = {created, backend_->texture_handle(created), sampler_handle(texture.linear_filter, texture.clamp), texture.width, texture.height, false, texture.linear_filter};
+}
+
+void Resources::put_scatter(cg_cmd *cmd, uint32_t id, const ScatterData &scatter) {
+  drop_scatter(id);
+  if (scatter.placements.empty()) return;
+  cg_buffer *placements = backend_->buffer_create(device_, scatter.placements.size(), CG_MEMORY_GPU, "scatter placements");
+  if (!placements) return;
+  staged(cmd, scatter.placements.data(), scatter.placements.size(), placements);
+  scatters_[id] = {placements, scatter.count, {{scatter.centre[0], scatter.centre[1], scatter.centre[2]}, scatter.radius}, scatter.largest};
+}
+
+void Resources::drop_scatter(uint32_t id) {
+  auto found = scatters_.find(id);
+  if (found == scatters_.end()) return;
+  backend_->buffer_destroy(device_, found->second.placements);
+  scatters_.erase(found);
 }
 
 void Resources::drop_mesh(uint32_t id) {
@@ -168,6 +210,7 @@ void Resources::destroy_mesh(GpuMesh &mesh) {
   if (mesh.accel) backend_->accel_destroy(device_, mesh.accel);
   if (mesh.skin) backend_->buffer_destroy(device_, mesh.skin);
   if (mesh.colors) backend_->buffer_destroy(device_, mesh.colors);
+  if (mesh.morphs) backend_->buffer_destroy(device_, mesh.morphs);
 }
 
 void Resources::drop_texture(uint32_t id) {

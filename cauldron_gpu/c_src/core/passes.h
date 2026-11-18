@@ -28,6 +28,10 @@ struct Draw {
   BlendKind blend;
   bool depth_always;
   uint64_t colors;
+  uint64_t scatter = 0;
+  uint32_t count = 1;
+  bool cutout = false;
+  bool liquid = false;
 };
 
 struct SpriteRun {
@@ -44,6 +48,10 @@ struct LayerDraw {
   uint64_t layer;
   uint64_t items;
   std::vector<SpriteRun> runs;
+  uint32_t tiles = 0;
+  bool srgb = false;
+  cg_texture *behind = nullptr;
+  uint64_t blit = 0;
 };
 
 struct FrameInputs {
@@ -114,6 +122,7 @@ class Passes {
   void finish_generated();
   void record_generated_capture(cg_cmd *cmd, cg_buffer *readback);
   const Targets &targets() const { return targets_; }
+  cg_texture *behind_target(uint32_t width, uint32_t height, bool srgb);
   void record(cg_cmd *cmd, const FrameInputs &inputs);
   void record_capture(cg_cmd *cmd, const FrameInputs &inputs, cg_buffer *readback);
 
@@ -135,6 +144,7 @@ class Passes {
   cg_device *device_;
   Targets targets_;
   cg_pipeline *shadow_ = nullptr;
+  cg_pipeline *shadow_cutout_ = nullptr;
   cg_pipeline *geometry_ = nullptr;
   cg_pipeline *geometry_double_sided_ = nullptr;
   cg_pipeline *lighting_ = nullptr;
@@ -145,6 +155,12 @@ class Passes {
   cg_pipeline *copy_ = nullptr;
   cg_pipeline *sprite_[3] = {};
   cg_pipeline *columns_ = nullptr;
+  cg_pipeline *tile_[2] = {};
+  cg_pipeline *tile_shadow_[2] = {};
+  cg_pipeline *tile_priority_shadows_[2] = {};
+  cg_pipeline *tile_priority_[2] = {};
+  cg_pipeline *tile_blit_[2] = {};
+  std::vector<std::pair<uint64_t, cg_texture *>> behinds_;
   cg_pipeline *present_ = nullptr;
   cg_pipeline *capture_present_ = nullptr;
   std::unique_ptr<Bloom> bloom_;

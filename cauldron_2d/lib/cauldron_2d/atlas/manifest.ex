@@ -9,7 +9,7 @@ defmodule Cauldron2D.Atlas.Manifest do
 
   One art a line, tab-separated: the name, the glyph (two columns), the colour as
   `#rrggbb`, the frames a second, and, for an art made from another, its derivation
-  as `Linocut.Derive` reads it; an empty field leaves that setting to the picture.
+  (see "Derivations"); an empty field leaves that setting to the picture.
   Four more fields make an art stand or pose: its height in storeys, its faces as
   `top=ART side=ART south=ART` (`top`, `side`, `north`, `east`, `south`, `west`), its
   poses as `front=ART back=ART side=ART`, each naming other arts of the same directory,
@@ -21,6 +21,33 @@ defmodule Cauldron2D.Atlas.Manifest do
       hero	@ 						front=hero_front back=hero_back side=hero_side	0.75
   `Cauldron2D.Atlas.load/3` reads it as the defaults under its `:arts`, and builds the
   derived arts after the pictures.
+
+  ## Derivations
+
+  A derived art is made from another by a short line of operations, so one drawing gives
+  many views: a recoloured costume, a mirrored heading, a hat laid on.
+
+      from knight; colour C #c02020; flip h
+      from walk; frame 2; over hat 0 -2
+
+  The operations, separated by `;`, in the order they run:
+
+    * `from NAME` — the picture to start from; always first
+    * `colour KEY COLOUR` (or `color`) — what `KEY` means, as a palette line takes it
+    * `swap KEY KEY` — exchange what two keys mean
+    * `flip h` / `flip v` — mirror left to right, or top to bottom
+    * `turn 90` / `180` / `270` — clockwise, a quarter turn at a time
+    * `shift DX DY` — move the picture, what leaves the edge lost, what enters transparent
+    * `scale N` — the picture `N` times as wide and tall, every key repeated `N` times
+      each way
+    * `frame N` — keep the `N`th frame alone, counting from 1
+    * `reverse` — the frames in the other order
+    * `over NAME [DX DY]` — lay `NAME`'s first frame on every frame, its transparent
+      keys letting the picture through, moved by `DX DY`; the palettes are merged, and a
+      key the two pictures use for different colours is refused
+
+  The operations work on the text of a `.pic` (`Cauldron2D.Picture.pic/2`) — keys, not
+  pixels — so the art to start from is a `.pic` in the directory or another derived art.
   """
 
   @file_name "atlas.txt"

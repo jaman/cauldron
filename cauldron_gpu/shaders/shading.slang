@@ -34,30 +34,30 @@ public float3 brdf(float3 albedo, float metallic, float roughness, float3 normal
   return (diffuse + specular) * n_dot_l;
 }
 
-float sample_cascade(Frame frame, uint cascade, float2 uv) {
+float sample_cascade(Frame *frame, uint cascade, float2 uv) {
   switch (cascade) {
-    case 0: return frame.shadow_map0.SampleLevel(frame.point_clamp, uv, 0).r;
-    case 1: return frame.shadow_map1.SampleLevel(frame.point_clamp, uv, 0).r;
-    case 2: return frame.shadow_map2.SampleLevel(frame.point_clamp, uv, 0).r;
-    default: return frame.shadow_map3.SampleLevel(frame.point_clamp, uv, 0).r;
+    case 0: return frame->shadow_map0.SampleLevel(frame->point_clamp, uv, 0).r;
+    case 1: return frame->shadow_map1.SampleLevel(frame->point_clamp, uv, 0).r;
+    case 2: return frame->shadow_map2.SampleLevel(frame->point_clamp, uv, 0).r;
+    default: return frame->shadow_map3.SampleLevel(frame->point_clamp, uv, 0).r;
   }
 }
 
-float split(Frame frame, uint cascade) {
-  return cascade == 0 ? frame.cascade_splits.x : cascade == 1 ? frame.cascade_splits.y : cascade == 2 ? frame.cascade_splits.z : frame.cascade_splits.w;
+float split(Frame *frame, uint cascade) {
+  return cascade == 0 ? frame->cascade_splits.x : cascade == 1 ? frame->cascade_splits.y : cascade == 2 ? frame->cascade_splits.z : frame->cascade_splits.w;
 }
 
-public float shadow_factor(Frame frame, float3 world, float3 normal) {
-  float distance = length(world - frame.camera_position.xyz);
+public float shadow_factor(Frame *frame, float3 world, float3 normal) {
+  float distance = length(world - frame->camera_position.xyz);
   uint cascade = 0;
   while (cascade < 4 && distance > split(frame, cascade)) cascade++;
   if (cascade >= 4) return 1;
-  float offset = split(frame, cascade) / frame.settings.z * 2.0;
-  float4 clip = mul(frame.shadow_cascades[cascade], float4(world + normal * offset, 1));
+  float offset = split(frame, cascade) / frame->settings.z * 2.0;
+  float4 clip = mul(frame->shadow_cascades[cascade], float4(world + normal * offset, 1));
   float3 ndc = clip.xyz / clip.w;
   float2 uv = float2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
   if (any(uv < 0) || any(uv > 1) || ndc.z <= 0) return 1;
-  float2 texel = 1.0 / frame.settings.z;
+  float2 texel = 1.0 / frame->settings.z;
   float lit = 0;
   for (int y = -1; y <= 1; y++)
     for (int x = -1; x <= 1; x++)
@@ -72,12 +72,12 @@ float attenuation(Light light, float3 to_light) {
   return falloff * falloff / distance_squared;
 }
 
-public float3 light_contribution(Frame frame, Light light, float3 world, float3 normal, float3 view, float3 albedo, float metallic, float roughness, float traced_shadow) {
+public float3 light_contribution(Frame *frame, Light light, float3 world, float3 normal, float3 view, float3 albedo, float metallic, float roughness, float traced_shadow) {
   uint kind = uint(light.direction_kind.w);
   float3 color = light.color.rgb * light.color.w;
   if (kind == LIGHT_DIRECTIONAL) {
     float3 direction = -light.direction_kind.xyz;
-    bool traced = (frame.counts.y & EFFECT_RT_SHADOWS) != 0 && traced_shadow >= 0;
+    bool traced = (frame->counts.y & EFFECT_RT_SHADOWS) != 0 && traced_shadow >= 0;
     float shadow = light.cone.z > 0 ? (traced ? traced_shadow : shadow_factor(frame, world, normal)) : 1;
     return brdf(albedo, metallic, roughness, normal, view, direction) * color * shadow;
   }
@@ -91,14 +91,14 @@ public float3 light_contribution(Frame frame, Light light, float3 world, float3 
   return brdf(albedo, metallic, roughness, normal, view, direction) * color * strength;
 }
 
-public float3 display_lights(Frame frame, Light *lights, float3 world, float3 normal, float traced_shadow) {
+public float3 display_lights(Frame *frame, Light *lights, float3 world, float3 normal, float traced_shadow) {
   float3 sum = float3(0);
-  for (uint index = 0; index < frame.counts.x; index++) {
+  for (uint index = 0; index < frame->counts.x; index++) {
     Light light = lights[index];
     uint kind = uint(light.direction_kind.w);
     float3 color = light.color.rgb * light.color.w;
     if (kind == LIGHT_DIRECTIONAL) {
-      bool traced = (frame.counts.y & EFFECT_RT_SHADOWS) != 0 && traced_shadow >= 0;
+      bool traced = (frame->counts.y & EFFECT_RT_SHADOWS) != 0 && traced_shadow >= 0;
       float shadow = light.cone.z > 0 ? (traced ? traced_shadow : shadow_factor(frame, world, normal)) : 1;
       sum += color * saturate(dot(normal, -light.direction_kind.xyz)) * shadow;
       continue;
@@ -117,9 +117,9 @@ public float3 display_lights(Frame frame, Light *lights, float3 world, float3 no
   return sum;
 }
 
-public float3 apply_fog(Frame frame, float3 color, float distance) {
-  float amount = 1 - exp(-frame.fog.w * distance);
-  return lerp(color, frame.fog.rgb, saturate(amount));
+public float3 apply_fog(Frame *frame, float3 color, float distance) {
+  float amount = 1 - exp(-frame->fog.w * distance);
+  return lerp(color, frame->fog.rgb, saturate(amount));
 }
 
 public float3 roughness_fresnel(float3 albedo, float metallic, float roughness, float3 normal, float3 view) {
@@ -128,15 +128,49 @@ public float3 roughness_fresnel(float3 albedo, float metallic, float roughness, 
   return f0 + (max(float3(1 - roughness), f0) - f0) * pow(1 - n_dot_v, 5);
 }
 
-public float3 sky_reflection(Frame frame, float3 normal, float3 view, float roughness, float occlusion) {
-  return sky(frame, reflect(-view, normal)) * lerp(1.0, 0.25, roughness) * frame.settings.w * occlusion;
+public float3 sky_reflection(Frame *frame, float3 normal, float3 view, float roughness, float occlusion) {
+  return sky(frame, reflect(-view, normal)) * lerp(1.0, 0.25, roughness) * frame->settings.w * occlusion;
 }
 
-public float3 surface_color(Frame frame, Light *lights, float3 world, float3 normal, float3 view, float3 albedo, float metallic, float roughness,
+float banded(Frame *frame, float amount) {
+  float bands = frame->toon.y;
+  float scaled = saturate(amount) * bands;
+  float whole = floor(scaled);
+  return saturate((whole + smoothstep(0.0, frame->toon.z * bands, scaled - whole)) / bands);
+}
+
+public float3 toon_color(Frame *frame, Light *lights, float3 world, float3 normal, float3 view, float3 albedo, float3 indirect, float3 emissive,
+                         float traced_shadow) {
+  float3 color = albedo * indirect + emissive;
+  float rim = pow(1 - saturate(dot(normal, view)), 4) * frame->toon.w;
+  for (uint index = 0; index < frame->counts.x; index++) {
+    Light light = lights[index];
+    uint kind = uint(light.direction_kind.w);
+    float3 tint = light.color.rgb * light.color.w / PI;
+    float3 direction = -light.direction_kind.xyz;
+    float strength = 1;
+    if (kind == LIGHT_DIRECTIONAL) {
+      bool traced = (frame->counts.y & EFFECT_RT_SHADOWS) != 0 && traced_shadow >= 0;
+      strength = light.cone.z > 0 ? (traced ? traced_shadow : shadow_factor(frame, world, normal)) : 1;
+    } else {
+      float3 to_light = light.position_range.xyz - world;
+      direction = normalize(to_light);
+      strength = attenuation(light, to_light);
+      if (kind == LIGHT_SPOT) strength *= smoothstep(cos(light.cone.y), cos(light.cone.x), dot(-direction, light.direction_kind.xyz));
+    }
+    float facing = dot(normal, direction);
+    float lit = banded(frame, facing * min(strength, 1.0));
+    float3 shaded = kind == LIGHT_DIRECTIONAL ? lerp(frame->shade.rgb, float3(1), lit) : float3(lit);
+    color += albedo * tint * shaded * max(strength, kind == LIGHT_DIRECTIONAL ? 1.0 : 0.0) + tint * rim * lit;
+  }
+  return color;
+}
+
+public float3 surface_color(Frame *frame, Light *lights, float3 world, float3 normal, float3 view, float3 albedo, float metallic, float roughness,
                             float3 indirect, float3 reflected, float3 emissive, float traced_shadow) {
   float3 fresnel_term = roughness_fresnel(albedo, metallic, roughness, normal, view);
   float3 color = albedo * indirect * (1 - fresnel_term) * (1 - metallic) + reflected * fresnel_term + emissive;
-  for (uint index = 0; index < frame.counts.x; index++)
+  for (uint index = 0; index < frame->counts.x; index++)
     color += light_contribution(frame, lights[index], world, normal, view, albedo, metallic, roughness, traced_shadow);
   return color;
 }

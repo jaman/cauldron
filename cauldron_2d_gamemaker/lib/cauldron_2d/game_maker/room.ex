@@ -79,7 +79,7 @@ defmodule Cauldron2D.GameMaker.Room do
     <<_name::little-32, _caption::little-32, width::little-32, height::little-32,
       speed::little-32, persistent::little-32, colour::little-32, fill::little-32,
       creation::little-signed-32, flags::little-32, backdrops::little-32, views::little-32,
-      instances::little-32, tiles::little-32, order_list::binary-size(order), physics::little-32,
+      instances::little-32, tiles::little-32, order_list::binary-size(^order), physics::little-32,
       _top::little-32, _left::little-32, _right::little-32, _bottom::little-32,
       gravity_x::binary-4, gravity_y::binary-4, metres::binary-4>> =
       binary_part(data, at, 88 + order)

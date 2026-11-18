@@ -67,6 +67,9 @@ atlas = Cauldron2D.Atlas.put(atlas, :ship, ship)
 | `Linocut.Pose` | Holds a figure's joints. It draws the OpenPose skeleton that a ControlNet reads. |
 | `Linocut.Resample` | Redraws a picture at another size, by area or by nearest pixel. |
 | `Linocut.Seam` | Makes a picture repeat without a visible join. It fades the far edge into the near one. |
+| `Linocut.Pixelate` | Makes a painted or generated picture into pixel art: keys out its background, finds and samples its true pixel grid, holds its colours to a palette, dithers where asked, and outlines it. `cauldron_2d_assets` finishes every picture with it. |
+| `Linocut.Slices` | Grows a picture to any size by nine slices: corners kept, edges and middle repeated. For frames, panels, buttons and speech balloons. |
+| `Linocut.BitmapFont` | A pixel font cut from a picture, one glyph per character, laid out as lines of text and drawn onto rasters. Game huds and menus draw with it. |
 | `mix linocut.view` | Shows pictures in the terminal (see below). |
 | `mix linocut.import` | Turns an image file into a `.pic` at a chosen size and palette. |
 | `mix linocut.sheet` | Cuts a sprite sheet into the frames of one `.pic`. |

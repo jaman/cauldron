@@ -9,7 +9,7 @@ defmodule Cauldron2D.Net.PagesTest do
 
   defmodule PageGame do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "PAGES", tagline: "a game with pages"}
     def atlas, do: :pages_test
@@ -84,18 +84,15 @@ defmodule Cauldron2D.Net.PagesTest do
     assert get("/worlds.json").resp_body |> Jason.decode!() |> hd() |> Map.get("players") == 1
   end
 
-  test "the world page mounts the canvas with the topic, the presets, the padmap, the steering and the pause key" do
+  test "the world page mounts the canvas with the topic, the team, the presets, the drawing scripts and the client's keys" do
     conn = get("/world/pit?team=2")
     assert conn.resp_body =~ "<canvas"
     assert conn.resp_body =~ ~s|"world:pit"|
-    assert conn.resp_body =~ "KeyA"
-    assert conn.resp_body =~ "ArrowLeft"
     assert conn.resp_body =~ ~s|"team":"2"|
-    assert conn.resp_body =~ "KeyP"
-    assert conn.resp_body =~ "cauldron.js"
+    assert conn.resp_body =~ ~s|["arrows","wasd"]|
+    assert conn.resp_body =~ "cauldron.js" and conn.resp_body =~ "/draw/draw.js"
     assert conn.resp_body =~ "gamepad.js"
-    assert conn.resp_body =~ ~s|"dpad_left":["left"]|
-    assert conn.resp_body =~ ~s|"left_x":{"neg":["left"]|
+    assert conn.resp_body =~ "<kbd>p</kbd> pauses a world of your own"
     assert get("/world/nope").status == 404
   end
 

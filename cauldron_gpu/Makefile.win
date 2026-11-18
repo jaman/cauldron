@@ -25,7 +25,8 @@ NATIVE_READY = yes
 !IF "$(NATIVE_READY)" == "yes"
 
 CXXFLAGS = /nologo /std:c++20 /O2 /EHsc /MD /W4 /DCG_HAVE_VULKAN /DNOMINMAX /DWIN32_LEAN_AND_MEAN \
-	/I"$(ERTS_INCLUDE_DIR)" /I"$(SDL3_DIR)\include" /I"$(VULKAN_INCLUDE)" /Ic_src\vulkan\vma
+	/I"$(ERTS_INCLUDE_DIR)" /I"$(SDL3_DIR)\include" /I"$(VULKAN_INCLUDE)" /Ic_src\vulkan\vma \
+	/external:Ic_src\third_party /external:W0
 LIBS = "$(SDL3_DIR)\lib\x64\SDL3.lib"
 
 all: $(OUT) $(BUILD) objects $(OUT)\cauldron_gpu.dll $(OUT)\cauldron_gpu_host.exe runtime

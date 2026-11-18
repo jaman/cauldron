@@ -19,12 +19,12 @@ static const float REFLECTION_FRAMES = 8;
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void compute_main(uint3 id : SV_DispatchThreadID) {
-  Frame frame = *push.frame;
-  int2 size = int2(frame.screen.xy);
+  Frame *frame = push.frame;
+  int2 size = int2(frame->screen.xy);
   if (int(id.x) >= size.x || int(id.y) >= size.y) return;
   uint index = id.y * uint(size.x) + id.x;
-  float2 uv = (float2(id.xy) + 0.5) * frame.screen.zw;
-  float depth = frame.depth.SampleLevel(frame.point_clamp, uv, 0).r;
+  float2 uv = (float2(id.xy) + 0.5) * frame->screen.zw;
+  float depth = frame->depth.SampleLevel(frame->point_clamp, uv, 0).r;
   History next;
   if (depth <= 0) {
     next.reflection = float4(0);
@@ -34,10 +34,10 @@ void compute_main(uint3 id : SV_DispatchThreadID) {
     return;
   }
   float3 world = world_position(frame, uv, depth);
-  float distance = length(world - frame.camera_position.xyz);
-  float previous_distance = length(world - frame.previous_camera_position.xyz);
-  float2 previous_uv = uv + frame.gbuffer_motion.SampleLevel(frame.point_clamp, uv, 0).xy;
-  int2 previous_pixel = int2(previous_uv * frame.screen.xy);
+  float distance = length(world - frame->camera_position.xyz);
+  float previous_distance = length(world - frame->previous_camera_position.xyz);
+  float2 previous_uv = uv + frame->gbuffer_motion.SampleLevel(frame->point_clamp, uv, 0).xy;
+  int2 previous_pixel = int2(previous_uv * frame->screen.xy);
   bool inside = all(previous_uv >= 0) && all(previous_uv < 1);
   History previous = push.previous[clamp(previous_pixel.y, 0, size.y - 1) * size.x + clamp(previous_pixel.x, 0, size.x - 1)];
   bool same_surface = abs(previous.info.x - previous_distance) < previous_distance * 0.03 + 0.02;

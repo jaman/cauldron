@@ -1,15 +1,18 @@
 defmodule Cauldron2D.Net.SessionTest do
   use ExUnit.Case, async: false
 
-  alias Cauldron2D.{Atlas, Audio, World}
-  alias Cauldron2D.Client.Game
-  alias Cauldron2D.Net.Audio.Shared
-  alias Cauldron2D.Net.{Channel, Session}
+  alias Cauldron.Audio
+  alias Cauldron.Client.Game
+  alias Cauldron.Net.Audio.Shared
+  alias Cauldron.Net.{Channel, Session}
+  alias Cauldron.World
+  alias Cauldron2D.Atlas
+  alias Cauldron2D.Net.Drawer
   alias FrenchCurve.Raster
 
   defmodule Dots do
     @moduledoc false
-    @behaviour Cauldron2D.Game
+    @behaviour Cauldron.Game
 
     @impl true
     def init(_opts), do: %{players: %{}, events: []}
@@ -62,7 +65,7 @@ defmodule Cauldron2D.Net.SessionTest do
 
   defmodule DotsWeb do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "DOTS"}
     def atlas, do: :dots_web
@@ -75,13 +78,6 @@ defmodule Cauldron2D.Net.SessionTest do
         %{id: :main, name: "Main", world: :dots_web_world, players: 0},
         %{id: :own, name: "Own", world: {Cauldron2D.Net.SessionTest.Dots, [hz: 50]}, players: 0}
       ]
-
-    def map(view),
-      do: %{
-        width: view.width,
-        height: view.height,
-        cell: fn {x, y} -> if x == 0 or y == 0, do: :wall, else: nil end
-      }
 
     def scene(view),
       do: %{
@@ -135,21 +131,23 @@ defmodule Cauldron2D.Net.SessionTest do
     :ok
   end
 
+  defp join(world, name, props, opts \\ []),
+    do: Session.join(DotsWeb, world, name, props, Keyword.put_new(opts, :drawer, {Drawer, drawing: :server}))
+
   setup do
     {:ok, world} = World.start_link(game: Dots, hz: 50, name: :dots_web_world)
     on_exit(fn -> if Process.alive?(world), do: GenServer.stop(world) end)
     {:ok, world: world}
   end
 
-  test "joining sends the sheet; the first frame sends the map then the frame; input reaches the world",
+  test "joining sends the sheet and who draws; frames send their status, and a picture once the pane is known; holds, keys and the aim reach the world",
        %{world: world} do
     {:ok, session, pushes} =
-      Session.join(DotsWeb, world, "alice", %{settings: %{sfx: 1.0, music: 0.0}},
-        sink: TuningFork.Sink.Silent
-      )
+      join(world, "alice", %{settings: %{sfx: 1.0, music: 0.0}}, sink: TuningFork.Sink.Silent)
 
     assert [
              {"sheet", %{url: "/atlas.png", tile: 4, arts: %{"dot" => _, "wall" => _}}},
+             {"drawing", %{world: :server, screen: :server}},
              {"audio", %{rate: 44_100, channels: 2}}
            ] = pushes
 
@@ -157,24 +155,19 @@ defmodule Cauldron2D.Net.SessionTest do
              World.snapshot(world)
 
     assert_receive {:cauldron_frame, message}, 500
-    {session, pushes} = Session.frame(session, message)
-    assert [{"map", %{width: 8, height: 6, rows: rows}}, {"frame", frame}] = pushes
-    assert length(rows) == 6 and hd(rows) |> Enum.all?(&(&1 == session.sheet.arts.wall))
-    assert frame.focus == [5.0, 5.0]
-    assert [[_dot, 5.0, 5.0]] = frame.movers
-    assert frame.hud == [[["x=5.0", "#ffffff"]]]
-    assert frame.labels == [["me", 5.0, 5.0, "#ffff00", 1]]
-    assert frame.over == nil
+    {session, [{"status", status}]} = Session.frame(session, message)
+    assert status.focus == [5.0, 5.0]
+    assert status.hud == [[["x=5.0", "#ffffff"]]]
+    assert status.over == nil
 
-    assert_receive {:cauldron_frame, message}, 500
-    {session, [{"frame", _}]} = Session.frame(session, message)
+    {session, [{"picture", <<137, "PNG", _::binary>>}]} = Session.pane(session, {6, 4})
+    {session, [{"picture", _}]} = Session.frame(session, message)
 
     session =
-      Session.input(session, ["right", "nonsense"], [6.5, 5.0], %{
-        "right" => 0.5,
-        "nonsense" => 1.0,
-        "left" => 2.0
-      })
+      session
+      |> Session.hold("right", true, 0.5)
+      |> Session.hold("nonsense", true)
+      |> Session.aim({6.5, 5.0})
 
     Process.sleep(120)
 
@@ -187,15 +180,24 @@ defmodule Cauldron2D.Net.SessionTest do
     assert MapSet.to_list(held) == [:right]
     assert x > 5.0
 
+    session = Session.hold(session, "right", false)
+    {session, []} = Session.key(session, :" ", [], true)
+    Process.sleep(60)
+    assert MapSet.to_list(World.snapshot(world).players["alice"].held) == [:fire]
+    {session, []} = Session.key(session, :" ", [], false)
+    Process.sleep(60)
+    assert World.snapshot(world).players["alice"].held == MapSet.new()
+
     :ok = Session.leave(session)
     assert World.players(world) == []
   end
 
-  test "the round's end rides the frame, and a sound event arrives as PCM at this process", %{
-    world: world
-  } do
+  test "the round's end rides the status, comes once in full as ended, and a sound event arrives as PCM at this process",
+       %{
+         world: world
+       } do
     {:ok, session, pushes} =
-      Session.join(DotsWeb, world, "bob", %{settings: %{sfx: 1.0, music: 0.0}},
+      join(world, "bob", %{settings: %{sfx: 1.0, music: 0.0}},
         audio: %{rate: 22_050, channels: 1}
       )
 
@@ -208,17 +210,23 @@ defmodule Cauldron2D.Net.SessionTest do
 
     assert Channel.audio(%{"audio" => %{"rate" => 5, "channels" => 7}}) == []
     assert Channel.audio(%{}) == []
-    session = Session.input(session, ["fire"], nil)
+    session = Session.hold(session, "fire", true)
     assert_receive {:pcm, chunk} when is_binary(chunk), 2_000
 
     far = %{view: %{me: %{pos: {9.0, 5.0}}, movers: [], width: 8, height: 6}, events: []}
-    {_session, pushes} = Session.frame(%{session | map_sent?: true}, far)
-    assert [{"frame", %{over: %{title: "Far", lines: ["x"]}}}] = pushes
+    {session, pushes} = Session.frame(session, far)
+
+    assert [
+             {"status", %{over: %{title: "Far", lines: ["x"]}}},
+             {"ended", %{outcome: %{title: "Far"}, view: %{me: %{pos: {9.0, 5.0}}}}}
+           ] = pushes
+
+    {_session, []} = Session.frame(session, far)
     :ok = Session.leave(session)
   end
 
   describe "the server's sound policy" do
-    alias Cauldron2D.Net.Audio, as: Policy
+    alias Cauldron.Net.Audio, as: Policy
 
     setup do
       on_exit(fn -> Policy.set([]) end)
@@ -228,7 +236,7 @@ defmodule Cauldron2D.Net.SessionTest do
     test "a session that asks for no sound, or a server whose sound is off, gets no audio at all",
          %{world: world} do
       {:ok, quiet, pushes} =
-        Session.join(DotsWeb, world, "ann", %{
+        join(world, "ann", %{
           settings: %{sfx: 1.0, music: 1.0},
           params: %{"audio" => false}
         })
@@ -241,11 +249,11 @@ defmodule Cauldron2D.Net.SessionTest do
       Policy.set(music: :off, sfx: :off)
 
       {:ok, silent, pushes} =
-        Session.join(DotsWeb, world, "ben", %{settings: %{sfx: 1.0, music: 1.0}})
+        join(world, "ben", %{settings: %{sfx: 1.0, music: 1.0}})
 
       assert silent.audio == nil
       assert {"audio", %{off: true}} in pushes
-      silent = Session.input(silent, ["fire"], nil)
+      silent = Session.hold(silent, "fire", true)
       refute_receive {:pcm, _}, 300
       :ok = Session.leave(silent)
     end
@@ -253,13 +261,13 @@ defmodule Cauldron2D.Net.SessionTest do
     test "with the music shared by world, sessions in one world share one stage and get its music mixed under their own effects",
          %{world: world} do
       Policy.set(music: :world, sfx: :personal)
-      {:ok, one, _} = Session.join(DotsWeb, world, "cat", %{settings: %{sfx: 1.0, music: 1.0}})
+      {:ok, one, _} = join(world, "cat", %{settings: %{sfx: 1.0, music: 1.0}})
       test = self()
 
       other =
         spawn_link(fn ->
           {:ok, two, _} =
-            Session.join(DotsWeb, world, "dan", %{settings: %{sfx: 1.0, music: 1.0}})
+            join(world, "dan", %{settings: %{sfx: 1.0, music: 1.0}})
 
           send(test, {:two, two})
 
@@ -291,7 +299,7 @@ defmodule Cauldron2D.Net.SessionTest do
       Policy.set(music: :world, sfx: :off)
 
       {:ok, session, pushes} =
-        Session.join(DotsWeb, world, "eve", %{settings: %{sfx: 1.0, music: 1.0}})
+        join(world, "eve", %{settings: %{sfx: 1.0, music: 1.0}})
 
       assert session.audio == nil and is_pid(session.shared)
       assert {"audio", %{rate: 44_100, channels: 2}} in pushes
@@ -317,7 +325,7 @@ defmodule Cauldron2D.Net.SessionTest do
       Policy.set(music: :static)
 
       {:ok, session, _} =
-        Session.join(DotsWeb, world, "gus", %{settings: %{sfx: 1.0, music: 1.0}})
+        join(world, "gus", %{settings: %{sfx: 1.0, music: 1.0}})
 
       assert session.music == :static and is_pid(session.audio) and session.shared == nil
       view = %{me: %{pos: {5.0, 5.0}}, movers: [], width: 8, height: 6}
@@ -331,7 +339,7 @@ defmodule Cauldron2D.Net.SessionTest do
       Policy.set(music: :dynamic, rate: 22_050)
 
       {:ok, session, pushes} =
-        Session.join(DotsWeb, world, "fay", %{settings: %{sfx: 1.0, music: 0.0}})
+        join(world, "fay", %{settings: %{sfx: 1.0, music: 0.0}})
 
       assert {"audio", %{rate: 22_050, channels: 2}} in pushes
       assert Audio.rate(session.audio) == {22_050, 2}
@@ -346,9 +354,7 @@ defmodule Cauldron2D.Net.SessionTest do
     %{world: own} = Game.world(DotsWeb, %{}, "own")
 
     {:ok, session, _pushes} =
-      Session.join(DotsWeb, own, "dave", %{settings: %{sfx: 0.0, music: 0.0}},
-        sink: TuningFork.Sink.Silent
-      )
+      join(own, "dave", %{settings: %{sfx: 0.0, music: 0.0}}, sink: TuningFork.Sink.Silent)
 
     assert is_pid(session.local_world)
     assert_receive {:cauldron_frame, _}, 500
@@ -363,18 +369,18 @@ defmodule Cauldron2D.Net.SessionTest do
     do:
       "/atlas.png?v=" <> Integer.to_string(:persistent_term.get({__MODULE__, :sheet_version}, 1))
 
-  test "a changed atlas sends a new sheet and the map again, at the address the game gives for it then",
+  test "a changed atlas sends a new sheet, at the address the game gives for it then",
        %{world: world} do
     :persistent_term.put({__MODULE__, :sheet_version}, 1)
 
-    {:ok, session, [{"sheet", %{url: "/atlas.png?v=1"}}, _audio]} =
-      Session.join(DotsWeb, world, "carol", %{settings: %{sfx: 0.0, music: 0.0}},
+    {:ok, session, [{"sheet", %{url: "/atlas.png?v=1"}}, _drawing, _audio]} =
+      join(world, "carol", %{settings: %{sfx: 0.0, music: 0.0}},
         sink: TuningFork.Sink.Silent,
-        sheet_url: {__MODULE__, :versioned_sheet_url}
+        drawer: {Drawer, sheet_url: {__MODULE__, :versioned_sheet_url}}
       )
 
     assert_receive {:cauldron_frame, message}, 500
-    {session, [{"map", _}, {"frame", _}]} = Session.frame(session, message)
+    {session, [{"status", _}]} = Session.frame(session, message)
 
     Atlas.new(:dots_web, tile: 4)
     |> Atlas.put(:wall, Raster.new(4, 4, background: {0, 0, 200, 255}))
@@ -386,10 +392,8 @@ defmodule Cauldron2D.Net.SessionTest do
     :persistent_term.put({__MODULE__, :sheet_version}, 2)
 
     {session, [{"sheet", %{arts: %{"gem" => _}, url: "/atlas.png?v=2"}}]} =
-      Session.atlas_changed(session)
+      Session.changed(session, {:cauldron_atlas, :dots_web, :changed})
 
-    assert_receive {:cauldron_frame, message}, 500
-    {_session, [{"map", _}, {"frame", _}]} = Session.frame(session, message)
     :ok = Session.leave(session)
   end
 end

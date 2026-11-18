@@ -14,7 +14,7 @@ The package can also run such a game. You write the game's code as Elixir functi
 ## How it fits
 
 The draw list and the pictures are `cauldron_2d` types. Call
-`Cauldron2D.DrawList.render/4` to turn a frame into a `FrenchCurve.Raster`. You can
+`Cauldron2D.DrawList.render/4` to turn a frame into a `Cauldron2D.Raster`. You can
 show that raster anywhere a raster goes: in the terminal through `cauldron_2d_drafter`,
 in a PNG, or in a Livebook cell. Sprite masks are `Cauldron2D.Mask` structs. Texture
 pages are decoded by `linocut`.
@@ -26,7 +26,7 @@ Add the dependency:
 ```elixir
 def deps do
   [
-    {:cauldron_2d_gamemaker, "~> 0.3"}
+    {:cauldron_2d_gamemaker, "~> 0.4"}
   ]
 end
 ```
@@ -66,7 +66,7 @@ The data file has a different name on each system, but the same layout:
 | `Options` | Reads the display settings and the game's constants. |
 | `Sprite` | Reads frames, origin and collision box. `mask/2` gives a frame's per-pixel mask as a `Cauldron2D.Mask`. |
 | `Region`, `Texture` | `Region` says where a picture sits on a texture page. `Texture` is the page itself. |
-| `Pictures` | Decodes every page once. Then it cuts any region, sprite, background or tile from them as a `FrenchCurve.Raster`. |
+| `Pictures` | Decodes every page once. Then it cuts any region, sprite, background or tile from them as a `Cauldron2D.Raster`. |
 | `Background` | Reads GameMaker Studio 1 backgrounds and GameMaker Studio 2 tilesets. `tile_source/2` finds a tile in a tileset. |
 | `Object`, `Event` | `Object` reads objects with their parent, depth, physics and events. `Event` names the event types. `handler_name/3` gives the name of an event's compiled code. |
 | `Room` | Reads size, views and instances. A Studio 1 room has backdrops and tiles; a Studio 2 room has layers. See `Room.Instance`, `Room.Tile`, `Room.View`, `Room.Backdrop` and `Room.Layer`. |
@@ -111,7 +111,9 @@ raster = Cauldron2D.DrawList.render(items, {320, 200}, &Map.get(table, &1),
 
 ## Limits
 
-The package reads files from GameMaker: Studio 1 and from GameMaker Studio 2 up to 2.3.
+The package reads files from GameMaker: Studio 1, GameMaker Studio 2, and GameMaker's
+2022 long-term-support and later releases up to 2024.13 (`Runtime` tells them apart).
+Texture pages are read as PNG, QOI or bzip2-compressed QOI.
 
 It does not read these:
 
@@ -120,14 +122,9 @@ It does not read these:
   data file has no code to read. A game built for the GameMaker virtual machine keeps
   bytecode in `CODE`, `VARI` and `FUNC`. `Data.bytecode?/1` detects it, but the package
   does not run it.
-* **QOI texture pages.** GameMaker 2022.1 and later write them, plain or compressed with
-  bzip2. `Texture.decode/1` returns `{:error, {:unsupported_encoding, :qoi}}` or
-  `{:error, {:unsupported_encoding, :bz2_qoi}}` for them.
 * The older `OPTN` layout.
 * The effect, path and sequence layers of rooms, and sequences, timelines, shaders and
   extensions.
-* The layout changes of GameMaker 2022 and later: room layer effects, sprite masks
-  sized to the collision box, and sound lengths.
 
 It does not run these:
 

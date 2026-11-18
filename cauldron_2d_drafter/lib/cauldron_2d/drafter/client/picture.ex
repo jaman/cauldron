@@ -19,11 +19,11 @@ defmodule Cauldron2D.Drafter.Client.Picture do
     * `window` — as `gpu`, but in a window of its own: keys pressed in the window reach
       the client as the terminal's do, and the pane is left empty while the window opens and is open
     * `software` — never the graphics card
+    * `none` — none of these
 
   Without `gpu`, `window` or `software` the player's drawing setting decides
   (`Cauldron2D.Drafter.Client.Settings`), which by default uses the graphics card in the
   pane when there is one.
-    * `none` — none of these
 
   Without `native`, or with it when neither the game nor `size` gives a size, the picture
   is drawn at the pane's cells times the surface's density and sent as raw pixels.
@@ -80,14 +80,22 @@ defmodule Cauldron2D.Drafter.Client.Picture do
   end
 
   @doc """
-  The options for a client of a game whose look is `look`, mounted with `props`: the
-  `:picture` prop, else the application env, else `CAULDRON_PICTURE`, else the look's
+  The options for a client of a game whose look is `look`, mounted with `props`, in
+  `Cauldron.Launch`'s order: the `:picture` prop, else the game's saved launch values'
+  `:picture` (`saved`, `Cauldron2D.Drafter.Launcher.load/1`), else `CAULDRON_PICTURE`,
+  else the application env `config :cauldron_2d_drafter, picture: ...`, else the look's
   `:picture`, else `default/0`. Raises `ArgumentError` when the one found does not parse.
   """
-  @spec options(map(), map()) :: [option()]
-  def options(props, look) do
-    case Map.get(props, :picture) || Application.get_env(:cauldron_2d_drafter, :picture) ||
-           System.get_env("CAULDRON_PICTURE") || Map.get(look, :picture) do
+  @spec options(map(), map(), map()) :: [option()]
+  def options(props, look, saved \\ %{}) do
+    case Cauldron.Launch.value(
+           given: Map.get(props, :picture),
+           saved: saved,
+           key: :picture,
+           env: {"CAULDRON_PICTURE"},
+           config: {:cauldron_2d_drafter, :picture},
+           default: Map.get(look, :picture)
+         ) do
       nil -> @default
       given -> parse!(given)
     end
@@ -110,12 +118,13 @@ defmodule Cauldron2D.Drafter.Client.Picture do
   @doc """
   The `:native`, `:native_scale`, `:picture_format` and `:swap` props of a
   `Cauldron2D.Drafter.Surface` showing `scene` under `look` with `options`. A scene with a
-  `:gpu` is drawn at the pane's own pixels.
+  `:gpu` is drawn at its `:gpu_size` (`{width, height}`), widened or heightened to the
+  pane's shape and scaled by the terminal, or at the pane's own pixels without one.
   """
   @spec surface_props([option()], map(), map()) :: keyword()
   def surface_props(options, scene, look) do
     [
-      native: if(Map.has_key?(scene, :gpu), do: :pane, else: native_size(options, scene, look)),
+      native: native(options, scene, look),
       native_scale: Enum.find_value(options, :fit, &scale/1),
       picture_format: if(:png in options, do: :png, else: :rgba),
       swap: :swap in options
@@ -128,6 +137,9 @@ defmodule Cauldron2D.Drafter.Client.Picture do
       {:error, message} -> raise ArgumentError, message
     end
   end
+
+  defp native(_options, %{gpu: _gpu} = scene, _look), do: Map.get(scene, :gpu_size, :pane)
+  defp native(options, scene, look), do: native_size(options, scene, look)
 
   defp native_size(options, scene, look) do
     if Enum.any?(options, &native?/1),

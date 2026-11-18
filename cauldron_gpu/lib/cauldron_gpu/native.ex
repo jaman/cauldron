@@ -28,6 +28,10 @@ defmodule CauldronGPU.Native do
     do: :erlang.nif_error(:not_loaded)
 
   @doc false
+  def open_surface(_backend, _surface, _width, _height, _shader_directory, _owner),
+    do: :erlang.nif_error(:not_loaded)
+
+  @doc false
   def submit(_window, _binary), do: :erlang.nif_error(:not_loaded)
   @doc false
   def handle(_window, _drop_op, _id), do: :erlang.nif_error(:not_loaded)
@@ -38,7 +42,17 @@ defmodule CauldronGPU.Native do
   @doc false
   def capture(_window, _generated, _shared_memory), do: :erlang.nif_error(:not_loaded)
   @doc false
+  def stream_frames(_window, _names, _ahead, _fps), do: :erlang.nif_error(:not_loaded)
+  @doc false
+  def stop_frames(_window), do: :erlang.nif_error(:not_loaded)
+  @doc false
+  def frame_shown(_window), do: :erlang.nif_error(:not_loaded)
+  @doc false
   def remove_shared_memory(_name), do: :erlang.nif_error(:not_loaded)
+  @doc false
+  def decode_image(_file), do: :erlang.nif_error(:not_loaded)
+  @doc false
+  def reduce_image(_file, _max_side, _colour, _quality), do: :erlang.nif_error(:not_loaded)
   @doc false
   def write_shared_memory(_name, _data), do: :erlang.nif_error(:not_loaded)
   @doc false

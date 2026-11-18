@@ -10,7 +10,7 @@ defmodule Cauldron2D.Parallax.Bands do
   a layer that carries bands wants a factor of `0.0` on the axis they move along.
   """
 
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @type t :: %__MODULE__{ranges: [{Range.t(), float()}]}
 
@@ -36,7 +36,7 @@ defmodule Cauldron2D.Parallax.Bands do
 
   def roll(raster, %__MODULE__{ranges: []}, _focus, _tile), do: raster
 
-  def roll(%Raster{width: width, height: height} = raster, bands, {fx, _fy}, tile) do
+  def roll(%FrenchCurve.Raster{width: width, height: height} = raster, bands, {fx, _fy}, tile) do
     stride = width * 4
     rgba = Raster.to_rgba_binary(raster)
 

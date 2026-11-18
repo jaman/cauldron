@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Net do
   @moduledoc """
   3D scenes in the browser. A `Cauldron3D.Net.Scene` takes the same changes
-  `CauldronGPU.submit/2` does and broadcasts them as `CauldronGPU.Stream` bytes; browsers
+  `CauldronGPU.submit/2` does and broadcasts them as `Cauldron3D.Scene.Stream` bytes; browsers
   joining a `Cauldron3D.Net.Channel` get the whole scene and then each tick, and draw it
   with three.js (`priv/static/cauldron3d.js`, served by `Cauldron3D.Net.Page`).
 

@@ -1,0 +1,788 @@
+defmodule Cauldron.Audio do
+  @moduledoc """
+  Sound effects and music for one listener, mixed and played through a sink
+  (`Cauldron.Audio.Sink`).
+
+  A game emits the events that happened — `:brick`, `{:explosion, {x, y}}` — and supplies
+  a function from an event's name to the voice it makes. Each instance is a process; a
+  game with one player uses the default one, a served game starts one per session with a
+  sink that reaches that player.
+
+      Cauldron.Audio.start(sounds: &MyGame.Sound.voice/1, sfx: 0.85, music: 0.35)
+      Cauldron.Audio.play([:brick, {:wall, {12.0, 3.0}}])
+      Cauldron.Audio.bed(Cauldron.Audio, "mygame/level-3", fn -> MyGame.Music.render(3) end)
+
+      {:ok, audio} = Cauldron.Audio.start_link(name: nil, sink: Cauldron.Audio.Sink.pulse("tcp:127.0.0.1:<port>"))
+      Cauldron.Audio.listener(audio, {player_x, player_y})
+      Cauldron.Audio.play(audio, events)
+
+  Every function takes the instance first. The ones with a fixed number of arguments
+  default it to the process registered as `Cauldron.Audio`; `play_piece/4` and `bed/4`
+  take it explicitly.
+
+  ## Rules
+
+    * `start/1` or `start_link/1` comes first. It records the sound table and opens the
+      stage; when this machine has no sound the stage stays silent and every call is a
+      no-op returning `:ok`. `on?/1` reports which.
+    * An event is any term the table knows, or `{event, {x, y}}` placing it. With a listener set, a placed event is
+      scaled by its distance — full within one tile, silent at `:earshot` tiles — and
+      panned by its side; an unplaced one plays at full level, centred.
+    * `keyed/4`, `moved/2` and `stopped/2` build events for sounds that keep sounding under
+      a key: one replaces another under the same key, and each is placed again when the
+      listener moves, when `moved/2` moves it, and when the effects level changes.
+    * The stage sounds at most `:voices` sounds at once and lets the oldest go past that;
+      a game sets it through `Cauldron.Client.Game` `audio/0`.
+    * Effects and music have separate levels, set by `levels/3`; a `muted/1` event
+      silences both until another lets them sound.
+    * Beds are keyed by a string. A render runs once, in a task, and is kept in memory and
+      on disk in the music directory (`cache_dir/0` by default); a bed finishing after another key was asked for is
+      dropped. A render that raises is logged and never plays.
+    * `clear_bed/1` and `resume_bed/1` cover both playback modes.
+    * Music with sections and layers is `Cauldron.Audio.Music`.
+  """
+
+  use GenServer
+
+  require Logger
+
+  alias Cauldron.Audio.{Keyed, Music, Rendered, Sample, Voice}
+  alias TuningFork.{Cache, Mixer, Stage}
+
+  @bed {__MODULE__, :bed}
+
+  @type instance :: GenServer.server()
+  @type event :: term() | {term(), {number(), number()}}
+  @type sound :: Voice.t() | [{non_neg_integer(), Voice.t()}] | nil
+
+  @doc """
+  Start the default instance, registered as `Cauldron.Audio`, replacing one already
+  running. Returns whether sound is possible.
+
+  Takes the options of `start_link/1`.
+  """
+  @spec start(keyword()) :: boolean()
+  def start(opts \\ []) do
+    case Process.whereis(__MODULE__) do
+      nil -> :ok
+      pid -> GenServer.stop(pid)
+    end
+
+    {:ok, pid} = start_link(Keyword.put(opts, :name, __MODULE__))
+    on?(pid)
+  end
+
+  @doc """
+  Start an instance linked to the caller.
+
+  The instance lives as long as the caller: when the caller exits, for any reason, the
+  instance stops, and a stage it started stops with it, closing its sink. A stage handed
+  in with `:stage` is left running.
+
+  ## Options
+
+    * `:name` — a registered name, or `nil` for none. Default `Cauldron.Audio`
+    * `:sounds` — a function from an event name to a `t:sound/0`. Default: silent
+    * `:sink` — where the sound goes, a `Cauldron.Audio.Sink`. Default
+      `Cauldron.Audio.Sink.speaker/0`
+    * `:stage` — an already running stage to use instead of starting one
+    * `:mode` — the default for `play_piece/4`, `:live` or `:rendered`. Without it,
+      `CAULDRON_AUDIO` (`live` or `rendered`), else `:live` (`Cauldron.Launch`'s order)
+    * `:sfx`, `:music` — levels 0.0 to 1.0. Default `default_levels/0`
+    * `:recordings` — a function from an event name to its recording,
+      `%{rate: rate, channels: channels, pcm: pcm}` (signed 16-bit little-endian), or
+      `nil`, for keyed music (`keyed/4`'s `music: true`). Default: none
+    * `:master` — `:sfx` to have the effects level scale the music as well, the music
+      sounding at `music × sfx`; `:none` for separate levels. Default `:none`
+    * `:earshot` — tiles at which a placed event falls silent. Default `30.0`
+    * `:music_dir` — the directory rendered music is kept in; a game's is
+      `Cauldron.Client.Game.music_dir/1`. Default `cache_dir/0`
+    * `:static_music` — play the first section cued and nothing after, rendered once
+      and looped; see `Cauldron.Audio.Music`. Default `false`
+    * `:parallel` — synthesise the music's voices on every core, for one player on a
+      machine of their own (the terminal, the desktop); a server with many players
+      leaves it off. Default `false`
+    * `:rate`, `:channels`, `:chunk`, `:voices`, `:lead`, `:fx` — the stage's settings.
+      Default `44_100`, `2`, `256`, `12`, `2048`, `[]`: the sink is kept 2048 frames
+      (46 ms at 44.1 kHz) ahead of playback, in a ring of four times that, so a few
+      milliseconds of scheduling jitter never leave it empty
+  """
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts \\ []) do
+    case Keyword.get(opts, :name, __MODULE__) do
+      nil -> GenServer.start_link(__MODULE__, opts)
+      name -> GenServer.start_link(__MODULE__, opts, name: name)
+    end
+  end
+
+  @sfx 0.85
+  @music 0.35
+
+  @doc "The effects and music levels an instance starts with: `%{sfx: 0.85, music: 0.35}`."
+  @spec default_levels() :: %{sfx: float(), music: float()}
+  def default_levels, do: %{sfx: @sfx, music: @music}
+
+  @doc "The directory rendered sound is kept in when no `:music_dir` is given: one under the user's state directory, shared by every game."
+  @spec cache_dir() :: Path.t()
+  def cache_dir, do: TuningFork.Cache.dir()
+
+  @doc "Whether a stage with somewhere to play is running."
+  @spec on?(instance()) :: boolean()
+  def on?(audio \\ __MODULE__), do: alive?(audio) and GenServer.call(audio, :on?)
+
+  @doc "Where the listener is, for placed events."
+  @spec listener(instance(), {number(), number()} | nil) :: :ok
+  def listener(audio \\ __MODULE__, pos), do: cast(audio, {:listener, pos})
+
+  @doc """
+  The event that silences everything — effects and music — while `on?` is `true`, and
+  lets it sound again at the levels set when `false`. Sounds started meanwhile are kept
+  at no level, and come back with the rest.
+  """
+  @spec muted(boolean()) :: {module(), :muted, boolean()}
+  def muted(on?) when is_boolean(on?), do: {__MODULE__, :muted, on?}
+
+  @doc "Sound `events` in order through the table given at start: a name — any term — or `{name, {x, y}}` placed against the listener; one the table answers `nil` for, or has no clause for, is silent."
+  @spec play(instance(), [event()]) :: :ok
+  def play(audio \\ __MODULE__, events), do: cast(audio, {:play, events})
+
+  @doc """
+  The event that sounds `name` under `key` at `at`. Whatever sounds under `key` is let go
+  first, over `:fade` seconds (default 0.05). The sound plays until it ends or `stopped/2`
+  lets it go; a run sounds as one, its voices' own pans left out. With `loop: true` a
+  sound that is a voice playing a recording goes round its recording — its own loop, or
+  the whole of it — until `stopped/2` lets it go; any other sound plays once.
+
+  `at` is one of:
+
+    * `{x, y}` — placed against the listener, and placed again when the listener moves
+    * `nil` — full level, centred
+    * `{:level, gain, pan}` — the game's own level, `gain` 0.0 upward and `pan` from
+      `-1.0` left to `1.0` right; the listener does not move it, `moved/2` does
+
+  The effects level scales every one of them, and the voice's own gain and pan apply on
+  top. Options: `:fade`, the seconds it takes to replace another, default 0.05; `:loop`,
+  `true` to sound round and round until stopped; `:music`, `true` for the sound to be
+  instead the recording `:recordings` gives for `name`, played in its own channels as a
+  looping layer of the stage's music from its own
+  beginning, at the music level and its placement's gain — `moved/2` changes that gain,
+  `stopped/2` drops the layer, and cueing a `Cauldron.Audio.Music` piece replaces these
+  layers. Raises `ArgumentError` for any other `at`.
+
+      Audio.play(audio, [Audio.keyed({:entity, 12, :voice}, :announce, {40.0, 8.0})])
+      Audio.play(audio, [Audio.keyed({:entity, 12, :weapon}, :spark, {:level, 0.4, -0.6})])
+  """
+  @spec keyed(term(), term(), Keyed.position(), keyword()) :: Keyed.t()
+  def keyed(key, name, at \\ nil, opts \\ []) do
+    %Keyed{
+      action: :play,
+      key: key,
+      name: name,
+      at: at!(at),
+      fade: Keyword.get(opts, :fade, 0.05) / 1,
+      loop: Keyword.get(opts, :loop, false),
+      music: Keyword.get(opts, :music, false)
+    }
+  end
+
+  @doc """
+  The event that moves the sound under `key` to `at`, any `at` `keyed/4` takes. Nothing
+  happens when nothing sounds under `key`.
+
+      Audio.play(audio, [Audio.moved({:entity, 12, :weapon}, {:level, 0.2, 0.9})])
+  """
+  @spec moved(term(), Keyed.position()) :: Keyed.t()
+  def moved(key, at), do: %Keyed{action: :move, key: key, at: at!(at)}
+
+  @doc """
+  The event that gives the next block of a continuous source under `key`: `pcm` is mono signed
+  16-bit little-endian samples at `rate`, `at` is any position `keyed/4` takes.
+
+  Blocks given under one key play one after another without gaps or overlaps, however
+  unevenly they arrive, so a source that is generated a piece at a time (an emulated sound
+  chip) sounds as one sound. The source ends two seconds after its last block, or when
+  `stopped/2` lets it go.
+
+      Audio.play(audio, [Audio.streamed({:cabinet, 3}, block, 55_555, {:level, 0.6, 0.0})])
+  """
+  @spec streamed(term(), binary(), pos_integer(), Keyed.position()) :: Keyed.t()
+  def streamed(key, pcm, rate, at \\ nil) when is_binary(pcm) and is_integer(rate) and rate > 0,
+    do: %Keyed{action: :stream, key: key, name: {pcm, rate}, at: at!(at)}
+
+  @doc "The event that lets the sound under `key` go over `fade` seconds, default 0.05."
+  @spec stopped(term(), number()) :: Keyed.t()
+  def stopped(key, fade \\ 0.05), do: %Keyed{action: :stop, key: key, fade: fade / 1}
+
+  @doc "Sound `voice` directly, scaled by the effects level."
+  @spec play_voice(instance(), Voice.t()) :: :ok
+  def play_voice(audio \\ __MODULE__, %TuningFork.Voice{} = voice),
+    do: cast(audio, {:play_voice, voice})
+
+  @doc "Set the effects and music levels, each 0.0 to 1.0."
+  @spec levels(instance(), number(), number()) :: :ok
+  def levels(audio \\ __MODULE__, sfx, music), do: cast(audio, {:levels, sfx / 1, music / 1})
+
+  @doc """
+  Play `score` on a loop, live or from a render, under `key`.
+
+  ## Options
+
+    * `:mode` — `:live` or `:rendered`, over the instance's `:mode` and `CAULDRON_AUDIO`
+    * `:render` — a zero-arity function returning the PCM to loop in `:rendered` mode.
+      Default: renders `score` at the stage's rate
+    * `:fingerprint` — keys the on-disk render together with `key`. Default `"0"`
+  """
+  @spec play_piece(instance(), String.t(), Cauldron.Audio.Score.t(), keyword()) :: :ok
+  def play_piece(audio, key, %TuningFork.Score{} = score, opts \\ []) do
+    cast(audio, {:play_piece, key, score, opts})
+  end
+
+  @doc "Loop the PCM `render` produces under `key`; see the module rules for caching."
+  @spec bed(instance(), String.t(), (-> binary()), keyword()) :: :ok
+  def bed(audio, key, render, opts \\ []) when is_function(render, 0) do
+    cast(audio, {:bed, key, render, opts})
+  end
+
+  @doc "Stop the music, live or rendered."
+  @spec clear_bed(instance()) :: :ok
+  def clear_bed(audio \\ __MODULE__), do: cast(audio, :clear_bed)
+
+  @doc "Start the music last asked for again."
+  @spec resume_bed(instance()) :: :ok
+  def resume_bed(audio \\ __MODULE__), do: cast(audio, :resume_bed)
+
+  @doc "The key last given to `bed/4` or `play_piece/4`, or `nil`."
+  @spec playing(instance()) :: String.t() | nil
+  def playing(audio \\ __MODULE__), do: if(alive?(audio), do: GenServer.call(audio, :playing))
+
+  @doc "Silence everything, or restore it."
+  @spec mute(instance(), boolean()) :: :ok
+  def mute(audio \\ __MODULE__, muted?), do: cast(audio, {:mute, muted?})
+
+  @doc "The stage this instance plays through, or `nil`."
+  @spec stage(instance()) :: pid() | nil
+  def stage(audio \\ __MODULE__), do: if(alive?(audio), do: GenServer.call(audio, :stage))
+
+  @doc false
+  def rate(audio), do: GenServer.call(audio, :rate)
+
+  defp at!(nil), do: nil
+  defp at!({x, y} = at) when is_number(x) and is_number(y), do: at
+
+  defp at!({:level, gain, pan} = at) when is_number(gain) and gain >= 0 and is_number(pan),
+    do: at
+
+  defp at!(at), do: raise(ArgumentError, "not a position or level: #{inspect(at)}")
+
+  defp cast(audio, message) do
+    if alive?(audio), do: GenServer.cast(audio, message)
+    :ok
+  end
+
+  defp alive?(pid) when is_pid(pid), do: Process.alive?(pid)
+  defp alive?(name) when is_atom(name), do: Process.whereis(name) != nil
+  defp alive?({:via, _, _} = via), do: GenServer.whereis(via) != nil
+
+  @impl GenServer
+  def init(opts) do
+    Process.flag(:trap_exit, true)
+    rate = Keyword.get(opts, :rate, 44_100)
+    channels = Keyword.get(opts, :channels, 2)
+    {stage, playable?} = open_stage(opts, rate, channels)
+
+    state = %{
+      stage: stage,
+      own_stage?: not Keyword.has_key?(opts, :stage),
+      playable?: playable?,
+      rate: rate,
+      channels: channels,
+      sounds: Keyword.get(opts, :sounds, fn _event -> nil end),
+      mode: Keyword.get(opts, :mode),
+      sfx: Keyword.get(opts, :sfx, @sfx) / 1,
+      music:
+        heard_music(
+          Keyword.get(opts, :master, :none),
+          Keyword.get(opts, :sfx, @sfx),
+          Keyword.get(opts, :music, @music)
+        ),
+      master: Keyword.get(opts, :master, :none),
+      set: %{sfx: Keyword.get(opts, :sfx, @sfx) / 1, music: Keyword.get(opts, :music, @music) / 1},
+      muted?: false,
+      recordings: Keyword.get(opts, :recordings, fn _event -> nil end),
+      music_keys: %{},
+      earshot: Keyword.get(opts, :earshot, 30.0) / 1,
+      parallel: Keyword.get(opts, :parallel, false),
+      music_dir: Keyword.get(opts, :music_dir, Cache.dir()),
+      listener: nil,
+      keyed: %{},
+      playing: nil,
+      piece: :rendered,
+      music_director: Music.new(static: Keyword.get(opts, :static_music, false))
+    }
+
+    if stage, do: Stage.bed_gain(stage, state.music)
+    {:ok, state}
+  end
+
+  defp open_stage(opts, rate, channels) do
+    case Keyword.fetch(opts, :stage) do
+      {:ok, stage} ->
+        {stage, true}
+
+      :error ->
+        case sink(opts) do
+          nil -> {nil, false}
+          {module, sink_opts} -> start_stage(module, sink_opts, opts, rate, channels)
+        end
+    end
+  end
+
+  defp sink(opts) do
+    case Keyword.get(opts, :sink) do
+      nil -> if Code.ensure_loaded?(TuningFork.Sink.Speaker), do: {TuningFork.Sink.Speaker, []}
+      {module, sink_opts} -> {module, sink_opts}
+      module when is_atom(module) -> {module, []}
+    end
+  end
+
+  defp start_stage(module, sink_opts, opts, rate, channels) do
+    lead = Keyword.get(opts, :lead, 2048)
+
+    result =
+      Stage.start_link(
+        name: nil,
+        sink: module,
+        rate: rate,
+        channels: channels,
+        chunk: Keyword.get(opts, :chunk, 256),
+        voices: Keyword.get(opts, :voices, 12),
+        sink_opts: Keyword.merge([lead: lead, buffer: 4 * lead], sink_opts),
+        fx: Keyword.get(opts, :fx, [])
+      )
+
+    with {:ok, pid} <- result,
+         true <- :sys.get_state(pid).sink != TuningFork.Sink.Silent do
+      {pid, true}
+    else
+      false ->
+        {:ok, pid} = result
+        GenServer.stop(pid)
+        {nil, false}
+
+      {:error, _reason} ->
+        {nil, false}
+    end
+  end
+
+  @impl GenServer
+  def handle_call(:on?, _from, state), do: {:reply, state.stage != nil and state.playable?, state}
+  def handle_call(:playing, _from, state), do: {:reply, state.playing, state}
+  def handle_call(:stage, _from, state), do: {:reply, state.stage, state}
+  def handle_call(:rate, _from, state), do: {:reply, {state.rate, state.channels}, state}
+
+  def handle_call({:music, request}, _from, state) do
+    {reply, director} = Music.handle(request, state.music_director, self(), state)
+    {:reply, reply, %{state | music_director: director}}
+  end
+
+  @impl GenServer
+  def handle_cast(_message, %{stage: nil} = state), do: {:noreply, state}
+
+  def handle_cast({:listener, pos}, state),
+    do: {:noreply, replaced(%{state | listener: pos}, :placed)}
+
+  def handle_cast({:play, events}, state) do
+    {:noreply, Enum.reduce(events, state, &heard(&2, &1))}
+  end
+
+  def handle_cast({:play_voice, voice}, state) do
+    Stage.play_pcm(state.stage, rendered(state, voice, state.sfx, 0.0))
+    {:noreply, state}
+  end
+
+  def handle_cast({:levels, sfx, music}, state),
+    do: {:noreply, leveled(%{state | set: %{sfx: sfx, music: music}})}
+
+  def handle_cast({:play_piece, key, score, opts}, state) do
+    mode = resolve_mode(Keyword.get(opts, :mode), state.mode)
+
+    render =
+      Keyword.get(opts, :render, fn ->
+        TuningFork.Score.render(score, state.rate, channels: state.channels)
+      end)
+
+    state = %{state | playing: key, piece: if(mode == :live, do: {:live, score}, else: :rendered)}
+
+    case mode do
+      :live -> Stage.start_score(state.stage, score, loop: true)
+      :rendered -> play_stored_or_build(state, key, render, opts)
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:bed, key, render, opts}, state) do
+    state = %{state | playing: key, piece: :rendered}
+    play_stored_or_build(state, key, render, opts)
+    {:noreply, state}
+  end
+
+  def handle_cast(:clear_bed, state) do
+    Stage.clear_bed(state.stage)
+    Stage.stop_score(state.stage)
+    {:noreply, state}
+  end
+
+  def handle_cast(:resume_bed, state) do
+    resume(state)
+    {:noreply, state}
+  end
+
+  def handle_cast({:mute, muted?}, state) do
+    Stage.mute(state.stage, muted?)
+
+    case state.piece do
+      {:live, _score} -> :ok
+      :rendered -> if muted?, do: Stage.clear_bed(state.stage), else: resume(state)
+    end
+
+    {:noreply, state}
+  end
+
+  def handle_cast({:music, request}, state) do
+    {_reply, director} = Music.handle(request, state.music_director, self(), state)
+    {:noreply, %{state | music_director: director}}
+  end
+
+  @impl GenServer
+  def handle_info({:rendered, key, pcm}, state) do
+    :persistent_term.put({@bed, key}, pcm)
+    if state.playing == key, do: Stage.bed(state.stage, pcm)
+    {:noreply, state}
+  end
+
+  def handle_info({:music, message}, state) do
+    director = Music.handle_info(message, state.music_director, self(), state)
+    {:noreply, %{state | music_director: director}}
+  end
+
+  def handle_info({:EXIT, stage, _reason}, %{stage: stage} = state),
+    do: {:stop, :normal, %{state | stage: nil}}
+
+  def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
+  def handle_info(_message, state), do: {:noreply, state}
+
+  @impl GenServer
+  def terminate(_reason, %{own_stage?: true, stage: stage}) when is_pid(stage) do
+    if Process.alive?(stage), do: GenServer.stop(stage)
+    :ok
+  catch
+    :exit, _already_going_down -> :ok
+  end
+
+  def terminate(_reason, _state), do: :ok
+
+  defp resolve_mode(override, instance) do
+    Cauldron.Launch.value(
+      given: override || instance,
+      env: {"CAULDRON_AUDIO", &audio_mode/1},
+      default: :live
+    )
+  end
+
+  defp audio_mode("rendered"), do: :rendered
+  defp audio_mode("live"), do: :live
+  defp audio_mode(_text), do: nil
+
+  defp play_stored_or_build(state, key, render, opts) do
+    case :persistent_term.get({@bed, key}, nil) do
+      nil -> build(key, render, Keyword.get(opts, :fingerprint, "0"), self(), state.music_dir)
+      pcm -> Stage.bed(state.stage, pcm)
+    end
+  end
+
+  defp build(key, render, fingerprint, owner, dir) do
+    Task.start(fn ->
+      try do
+        send(owner, {:rendered, key, Cache.fetch(key, fingerprint, render, dir: dir)})
+      rescue
+        error ->
+          Logger.error("""
+          rendering #{inspect(key)} failed, so it will never play: #{Exception.message(error)}
+          #{Exception.format_stacktrace(__STACKTRACE__)}\
+          """)
+      end
+    end)
+  end
+
+  defp resume(%{piece: {:live, score}} = state),
+    do: Stage.start_score(state.stage, score, loop: true)
+
+  defp resume(%{piece: :rendered, playing: key} = state) when is_binary(key) do
+    case :persistent_term.get({@bed, key}, nil) do
+      nil -> :ok
+      pcm -> Stage.bed(state.stage, pcm)
+    end
+  end
+
+  defp resume(_state), do: :ok
+
+  defp sound(state, {name, {x, y}}) when is_number(x) and is_number(y) do
+    case placement(state, {x, y}) do
+      :silent -> :ok
+      {gain, pan} -> emit(state, lookup(state, name), state.sfx * gain, pan)
+    end
+  end
+
+  defp sound(state, name), do: emit(state, lookup(state, name), state.sfx, 0.0)
+
+  defp heard(state, %Keyed{action: :play} = event), do: keyed_play(state, event)
+
+  defp heard(state, %Keyed{action: :stream, key: key, name: {pcm, rate}, at: at}) do
+    sounding = %{at: at, own: 0.0, until: :held, music?: false}
+    {gain, pan} = keyed_place(state, sounding)
+    Stage.feed(state.stage, key, pcm, rate, gain: gain, pan: pan)
+    %{state | keyed: state |> current_keyed() |> Map.put(key, sounding)}
+  end
+
+  defp heard(%{music_keys: music} = state, %Keyed{action: :move, key: key, at: at})
+       when is_map_key(music, key) do
+    Stage.layer_gains(state.stage, %{key => music_gain(state, at)})
+    %{state | music_keys: Map.put(music, key, at)}
+  end
+
+  defp heard(%{music_keys: music} = state, %Keyed{action: :stop, key: key})
+       when is_map_key(music, key) do
+    Stage.drop_layers(state.stage, [key])
+    %{state | music_keys: Map.delete(music, key)}
+  end
+
+  defp heard(state, %Keyed{action: :move, key: key, at: at}) do
+    case Map.fetch(state.keyed, key) do
+      {:ok, sounding} ->
+        sounding = %{sounding | at: at}
+        {gain, pan} = keyed_place(state, sounding)
+        Stage.place(state.stage, key, gain: gain, pan: pan)
+        %{state | keyed: Map.put(state.keyed, key, sounding)}
+
+      :error ->
+        state
+    end
+  end
+
+  defp heard(state, %Keyed{action: :stop, key: key, fade: fade}) do
+    Stage.release(state.stage, key, fade)
+    %{state | keyed: Map.delete(state.keyed, key)}
+  end
+
+  defp heard(state, {__MODULE__, :muted, on?}), do: leveled(%{state | muted?: on?})
+
+  defp heard(state, event) do
+    sound(state, event)
+    state
+  end
+
+  defp leveled(%{set: %{sfx: sfx, music: music}} = state) do
+    {sfx, music} =
+      if state.muted?, do: {0.0, 0.0}, else: {sfx, heard_music(state.master, sfx, music)}
+
+    Stage.bed_gain(state.stage, music)
+    state = replaced(%{state | sfx: sfx, music: music})
+    {:ok, director} = Music.handle({:level, music}, state.music_director, self(), state)
+    %{state | music_director: director}
+  end
+
+  defp heard_music(:sfx, sfx, music), do: music * sfx / 1
+  defp heard_music(:none, _sfx, music), do: music / 1
+
+  defp keyed_play(state, %Keyed{music: true, key: key, name: name, at: at}) do
+    case recording(state, name) do
+      %{rate: rate, channels: channels, pcm: pcm} ->
+        pcm = Mixer.fit(pcm, rate, channels, state.rate, state.channels)
+        gain = music_gain(state, at)
+
+        Stage.layers(state.stage, %{key => pcm},
+          keep: true,
+          from_start: true,
+          gains: %{key => gain}
+        )
+
+        %{state | music_keys: Map.put(state.music_keys, key, at)}
+
+      nil ->
+        state
+    end
+  end
+
+  defp keyed_play(state, %Keyed{
+         key: key,
+         name: name,
+         at: at,
+         fade: fade,
+         loop: loop,
+         music: music?
+       }) do
+    case lookup(state, name) do
+      nil ->
+        state
+
+      %TuningFork.Voice{sample: %TuningFork.Sample{} = sample} = voice when loop ->
+        sounding = %{at: at, own: voice.pan, until: :held, music?: music?}
+        {gain, pan} = keyed_place(state, sounding)
+
+        Stage.hold(state.stage, key, %{voice | sample: round_and_round(sample)},
+          gain: gain,
+          pan: pan,
+          fade: fade
+        )
+
+        %{state | keyed: state |> current_keyed() |> Map.put(key, sounding)}
+
+      sound ->
+        {mono, own} = clip(state, sound)
+
+        sounding = %{
+          at: at,
+          own: own,
+          until: now() + div(byte_size(mono) * 500, state.rate),
+          music?: music?
+        }
+
+        {gain, pan} = keyed_place(state, sounding)
+        Stage.play_pcm(state.stage, mono, key: key, gain: gain, pan: pan, fade: fade)
+        %{state | keyed: state |> current_keyed() |> Map.put(key, sounding)}
+    end
+  end
+
+  defp keyed_place(state, %{at: at, own: own} = sounding) do
+    case placement(state, at) do
+      :silent -> {0.0, own}
+      {gain, side} -> {level_of(state, sounding) * gain, max(-1.0, min(1.0, own + side))}
+    end
+  end
+
+  defp music_gain(state, at) do
+    case placement(state, at) do
+      :silent -> 0.0
+      {gain, _side} -> gain
+    end
+  end
+
+  defp recording(state, name) do
+    state.recordings.(name)
+  rescue
+    FunctionClauseError -> nil
+  end
+
+  defp level_of(state, %{music?: true}), do: state.music
+  defp level_of(state, _sounding), do: state.sfx
+
+  defp replaced(state, which \\ :all) do
+    keyed = current_keyed(state)
+
+    keyed
+    |> Enum.reject(fn {_key, sounding} -> which == :placed and level?(sounding.at) end)
+    |> Enum.each(fn {key, sounding} ->
+      {gain, pan} = keyed_place(state, sounding)
+      Stage.place(state.stage, key, gain: gain, pan: pan)
+    end)
+
+    placed_music =
+      for {key, at} <- state.music_keys,
+          not (which == :placed and level?(at)),
+          into: %{},
+          do: {key, music_gain(state, at)}
+
+    if placed_music != %{}, do: Stage.layer_gains(state.stage, placed_music)
+
+    %{state | keyed: keyed}
+  end
+
+  defp level?({:level, _gain, _pan}), do: true
+  defp level?(_at), do: false
+
+  defp current_keyed(state) do
+    now = now()
+
+    for {key, %{until: until} = sounding} <- state.keyed,
+        until == :held or until > now,
+        into: %{},
+        do: {key, sounding}
+  end
+
+  defp round_and_round(%TuningFork.Sample{loop: {_from, _to}} = sample), do: sample
+
+  defp round_and_round(%TuningFork.Sample{} = sample),
+    do: %{sample | loop: {0, Sample.frames(sample)}}
+
+  defp now, do: System.monotonic_time(:millisecond)
+
+  defp clip(state, %TuningFork.Voice{} = voice),
+    do: {voice |> Rendered.fetch(state.rate) |> Mixer.scale(voice.gain), voice.pan}
+
+  defp clip(state, run) when is_list(run) do
+    mono =
+      run
+      |> Enum.map(fn {delay, voice} ->
+        Mixer.silence(div(delay * state.rate, 1_000), 1) <>
+          (voice |> Rendered.fetch(state.rate) |> Mixer.scale(voice.gain))
+      end)
+      |> Mixer.mix()
+
+    {mono, 0.0}
+  end
+
+  defp lookup(state, name) do
+    state.sounds.(name)
+  rescue
+    FunctionClauseError -> nil
+  end
+
+  defp placement(_state, {:level, gain, pan}), do: {gain / 1, pan / 1}
+  defp placement(_state, nil), do: {1.0, 0.0}
+  defp placement(%{listener: nil}, _pos), do: {1.0, 0.0}
+
+  defp placement(%{listener: {lx, ly}, earshot: earshot}, {x, y}) do
+    dx = x - lx
+    dy = y - ly
+    distance = :math.sqrt(dx * dx + dy * dy)
+
+    cond do
+      distance >= earshot -> :silent
+      distance <= 1.0 -> {1.0, 0.0}
+      true -> {1.0 - (distance - 1.0) / (earshot - 1.0), max(-1.0, min(1.0, dx / earshot))}
+    end
+  end
+
+  defp emit(_state, nil, _gain, _pan), do: :ok
+
+  defp emit(state, %TuningFork.Voice{} = voice, gain, pan),
+    do: Stage.play_pcm(state.stage, rendered(state, voice, gain, pan))
+
+  defp emit(state, run, gain, pan) when is_list(run) do
+    stage = state.stage
+
+    Enum.each(run, fn {delay, voice} ->
+      after_delay(stage, rendered(state, voice, gain, pan), delay)
+    end)
+  end
+
+  defp rendered(state, voice, gain, pan) do
+    voice
+    |> Rendered.fetch(state.rate)
+    |> Mixer.scale(voice.gain * gain)
+    |> Mixer.pan(max(-1.0, min(1.0, voice.pan + pan)), state.channels)
+  end
+
+  defp after_delay(stage, pcm, delay) do
+    spawn(fn ->
+      reference = Process.monitor(stage)
+
+      receive do
+        {:DOWN, ^reference, :process, _pid, _reason} -> :ok
+      after
+        delay -> Stage.play_pcm(stage, pcm)
+      end
+    end)
+  end
+end

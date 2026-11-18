@@ -9,3 +9,20 @@ erl_crash.dump
 .DS_Store
 ENGINE_ADDITIONS.md
 GAMEMAKER_DESIGN.md
+
+/.scratch/
+
+# Example media and generated art: large, and rebuilt by each example's own tasks.
+# The files stay on disk; add them deliberately (or through Git LFS) if you want them
+# versioned.
+/cauldron_examples/**/*.wav
+/cauldron_examples/**/*.mp3
+/cauldron_examples/**/*.png
+/cauldron_examples/**/*.jpg
+/cauldron_examples/**/*.jpeg
+/cauldron_examples/**/screenshots/
+/pitches/*.pdf
+/pitches/*.html
+/pitches/art/
+/pitches/audio/
+**/.playwright-mcp/

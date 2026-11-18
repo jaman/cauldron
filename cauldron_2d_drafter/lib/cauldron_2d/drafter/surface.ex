@@ -29,8 +29,11 @@ defmodule Cauldron2D.Drafter.Surface do
 
     * `:atlas` — the name an atlas was installed under with `Cauldron2D.Atlas.install/1`
     * `:focus`, `:cell` — passed to `Cauldron2D.Camera.view/1`
-    * `:movers` — `[{art, {x, y}}]` or `[{art, {x, y}, heading}]` in world tile
-      coordinates, which may be fractional, `heading` in radians. Default `[]`. In pixel
+    * `:movers` — `[{art, {x, y}}]`, `[{art, {x, y}, heading}]` or `[{art, {x, y},
+      heading, opts}]` in world tile coordinates, which may be fractional, `heading` in
+      radians or `nil`, `opts` a map with `:tint`, the name of one of the atlas's tints
+      to shade the mover with (a hit's flash, a ghost's pallor), honoured in the
+      top-down view and in glyphs. Default `[]`. In pixel
       mode a mover the size of a tile is drawn at its exact pixel position and a larger one
       stands in that cell, centred across it with its bottom edge on the cell's bottom, as
       `Cauldron2D.Surface` stands a tall overlay; in text mode it replaces the
@@ -41,6 +44,9 @@ defmodule Cauldron2D.Drafter.Surface do
       in world tile coordinates: coloured regions of space tinting what is seen through
       them, as `Cauldron2D.Projection.Volume` describes them. Every projection draws
       them, and in text mode they tint the glyphs they cover. Default `[]`
+    * `:outlines` — `[{{left, top, right, bottom}, {r, g, b, a}}]` in world tile coordinates:
+      boxes drawn as their edges over everything, to see hit boxes and the like, as
+      `Cauldron2D.Screen` `:box` items placed by the focus. Default `[]`
     * `:labels` — `[{text, {x, y}, colour}]` or `[{text, {x, y}, colour, opts}]` in world
       tile coordinates, as `Cauldron2D.Surface.compose/4` takes them: names, numbers,
       notes drawn over everything. Default `[]`. In pixel mode a label is drawn in
@@ -67,7 +73,9 @@ defmodule Cauldron2D.Drafter.Surface do
     * `:projection` — `:top` (default), `:iso` or `:first_person`; see below
     * `:picture` — `fn {width, height}, aspect -> raster end`: a picture the game draws
       itself, in place of the atlas world, at the pane's size in pixels; `aspect` is how
-      wide each pixel is on screen against its height. Given, the surface draws it in
+      wide each pixel is on screen against its height. Where `stores_pictures?/1` holds,
+      the function may answer a frame in POSIX shared memory instead
+      (`%{shared_memory: name, width: w, height: h}`). Given, the surface draws it in
       every mode — through the terminal's pixel protocol, or as block glyphs — and
       `:projection` is `:picture`; `:focus`, `:cell` and `:movers` are not read
     * `:native` — `{width, height}`, the picture's own size in pixels. Given, on a kitty or
@@ -171,17 +179,16 @@ defmodule Cauldron2D.Drafter.Surface do
 
   require Logger
 
-  alias Cauldron2D.{Atlas, Camera, Parallax, Renderer, Surface}
+  alias Cauldron2D.{Atlas, Camera, Draw, Raster, Renderer, Surface}
   alias Cauldron2D.Drafter.Sprites
-  alias Cauldron2D.Drafter.Surface.Patch
-  alias Cauldron2D.Projection.{FirstPerson, Glyphs, Iso, Mode7, Oblique, Volume}
+  alias Cauldron2D.Drafter.Surface.{Patch, ScreenLayer}
+  alias Cauldron2D.Projection.{Glyphs, Iso, Mode7, Oblique, Volume}
   alias Drafter.Draw.{Segment, Strip}
   alias Drafter.Session.Context
   alias Drafter.Terminal.ANSI
   alias Drafter.Widget.Chart.Pixel
   alias FrenchCurve.Backend.{Braille, Cells, Kitty}
   alias FrenchCurve.Capability
-  alias FrenchCurve.Raster
 
   defstruct [
     :atlas,
@@ -192,6 +199,8 @@ defmodule Cauldron2D.Drafter.Surface do
     :rect,
     movers: [],
     labels: [],
+    screen: [],
+    outlines: [],
     volumes: [],
     layers: [],
     mode: nil,
@@ -220,11 +229,7 @@ defmodule Cauldron2D.Drafter.Surface do
   @braille_luminance 64
   @cell_sets [:half, :quad, :sextant, :octant]
   @fitted [:kitty, :iterm2]
-  @sampled [:first_person, :mode7, :picture]
-  @sampled_density 4
   @panned [:iso, :oblique]
-  @zoom_in [4, 2]
-  @zoom_out [2, 4, 8, 16]
 
   @doc """
   The zoom levels a surface draws exactly, largest first: in `:text` mode and the pixel
@@ -238,43 +243,11 @@ defmodule Cauldron2D.Drafter.Surface do
   out cost nothing; see `fitted/1`.
   """
   @spec zoom_levels(Atlas.name(), atom() | nil) :: [number()]
-  def zoom_levels(atlas, mode), do: zoom_levels(atlas, mode, :top)
+  defdelegate zoom_levels(atlas, mode), to: Draw
 
   @doc "The zoom levels the surface draws `projection` at exactly, largest first; see `zoom_levels/2`."
   @spec zoom_levels(Atlas.name(), atom() | nil, atom()) :: [number()]
-  def zoom_levels(_atlas, _mode, :picture), do: [1]
-  def zoom_levels(_atlas, _mode, :iso), do: [2, 1, 0.5, 0.25]
-  def zoom_levels(_atlas, _mode, :oblique), do: [2, 1, 0.5]
-
-  def zoom_levels(atlas, :text, projection) when projection in [:first_person, :mode7],
-    do: zoom_levels(atlas, :text, :top)
-
-  def zoom_levels(_atlas, _mode, projection) when projection in [:first_person, :mode7], do: [1]
-
-  def zoom_levels(atlas, mode, :top) do
-    tile = Atlas.fetch(atlas).tile
-
-    case mode do
-      :braille ->
-        for divisor <- divisors(tile), do: tile / (@braille_dots * divisor)
-
-      set when set in @cell_sets ->
-        {sx, _sy} = Cells.subpixels(set)
-        for divisor <- divisors(tile), do: tile / (2 * sx * divisor)
-
-      :text ->
-        @zoom_in ++ [1 | Enum.map(@zoom_out, &(1 / &1))]
-
-      _pixel ->
-        @zoom_in ++ [1 | for(divisor <- @zoom_out, rem(tile, divisor) == 0, do: 1 / divisor)]
-    end
-    |> Enum.map(&whole/1)
-  end
-
-  defp divisors(tile), do: for(divisor <- 1..tile, rem(tile, divisor) == 0, do: divisor)
-
-  defp whole(number) when is_float(number) and number == trunc(number), do: trunc(number)
-  defp whole(number), do: number
+  defdelegate zoom_levels(atlas, mode, projection), to: Draw
 
   @type t :: %__MODULE__{}
 
@@ -292,6 +265,8 @@ defmodule Cauldron2D.Drafter.Surface do
       :cell,
       :movers,
       :labels,
+      :screen,
+      :outlines,
       :volumes,
       :mode,
       :zoom,
@@ -334,6 +309,8 @@ defmodule Cauldron2D.Drafter.Surface do
       cell: Map.get(props, :cell),
       movers: Map.get(props, :movers) || [],
       labels: Map.get(props, :labels) || [],
+      screen: Map.get(props, :screen) || [],
+      outlines: Map.get(props, :outlines) || [],
       volumes: Map.get(props, :volumes) || [],
       mode: Map.get(props, :mode),
       zoom: Map.get(props, :zoom) || 1,
@@ -383,12 +360,14 @@ defmodule Cauldron2D.Drafter.Surface do
       state
       | focus: fold(props, :focus, state.focus),
         cell: fold(props, :cell, state.cell),
-        movers: fold(props, :movers, state.movers) || [],
-        labels: fold(props, :labels, state.labels) || [],
-        volumes: fold(props, :volumes, state.volumes) || [],
+        movers: fold(props, :movers, state.movers, []),
+        labels: fold(props, :labels, state.labels, []),
+        screen: fold(props, :screen, state.screen, []),
+        outlines: fold(props, :outlines, state.outlines, []),
+        volumes: fold(props, :volumes, state.volumes, []),
         atlas: fold(props, :atlas, state.atlas),
         mode: fold(props, :mode, state.mode),
-        zoom: fold(props, :zoom, state.zoom) || 1,
+        zoom: fold(props, :zoom, state.zoom, 1),
         compress: fold(props, :compress, state.compress),
         placements: fold(props, :placements, state.placements),
         layers: fold(props, :layers, state.layers),
@@ -396,9 +375,9 @@ defmodule Cauldron2D.Drafter.Surface do
         density: fold(props, :density, state.density),
         picture: fold(props, :picture, state.picture),
         native: fold(props, :native, state.native),
-        native_scale: fold(props, :native_scale, state.native_scale) || :fit,
-        picture_format: fold(props, :picture_format, state.picture_format) || :rgba,
-        swap: fold(props, :swap, state.swap) || false
+        native_scale: fold(props, :native_scale, state.native_scale, :fit),
+        picture_format: fold(props, :picture_format, state.picture_format, :rgba),
+        swap: fold(props, :swap, state.swap, false)
     }
     |> looked_at(props)
   end
@@ -409,16 +388,18 @@ defmodule Cauldron2D.Drafter.Surface do
       | projection:
           if(state.picture,
             do: :picture,
-            else: fold(props, :projection, state.projection) || :top
+            else: fold(props, :projection, state.projection, :top)
           ),
-        facing: fold(props, :facing, state.facing) || 0,
-        facings: fold(props, :facings, state.facings) || 4,
-        tilt: fold(props, :tilt, state.tilt) || 1.0,
-        heading: fold(props, :heading, state.heading) || 0.0,
-        pitch: fold(props, :pitch, state.pitch) || 0.0,
+        facing: fold(props, :facing, state.facing, 0),
+        facings: fold(props, :facings, state.facings, 4),
+        tilt: fold(props, :tilt, state.tilt, 1.0),
+        heading: fold(props, :heading, state.heading, 0.0),
+        pitch: fold(props, :pitch, state.pitch, 0.0),
         eye: fold(props, :eye, state.eye)
     }
   end
+
+  defp fold(props, key, current, default), do: fold(props, key, current) || default
 
   defp fold(props, key, current) do
     case Map.fetch(props, key) do
@@ -513,7 +494,7 @@ defmodule Cauldron2D.Drafter.Surface do
     atlas = Atlas.fetch(state.atlas)
     columns = Camera.columns_for(rect.width)
     rows = Camera.rows_for(rect.height)
-    zoom = nearest(state.zoom, zoom_levels(state.atlas, :text, projection))
+    zoom = Draw.nearest(state.zoom, zoom_levels(state.atlas, :text, projection))
     span = max(2, round(glyph_step(state, projection) / zoom))
     upright = %{state | zoom: 1}
 
@@ -521,12 +502,13 @@ defmodule Cauldron2D.Drafter.Surface do
     |> pane_opts({columns * span, rows * span})
     |> Keyword.put(:step, {span, span})
     |> then(&Glyphs.compose(state.atlas, projection_module(projection), &1))
+    |> ScreenLayer.glyphs(state.atlas, Draw.screen_items(state), atlas.tile)
     |> Enum.map(&lettered(&1, atlas.void, rect))
   end
 
   defp glyphs(%__MODULE__{} = state, rect) do
     atlas = Atlas.fetch(state.atlas)
-    zoom = nearest(state.zoom, zoom_levels(state.atlas, :text))
+    zoom = Draw.nearest(state.zoom, zoom_levels(state.atlas, :text))
     columns = Camera.columns_for(rect.width)
     rows = Camera.rows_for(rect.height)
     camera = glyph_camera(state, {columns, rows}, zoom)
@@ -534,9 +516,10 @@ defmodule Cauldron2D.Drafter.Surface do
     atlas
     |> Camera.glyphs(camera)
     |> magnify(zoom, {columns, rows})
-    |> overlay_movers(atlas, camera, zoom, flat_movers(state))
+    |> overlay_movers(atlas, camera, zoom, Draw.tinted_movers(state))
     |> overlay_labels(camera, zoom, state.labels)
     |> overlay_volumes(camera, zoom, Volume.list(state.volumes))
+    |> ScreenLayer.glyphs(state.atlas, Draw.screen_items(state), atlas.tile)
     |> Enum.map(&lettered(&1, atlas.void, rect))
   end
 
@@ -599,20 +582,17 @@ defmodule Cauldron2D.Drafter.Surface do
     |> Enum.take(count)
   end
 
-  defp nearest(zoom, levels), do: Enum.min_by(levels, &abs(:math.log(&1 / zoom)))
-
   defp braille(%__MODULE__{} = state, rect) do
     atlas = Atlas.fetch(state.atlas)
     background = atlas.void
     columns = Camera.columns_for(rect.width)
     cells = max(1, rect.height)
-    zoom = nearest(state.zoom, zoom_levels(state.atlas, :braille))
-    camera = view(state, rect, true, zoom)
+    zoom = Draw.nearest(state.zoom, zoom_levels(state.atlas, :braille))
+    camera = camera(state, rect, zoom)
     scale = round(atlas.tile / (@braille_dots * zoom))
-    {sx, sy} = scroll_pixels(camera, atlas.tile)
 
     state
-    |> braille_raster(atlas, camera, {columns, cells}, {sx, sy}, scale)
+    |> braille_raster(camera, {columns, cells}, scale)
     |> lit_above(@braille_luminance)
     |> Braille.render()
     |> Enum.map(fn row ->
@@ -630,7 +610,7 @@ defmodule Cauldron2D.Drafter.Surface do
     size = {max(rect.width, 1) * across, max(rect.height, 1) * down}
 
     state
-    |> drawn(size, down / (2 * across))
+    |> Draw.projected(size, down / (2 * across), drawn_mode(state), now())
     |> FrenchCurve.render(:cells, set: set, background: {0, 0, 0})
     |> Enum.map(fn row -> row |> Strip.from_cells() |> Strip.fit_to_width(max(rect.width, 1)) end)
   end
@@ -641,74 +621,37 @@ defmodule Cauldron2D.Drafter.Surface do
     dots = 2 * sx
     columns = Camera.columns_for(rect.width)
     rows = max(1, rect.height)
-    zoom = nearest(state.zoom, zoom_levels(state.atlas, set))
-    camera = view(state, rect, true, zoom)
+    zoom = Draw.nearest(state.zoom, zoom_levels(state.atlas, set))
+    camera = camera(state, rect, zoom)
     scale = round(atlas.tile / (dots * zoom))
-    {scroll_x, scroll_y} = scroll_pixels(camera, atlas.tile)
 
     state
-    |> cells_raster(atlas, camera, {columns, rows}, {dots, sy}, {scroll_x, scroll_y}, scale)
+    |> cells_raster(camera, {columns, rows}, {dots, sy}, scale)
     |> FrenchCurve.render(:cells, set: set, background: atlas.void)
     |> Enum.map(fn row -> row |> Strip.from_cells() |> Strip.fit_to_width(max(rect.width, 1)) end)
   end
 
   defp cells_raster(
          %__MODULE__{projection: :top} = state,
-         atlas,
          camera,
          {columns, rows},
          {dots, sy},
-         {scroll_x, scroll_y},
          scale
        ) do
-    target = {columns * dots, rows * dots}
-    behind = parallax(state, target, scale, false)
-    front = parallax(state, target, scale, true)
+    at = now()
 
-    atlas
-    |> Surface.compose(camera.cells, pixel_movers(state, camera),
-      scale: scale,
-      at: now(),
-      labels: pixel_labels(state, camera),
-      volumes: grid_volumes(state, camera),
-      void: void_mode(behind)
-    )
-    |> Raster.crop({div(scroll_x, scale), div(scroll_y, scale)}, target)
-    |> under(behind)
-    |> over_front(front)
+    state
+    |> Draw.world(camera, {columns * dots, rows * dots}, scale, at)
+    |> Draw.on_screen(state, at)
     |> squash_rows(dots, sy)
   end
 
-  defp cells_raster(state, _atlas, _camera, {columns, rows}, {dots, sy}, _scroll, _scale),
-    do: projected(state, {columns * dots, rows * sy}, sy / dots)
-
-  defp parallax(%__MODULE__{layers: []}, _target, _scale, _front), do: nil
-
-  defp parallax(%__MODULE__{} = state, {width, height}, scale, front) do
-    tile = max(1, div(tile(state), scale))
-
-    Parallax.compose(state.atlas, state.layers,
-      focus: state.focus,
-      size: {width / tile, height / tile},
-      pixels: {width, height},
-      at: now(),
-      scale: scale,
-      front: front
-    )
-  end
-
-  defp void_mode(nil), do: :opaque
-  defp void_mode(_behind), do: :transparent
-
-  defp under(raster, nil), do: raster
-  defp under(raster, behind), do: Surface.stack(behind, raster)
-
-  defp over_front(raster, nil), do: raster
-  defp over_front(raster, front), do: Surface.stack(raster, front)
+  defp cells_raster(state, _camera, {columns, rows}, {dots, sy}, _scale),
+    do: Draw.projected(state, {columns * dots, rows * sy}, sy / dots, drawn_mode(state), now())
 
   defp squash_rows(raster, from, from), do: raster
 
-  defp squash_rows(%Raster{width: width, height: height} = raster, from, to) do
+  defp squash_rows(%FrenchCurve.Raster{width: width, height: height} = raster, from, to) do
     stride = width * 4
     rgba = Raster.to_rgba_binary(raster)
     target = div(height * to, from)
@@ -722,35 +665,25 @@ defmodule Cauldron2D.Drafter.Surface do
     Raster.from_rgba(width, target, IO.iodata_to_binary(rows))
   end
 
-  defp braille_raster(
-         %__MODULE__{projection: :top} = state,
-         atlas,
-         camera,
-         {columns, cells},
-         {sx, sy},
-         scale
-       ) do
-    target = {columns * @braille_dots, cells * @braille_dots}
-    behind = parallax(state, target, scale, false)
-    front = parallax(state, target, scale, true)
+  defp braille_raster(%__MODULE__{projection: :top} = state, camera, {columns, cells}, scale) do
+    at = now()
 
-    atlas
-    |> Surface.compose(camera.cells, pixel_movers(state, camera),
-      scale: scale,
-      at: now(),
-      labels: pixel_labels(state, camera),
-      volumes: grid_volumes(state, camera),
-      void: void_mode(behind)
-    )
-    |> Raster.crop({div(sx, scale), div(sy, scale)}, target)
-    |> under(behind)
-    |> over_front(front)
+    state
+    |> Draw.world(camera, {columns * @braille_dots, cells * @braille_dots}, scale, at)
+    |> Draw.on_screen(state, at)
   end
 
-  defp braille_raster(state, _atlas, _camera, {columns, cells}, _scroll, _scale),
-    do: projected(state, {columns * @braille_dots, cells * @braille_dots}, 1.0)
+  defp braille_raster(state, _camera, {columns, cells}, _scale),
+    do:
+      Draw.projected(
+        state,
+        {columns * @braille_dots, cells * @braille_dots},
+        1.0,
+        drawn_mode(state),
+        now()
+      )
 
-  defp lit_above(%Raster{} = raster, luminance) do
+  defp lit_above(%FrenchCurve.Raster{} = raster, luminance) do
     keyed =
       for <<r, g, b, _a <- Raster.to_rgba_binary(raster)>>, into: <<>> do
         if r + g + b >= luminance * 3, do: <<r, g, b, 255>>, else: <<r, g, b, 0>>
@@ -789,13 +722,14 @@ defmodule Cauldron2D.Drafter.Surface do
     {ox, oy} = camera.origin
     count = length(rows)
 
-    Enum.reduce(movers, rows, fn {art, {x, y}}, acc ->
+    Enum.reduce(movers, rows, fn {art, {x, y}, tint}, acc ->
       column = floor((x - ox) * zoom)
       row = floor((y - oy) * zoom)
       entry = Atlas.entry(atlas, art)
+      colour = Surface.shade_color(atlas, entry.color, tint)
 
       if row >= 0 and row < count and column >= 0 and column < length(Enum.at(acc, row)) do
-        List.update_at(acc, row, &List.replace_at(&1, column, {entry.glyph, entry.color}))
+        List.update_at(acc, row, &List.replace_at(&1, column, {entry.glyph, colour}))
       else
         acc
       end
@@ -846,15 +780,6 @@ defmodule Cauldron2D.Drafter.Surface do
         do: List.replace_at(acc, column, {char, colour}),
         else: acc
     end)
-  end
-
-  defp view(%__MODULE__{} = state, rect, scroll?, zoom) do
-    Camera.view(
-      focus: state.focus,
-      size: Camera.zoomed({Camera.columns_for(rect.width), Camera.rows_for(rect.height)}, zoom),
-      cell: state.cell,
-      scroll: scroll?
-    )
   end
 
   @doc "Whether `image/3` draws anything: a pixel protocol is in use and the view is set."
@@ -940,7 +865,7 @@ defmodule Cauldron2D.Drafter.Surface do
        when projection != :top do
     columns = Camera.columns_for(rect.width)
     cells = max(1, rect.height)
-    density = pixel_density(state, protocol)
+    density = Draw.density(state, protocol)
 
     case patched(state, rect, id, protocol, columns, cells, density) do
       {:ok, frame} -> frame
@@ -951,12 +876,12 @@ defmodule Cauldron2D.Drafter.Surface do
   defp encode(state, rect, id, protocol) do
     columns = Camera.columns_for(rect.width)
     cells = max(1, rect.height)
-    zoom = nearest(state.zoom, zoom_levels(state.atlas, protocol))
+    zoom = Draw.nearest(state.zoom, zoom_levels(state.atlas, protocol))
 
     if zoom == 1 and placements?(state, protocol) do
-      placed(state, rect, id, view(state, rect, true, 1), columns, cells)
+      placed(state, rect, id, camera(state, rect, 1), columns, cells)
     else
-      raster = composed(state, rect, zoom, protocol, columns, cells)
+      raster = composed(state, zoom, protocol, columns, cells)
 
       {paint, clear, place} =
         serialize(raster, protocol, {columns * 2, cells}, id, state.compress)
@@ -968,8 +893,24 @@ defmodule Cauldron2D.Drafter.Surface do
   defp whole_picture(state, id, protocol, columns, cells, density) do
     raster =
       if protocol in @fitted,
-        do: drawn(fitted(state), picture_size(state, columns, cells, density), 1.0),
-        else: projected(state, {columns * density, cells * density}, 1.0)
+        do:
+          state
+          |> fitted()
+          |> Draw.drawn(
+            picture_size(state, columns, cells, density),
+            1.0,
+            drawn_mode(state),
+            now()
+          )
+          |> Draw.on_screen(state, now()),
+        else:
+          Draw.projected(
+            state,
+            {columns * density, cells * density},
+            1.0,
+            drawn_mode(state),
+            now()
+          )
 
     forget = forgotten(state, id)
     box = %{dx: 0, dy: 0, cols: columns * 2, rows: cells}
@@ -1015,6 +956,24 @@ defmodule Cauldron2D.Drafter.Surface do
 
   defp native_scale(scale, _pane, _native) when is_integer(scale) and scale > 0, do: scale
 
+  @doc """
+  Whether a surface with these props keeps each `:picture` frame as an image the
+  terminal stores: a kitty terminal that places stored images, with `picture_format:
+  :png` or `swap: true`. Such a surface also takes a picture that is a frame in POSIX
+  shared memory, `%{shared_memory: name, width: w, height: h}`, which the terminal
+  reads and removes.
+  """
+  @spec stores_pictures?(keyword()) :: boolean()
+  def stores_pictures?(props) do
+    state = %__MODULE__{
+      mode: Keyword.get(props, :mode),
+      picture_format: Keyword.get(props, :picture_format) || :rgba,
+      swap: Keyword.get(props, :swap, false)
+    }
+
+    stored_frame?(state, protocol(state))
+  end
+
   defp stored_frame?(state, :kitty),
     do:
       (state.picture_format == :png or state.swap) and
@@ -1022,10 +981,9 @@ defmodule Cauldron2D.Drafter.Surface do
 
   defp stored_frame?(_state, _protocol), do: false
 
-  defp stored_frame(state, raster, id, forget, box) do
+  defp stored_frame(state, picture, id, forget, box) do
     image = FrenchCurve.image_id(id)
-    {width, height} = Raster.dimensions(raster)
-    encoded = Kitty.encode(raster, format: state.picture_format, compress: state.compress)
+    {{width, height}, encoded} = stored(state, picture)
     crop = %{image: image, width: width, height: height}
     prelude = [forget, unplace_sprites()]
 
@@ -1040,53 +998,36 @@ defmodule Cauldron2D.Drafter.Surface do
     end
   end
 
-  defp composed(state, rect, zoom, protocol, columns, cells) when zoom >= 1 do
-    tile = tile(state)
-    camera = view(state, rect, true, zoom)
+  defp stored(_state, %{shared_memory: name, width: width, height: height}),
+    do:
+      {{width, height},
+       %{control: "f=32,t=s,s=#{width},v=#{height}", chunks: [Base.encode64(name)]}}
 
-    target = {round(columns * tile / zoom), round(cells * tile / zoom)}
-    behind = parallax(state, target, 1, false)
-    front = parallax(state, target, 1, true)
+  defp stored(state, raster),
+    do:
+      {Raster.dimensions(raster),
+       Kitty.encode(raster, format: state.picture_format, compress: state.compress)}
 
-    raster =
-      state.atlas
-      |> Surface.compose(camera.cells, pixel_movers(state, camera),
-        at: now(),
-        labels: pixel_labels(state, camera),
-        volumes: grid_volumes(state, camera),
-        void: void_mode(behind)
-      )
-      |> Raster.crop(scroll_pixels(camera, tile), target)
-      |> under(behind)
-      |> over_front(front)
+  @doc """
+  The frame a pixel terminal is sent for a surface with `props`, the options `mount/1`
+  takes, over a pane `{columns, rows}` terminal cells: the world, its layers, movers,
+  labels and `:screen`, as a raster, for looking at a scene outside a terminal.
+  """
+  @spec snapshot(map() | keyword(), {pos_integer(), pos_integer()}) :: Raster.t()
+  def snapshot(props, {columns, rows}) do
+    state = mount(props)
+    tiles = Camera.columns_for(columns)
 
-    if protocol == :sixel and zoom > 1, do: Surface.magnify(raster, round(zoom)), else: raster
+    case state.projection do
+      :top ->
+        zoom = Draw.nearest(state.zoom, zoom_levels(state.atlas, :kitty))
+        composed(state, zoom, :kitty, tiles, rows)
+
+      _projected ->
+        density = Draw.density(state, :kitty)
+        Draw.projected(state, {tiles * density, rows * density}, 1.0, drawn_mode(state), now())
+    end
   end
-
-  defp composed(state, rect, zoom, _protocol, columns, cells) do
-    tile = tile(state)
-    scale = round(1 / zoom)
-    camera = view(state, rect, true, zoom)
-    {sx, sy} = scroll_pixels(camera, tile)
-
-    target = {columns * tile, cells * tile}
-    behind = parallax(state, target, scale, false)
-    front = parallax(state, target, scale, true)
-
-    state.atlas
-    |> Surface.compose(camera.cells, pixel_movers(state, camera),
-      scale: scale,
-      at: now(),
-      labels: pixel_labels(state, camera),
-      volumes: grid_volumes(state, camera),
-      void: void_mode(behind)
-    )
-    |> Raster.crop({div(sx, scale), div(sy, scale)}, target)
-    |> under(behind)
-    |> over_front(front)
-  end
-
-  defp tile(state), do: Atlas.fetch(state.atlas).tile
 
   @doc """
   The projections a surface draws the atlas world in: `:top`, `:oblique`, `:iso`, `:mode7`
@@ -1147,10 +1088,29 @@ defmodule Cauldron2D.Drafter.Surface do
     state = if fitted?, do: fitted(state), else: %{state | zoom: zoom}
 
     case state.projection do
-      :iso -> Iso.unproject(state.atlas, at, iso_opts(state, size, aspect))
-      :oblique -> Oblique.unproject(state.atlas, at, oblique_opts(state, size, aspect))
-      :mode7 -> Mode7.unproject(state.atlas, at, mode7_opts(state, size, aspect))
-      :first_person -> nil
+      :iso ->
+        Iso.unproject(
+          state.atlas,
+          at,
+          Draw.projection_opts(state, size, aspect, drawn_mode(state), now())
+        )
+
+      :oblique ->
+        Oblique.unproject(
+          state.atlas,
+          at,
+          Draw.projection_opts(state, size, aspect, drawn_mode(state), now())
+        )
+
+      :mode7 ->
+        Mode7.unproject(
+          state.atlas,
+          at,
+          Draw.projection_opts(state, size, aspect, drawn_mode(state), now())
+        )
+
+      :first_person ->
+        nil
     end
   end
 
@@ -1197,13 +1157,28 @@ defmodule Cauldron2D.Drafter.Surface do
   end
 
   defp projected_pixel(%__MODULE__{projection: :iso} = state, size, aspect, world),
-    do: Iso.project(state.atlas, world, iso_opts(state, size, aspect))
+    do:
+      Iso.project(
+        state.atlas,
+        world,
+        Draw.projection_opts(state, size, aspect, drawn_mode(state), now())
+      )
 
   defp projected_pixel(%__MODULE__{projection: :oblique} = state, size, aspect, world),
-    do: Oblique.project(state.atlas, world, oblique_opts(state, size, aspect))
+    do:
+      Oblique.project(
+        state.atlas,
+        world,
+        Draw.projection_opts(state, size, aspect, drawn_mode(state), now())
+      )
 
   defp projected_pixel(%__MODULE__{projection: :mode7} = state, size, aspect, world),
-    do: Mode7.project(state.atlas, world, mode7_opts(state, size, aspect))
+    do:
+      Mode7.project(
+        state.atlas,
+        world,
+        Draw.projection_opts(state, size, aspect, drawn_mode(state), now())
+      )
 
   @doc """
   The picture a projection is drawn into for `rect`, in the mode the surface is in.
@@ -1232,7 +1207,7 @@ defmodule Cauldron2D.Drafter.Surface do
         {{columns * dots, rows * sy}, {dots / 2, sy}, sy / dots}
 
       protocol ->
-        density = pixel_density(state, protocol)
+        density = Draw.density(state, protocol)
         {{columns * density, rows * density}, {density / 2, density}, 1.0}
     end
   end
@@ -1247,7 +1222,7 @@ defmodule Cauldron2D.Drafter.Surface do
   def drawn_mode(%__MODULE__{} = state), do: protocol(state) || :text
 
   defp drawn_zoom(%__MODULE__{} = state),
-    do: nearest(state.zoom, zoom_levels(state.atlas, drawn_mode(state)))
+    do: Draw.nearest(state.zoom, zoom_levels(state.atlas, drawn_mode(state)))
 
   @doc """
   The surface as a picture protocol draws it: zooming in is fewer pixels for the same
@@ -1260,31 +1235,7 @@ defmodule Cauldron2D.Drafter.Surface do
   draws more world into the picture it already had instead.
   """
   @spec fitted(t()) :: t()
-  def fitted(%__MODULE__{} = state) do
-    zoom = projection_zoom(state)
-    %{state | zoom: if(shrinks?(state.projection), do: min(zoom, 1), else: 1)}
-  end
-
-  defp shrinks?(projection), do: projection == :iso
-
-  defp pixel_density(state, protocol) when protocol in @fitted do
-    zoom = projection_zoom(state)
-    asked = if shrinks?(state.projection), do: max(zoom, 1), else: zoom
-
-    max(1, round(native_density(state) / asked))
-  end
-
-  defp pixel_density(state, _protocol), do: tile(state)
-
-  defp native_density(%__MODULE__{projection: projection} = state),
-    do: asked_density(state.density, projection) || default_density(state, projection)
-
-  defp asked_density(nil, _projection), do: nil
-  defp asked_density(density, projection) when is_map(density), do: Map.get(density, projection)
-  defp asked_density(density, _projection), do: density
-
-  defp default_density(_state, projection) when projection in @sampled, do: @sampled_density
-  defp default_density(state, _projection), do: tile(state) / 2
+  def fitted(%__MODULE__{} = state), do: Draw.fitted(state, drawn_mode(state))
 
   @doc """
   The zoom a projection is actually drawn at in a picture `height` pixels tall.
@@ -1296,136 +1247,18 @@ defmodule Cauldron2D.Drafter.Surface do
   otherwise show a figure's boots and nothing above them.
   """
   @spec fitting_zoom(t(), pos_integer()) :: number()
-  def fitting_zoom(%__MODULE__{} = state, height) do
-    levels = zoom_levels(state.atlas, drawn_mode(state), state.projection)
-    wanted = nearest(state.zoom, levels)
-    room = 2 * (Atlas.tallest(state.atlas) + Atlas.fetch(state.atlas).tile)
+  def fitting_zoom(%__MODULE__{} = state, height),
+    do: Draw.fitting_zoom(state, height, drawn_mode(state))
 
-    levels
-    |> Enum.filter(&(&1 <= wanted))
-    |> Enum.find(List.last(levels), &(height / &1 >= room))
+  defp camera(state, rect, zoom),
+    do: Draw.camera(state, {Camera.columns_for(rect.width), Camera.rows_for(rect.height)}, zoom)
+
+  defp composed(state, zoom, protocol, columns, cells) do
+    raster = Draw.top_down(state, {columns, cells}, zoom, now())
+    if protocol == :sixel and zoom > 1, do: Surface.magnify(raster, round(zoom)), else: raster
   end
 
-  defp projected(%__MODULE__{projection: :picture} = state, size, aspect),
-    do: drawn(state, size, aspect)
-
-  defp projected(state, {width, height}, aspect) do
-    zoom = fitting_zoom(state, height)
-    state = %{state | zoom: zoom}
-
-    case zoom do
-      zoom when zoom > 1 ->
-        state
-        |> drawn({ceil(width / zoom), ceil(height / zoom)}, aspect)
-        |> Surface.magnify(round(zoom))
-        |> Raster.crop({0, 0}, {width, height})
-
-      _native_or_out ->
-        drawn(state, {width, height}, aspect)
-    end
-  end
-
-  defp projection_zoom(%__MODULE__{} = state),
-    do: nearest(state.zoom, zoom_levels(state.atlas, drawn_mode(state), state.projection))
-
-  defp drawn(%__MODULE__{projection: :picture, picture: draw}, size, aspect),
-    do: draw.(size, aspect)
-
-  defp drawn(%__MODULE__{projection: :iso} = state, size, aspect) do
-    Iso.compose(state.atlas, iso_opts(state, size, aspect))
-  end
-
-  defp drawn(%__MODULE__{projection: :oblique} = state, size, aspect) do
-    Oblique.compose(state.atlas, oblique_opts(state, size, aspect))
-  end
-
-  defp drawn(%__MODULE__{projection: :mode7} = state, size, aspect) do
-    Mode7.render(state.atlas, mode7_opts(state, size, aspect))
-  end
-
-  defp drawn(%__MODULE__{projection: :first_person} = state, size, aspect) do
-    FirstPerson.render(
-      state.atlas,
-      [
-        position: state.focus,
-        heading: state.heading,
-        pitch: state.pitch,
-        cell: state.cell,
-        size: size,
-        aspect: aspect,
-        movers: state.movers,
-        volumes: state.volumes,
-        at: now()
-      ] ++ from_eye(state)
-    )
-  end
-
-  defp from_eye(%__MODULE__{eye: nil}), do: []
-  defp from_eye(%__MODULE__{eye: eye}), do: [eye: eye]
-
-  defp iso_opts(state, size, aspect) do
-    [
-      focus: state.focus,
-      cell: state.cell,
-      size: size,
-      facing: state.facing,
-      facings: facings_for(state, :iso),
-      tilt: state.tilt * aspect,
-      shrink: iso_shrink(projection_zoom(state)),
-      movers: state.movers,
-      labels: state.labels,
-      volumes: state.volumes,
-      at: now()
-    ]
-  end
-
-  defp oblique_opts(state, size, aspect) do
-    [
-      focus: state.focus,
-      cell: state.cell,
-      size: size,
-      squash: 0.5 * aspect,
-      facing: state.facing,
-      facings: facings_for(state, :oblique),
-      movers: state.movers,
-      labels: state.labels,
-      volumes: state.volumes,
-      at: now()
-    ]
-  end
-
-  defp mode7_opts(state, size, aspect) do
-    [
-      position: state.focus,
-      heading: state.heading,
-      pitch: state.pitch,
-      cell: state.cell,
-      size: size,
-      aspect: aspect,
-      movers: state.movers,
-      volumes: state.volumes,
-      at: now()
-    ] ++ from_eye(state)
-  end
-
-  defp facings_for(%__MODULE__{facings: facings}, projection) when is_map(facings),
-    do: Map.get(facings, projection, default_facings(projection))
-
-  defp facings_for(%__MODULE__{}, :oblique), do: default_facings(:oblique)
-  defp facings_for(%__MODULE__{facings: facings}, _projection), do: facings
-
-  defp default_facings(:oblique), do: 1
-  defp default_facings(_projection), do: 4
-
-  defp iso_shrink(zoom) when zoom >= 1, do: 1
-  defp iso_shrink(zoom), do: min(4, max(1, round(1 / zoom)))
-
-  defp flat_movers(%__MODULE__{movers: movers}) do
-    Enum.map(movers, fn
-      {art, position} -> {art, position}
-      {art, position, _heading} -> {art, position}
-    end)
-  end
+  defp now, do: System.monotonic_time(:millisecond)
 
   defp placements?(%__MODULE__{layers: [_ | _]}, _protocol), do: false
   defp placements?(%__MODULE__{placements: false}, _protocol), do: false
@@ -1441,17 +1274,14 @@ defmodule Cauldron2D.Drafter.Surface do
 
   @sprite_layer 1
 
-  defp scroll_pixels(%Camera{scroll: {sx, sy}}, tile), do: {round(sx * tile), round(sy * tile)}
   defp exact_origin(%Camera{origin: {ox, oy}, scroll: {sx, sy}}), do: {ox + sx, oy + sy}
-
-  defp now, do: System.monotonic_time(:millisecond)
 
   defp placed(state, rect, id, camera, columns, cells) do
     atlas = Atlas.fetch(state.atlas)
     at = now()
-    volumes = grid_volumes(state, camera)
+    volumes = Draw.volumes(state, camera)
     image = FrenchCurve.image_id(id)
-    {sx, sy} = scroll_pixels(camera, atlas.tile)
+    {sx, sy} = Draw.scroll_pixels(camera, atlas.tile)
 
     place =
       Kitty.place(image,
@@ -1478,8 +1308,29 @@ defmodule Cauldron2D.Drafter.Surface do
       sprite_placements(state, atlas, camera, rect, columns, cells, at) ++
         label_placements(state, atlas, camera, rect, columns, cells)
 
-    {[sprites_stored(state, atlas), background, layer], [clear, Kitty.delete(z: @sprite_layer)],
+    {screen, screen_clear} =
+      screen_placement(
+        state,
+        id,
+        rect,
+        {columns * atlas.tile, cells * atlas.tile},
+        columns,
+        cells
+      )
+
+    {[sprites_stored(state, atlas), background, layer, screen],
+     [clear, Kitty.delete(z: @sprite_layer), screen_clear],
      %{dx: 0, dy: 0, cols: columns * 2, rows: cells, place: IO.iodata_to_binary([place, layer])}}
+  end
+
+  defp screen_placement(state, id, rect, size, columns, cells) do
+    ScreenLayer.placement(state.atlas, Draw.screen_items(state), id, %{
+      size: size,
+      fit: {columns * 2, cells},
+      rect: rect,
+      at: now(),
+      compress: state.compress
+    })
   end
 
   defp sprites_stored(state, atlas) do
@@ -1533,20 +1384,21 @@ defmodule Cauldron2D.Drafter.Surface do
 
     shown =
       state
-      |> flat_movers()
+      |> Draw.tinted_movers()
       |> Enum.with_index(1)
-      |> Enum.flat_map(fn {{art, {x, y}}, index} ->
+      |> Enum.flat_map(fn {{art, {x, y}, tint}, index} ->
         across = (x - ox) * 2
         down = y - oy
         column = floor(across)
         row = floor(down)
 
         if column >= 0 and column < columns * 2 and row >= 0 and row < cells do
-          image = Sprites.image_id(atlas, art, at)
+          {image, stored} = placed_sprite(state, atlas, art, tint, at)
 
           [
             {{image, index},
              [
+               stored,
                ANSI.cursor_to(rect.x + column + 1, rect.y + row + 1),
                Kitty.place(image,
                  fit: {2, 1},
@@ -1564,6 +1416,27 @@ defmodule Cauldron2D.Drafter.Surface do
 
     retired(atlas, state.widget_id, Enum.map(shown, &elem(&1, 0))) ++
       Enum.map(shown, &elem(&1, 1))
+  end
+
+  defp placed_sprite(_state, atlas, art, nil, at), do: {Sprites.image_id(atlas, art, at), []}
+
+  defp placed_sprite(state, atlas, art, tint, at) do
+    id = Sprites.tinted_id(atlas, art, tint, at)
+    key = {__MODULE__, :tinted_sent}
+    sent = Process.get(key, MapSet.new())
+
+    if MapSet.member?(sent, id) do
+      {id, []}
+    else
+      {cell_width, cell_height} = Context.cell_size()
+      Process.put(key, MapSet.put(sent, id))
+
+      {id,
+       Sprites.tinted_transmit(atlas, art, tint, at,
+         size: {2 * cell_width, cell_height},
+         compress: state.compress
+       )}
+    end
   end
 
   defp retired(atlas, id, placed) do
@@ -1584,37 +1457,46 @@ defmodule Cauldron2D.Drafter.Surface do
 
   @label_placement_base 10_000
 
-  defp label_placements(%__MODULE__{labels: []}, _atlas, _camera, _rect, _columns, _cells), do: []
+  defp label_placements(%__MODULE__{labels: []} = state, atlas, _camera, _rect, _columns, _cells),
+    do: retired(atlas, {state.widget_id, :labels}, [])
 
   defp label_placements(%__MODULE__{} = state, atlas, camera, rect, columns, cells) do
     {cell_width, cell_height} = Context.cell_size()
     {ox, oy} = exact_origin(camera)
 
-    state.labels
-    |> Enum.with_index(@label_placement_base)
-    |> Enum.flat_map(fn {label, index} ->
-      {text, {x, y}, colour} = label_parts(label)
-      scale = label_scale(label)
-      across = (x - ox) * 2
-      down = y - oy
-      column = floor(across)
-      row = floor(down)
+    shown =
+      state.labels
+      |> Enum.with_index(@label_placement_base)
+      |> Enum.flat_map(fn {label, index} ->
+        {text, {x, y}, colour} = label_parts(label)
+        scale = label_scale(label)
+        image = Sprites.label_id(atlas, text, colour, scale)
+        across = (x - ox) * 2
+        down = y - oy
+        column = floor(across)
+        row = floor(down)
 
-      if column >= 0 and column < columns * 2 and row >= 0 and row < cells do
-        [
-          label_stored(atlas, text, colour, scale, state.compress),
-          ANSI.cursor_to(rect.x + column + 1, rect.y + row + 1),
-          Kitty.place(Sprites.label_id(atlas, text, colour, scale),
-            z: @sprite_layer,
-            placement: index,
-            x_offset: round((across - column) * cell_width),
-            y_offset: round((down - row) * cell_height)
-          )
-        ]
-      else
-        []
-      end
-    end)
+        if column >= 0 and column < columns * 2 and row >= 0 and row < cells do
+          [
+            {{image, index},
+             [
+               label_stored(atlas, text, colour, scale, state.compress),
+               ANSI.cursor_to(rect.x + column + 1, rect.y + row + 1),
+               Kitty.place(image,
+                 z: @sprite_layer,
+                 placement: index,
+                 x_offset: round((across - column) * cell_width),
+                 y_offset: round((down - row) * cell_height)
+               )
+             ]}
+          ]
+        else
+          []
+        end
+      end)
+
+    retired(atlas, {state.widget_id, :labels}, Enum.map(shown, &elem(&1, 0))) ++
+      Enum.map(shown, &elem(&1, 1))
   end
 
   defp label_scale({_text, _position, _colour}), do: 1
@@ -1629,62 +1511,6 @@ defmodule Cauldron2D.Drafter.Surface do
     else
       Process.put({__MODULE__, :labels_sent}, MapSet.put(sent, id))
       Sprites.label_transmit(atlas, text, colour, scale, compress: compress?)
-    end
-  end
-
-  defp pixel_labels(%__MODULE__{labels: []}, _camera), do: []
-
-  defp pixel_labels(%__MODULE__{} = state, camera) do
-    tile = Atlas.fetch(state.atlas).tile
-    {ox, oy} = camera.origin
-
-    Enum.map(state.labels, fn
-      {text, {x, y}, colour} -> {text, {(x - ox) * tile, (y - oy) * tile}, colour}
-      {text, {x, y}, colour, opts} -> {text, {(x - ox) * tile, (y - oy) * tile}, colour, opts}
-    end)
-  end
-
-  defp grid_volumes(%__MODULE__{volumes: []}, _camera), do: []
-
-  defp grid_volumes(%__MODULE__{} = state, camera) do
-    {ox, oy} = camera.origin
-
-    Enum.map(state.volumes, fn volume ->
-      volume = Map.new(volume)
-      {x, y} = Map.fetch!(volume, :at)
-      Map.put(volume, :at, {x - ox, y - oy})
-    end)
-  end
-
-  defp pixel_movers(%__MODULE__{movers: []}, _camera), do: []
-
-  defp pixel_movers(%__MODULE__{} = state, camera) do
-    atlas = Atlas.fetch(state.atlas)
-    tile = atlas.tile
-    {ox, oy} = camera.origin
-
-    Enum.map(state.movers, fn mover ->
-      {art, {x, y}, heading} = with_heading(mover)
-      {width, height} = Atlas.entry(atlas, art).size
-      {pose, flip} = pose(heading)
-
-      {art, {(x - ox) * tile + (tile - width) / 2, (y - oy) * tile + tile - height}, nil, pose,
-       flip}
-    end)
-  end
-
-  defp with_heading({art, position}), do: {art, position, nil}
-  defp with_heading({art, position, heading}), do: {art, position, heading}
-
-  defp pose(nil), do: {nil, false}
-
-  defp pose(heading) do
-    {across, down} = {:math.cos(heading), :math.sin(heading)}
-
-    cond do
-      down > 0.5 -> {:front, false}
-      down < -0.5 -> {:back, false}
-      true -> {:side, across < 0}
     end
   end
 
@@ -1755,10 +1581,16 @@ defmodule Cauldron2D.Drafter.Surface do
           )
 
         {paint, places} = patches(state, rect, atlas, id, opts, grid, rects)
+        {screen, screen_clear} = screen_placement(state, id, rect, pane, columns, cells)
 
         {:ok,
-         {[retired(atlas, state.widget_id, []), sent, place, paint],
-          [Kitty.delete(id: image), Kitty.delete(z: @patch_layer), unplace_sprites()],
+         {[retired(atlas, state.widget_id, []), sent, place, paint, screen],
+          [
+            Kitty.delete(id: image),
+            Kitty.delete(z: @patch_layer),
+            unplace_sprites(),
+            screen_clear
+          ],
           %{
             dx: 0,
             dy: 0,
@@ -1931,7 +1763,8 @@ defmodule Cauldron2D.Drafter.Surface do
     atlas = Atlas.fetch(state.atlas)
     rise = (Atlas.tallest(atlas) + atlas.tile) / pane_shrink(state)
 
-    movers = for {_art, position} <- flat_movers(state), do: spot(state, opts, position, rise)
+    movers =
+      for {_art, position} <- Draw.flat_movers(state), do: spot(state, opts, position, rise)
 
     movers ++ for label <- state.labels, do: label_spot(state, opts, label)
   end
@@ -1954,13 +1787,16 @@ defmodule Cauldron2D.Drafter.Surface do
     {left, top - rise, right - left, bottom - top + rise}
   end
 
-  defp pane_shrink(%__MODULE__{projection: :iso} = state), do: iso_shrink(projection_zoom(state))
+  defp pane_shrink(%__MODULE__{projection: :iso} = state),
+    do: Draw.iso_shrink(Draw.projection_zoom(state, drawn_mode(state)))
+
   defp pane_shrink(_state), do: 1
 
-  defp pane_opts(%__MODULE__{projection: :iso} = state, size), do: iso_opts(state, size, 1.0)
+  defp pane_opts(%__MODULE__{projection: :iso} = state, size),
+    do: Draw.projection_opts(state, size, 1.0, drawn_mode(state), now())
 
   defp pane_opts(%__MODULE__{projection: :oblique} = state, size),
-    do: oblique_opts(state, size, 1.0)
+    do: Draw.projection_opts(state, size, 1.0, drawn_mode(state), now())
 
   defp pane_compose(%__MODULE__{projection: :iso} = state, opts),
     do: Iso.compose(state.atlas, opts)

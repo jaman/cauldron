@@ -1,5 +1,16 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+
+- `Linocut.BitmapFont`: pixel fonts cut from a sheet, proportional, aligned, wrapped,
+  outlined and shadowed.
+- `Linocut.Slices`: a picture grown to any size by nine slices.
+- `Linocut.Pixelate`: a generated or painted picture made into pixel art — its background
+  keyed out from its edge, its pixel grid found (at fractional sizes too) and sampled, its
+  colours held to a palette with optional ordered dithering, outlined, trimmed and fitted.
+
 ## [0.3.3]
 
 ### Changed

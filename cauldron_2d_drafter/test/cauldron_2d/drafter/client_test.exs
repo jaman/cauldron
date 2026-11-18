@@ -5,7 +5,8 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
   use ExUnit.Case, async: false
 
-  alias Cauldron2D.{Atlas, Player, World}
+  alias Cauldron.{Player, World}
+  alias Cauldron2D.Atlas
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.Drafter.Client.{Screens, Settings}
   alias Cauldron2D.TestGames.Dots
@@ -16,9 +17,10 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
   defmodule DotsClient do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "DOTS", tagline: "little dots"}
+    def home, do: :dots
     def atlas, do: :dots
     def actions, do: [:left, :right]
 
@@ -112,7 +114,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
   defmodule AimingDotsClient do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     defdelegate title, to: DotsClient
     defdelegate atlas, to: DotsClient
@@ -211,12 +213,12 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
   test "the session is listed under the username from mount until the client stops", %{ctx: ctx} do
     assert [%{id: "alice", kind: :terminal}] =
-             Enum.filter(Cauldron2D.Sessions.list(), &(&1.id == "alice"))
+             Enum.filter(Cauldron.Sessions.list(), &(&1.id == "alice"))
 
-    Cauldron2D.Sessions.subscribe()
+    Cauldron.Sessions.subscribe()
     DT.stop(ctx)
     assert_receive {:cauldron_sessions, :closed, %{id: "alice"}}
-    assert Enum.filter(Cauldron2D.Sessions.list(), &(&1.id == "alice")) == []
+    assert Enum.filter(Cauldron.Sessions.list(), &(&1.id == "alice")) == []
   end
 
   test "the arrow keys move the lobby's selection even though the chat line could take focus", %{
@@ -328,10 +330,7 @@ defmodule Cauldron2D.Drafter.ClientTest do
     assert opts[:compact] == true
     assert opts[:on_click] == {:page, :n}
 
-    refute Enum.any?(
-             flatten_tree(Screens.title(%{served | pages: []})),
-             &match?({:button, _, _}, &1)
-           )
+    refute Enum.any?(flatten_tree(Screens.title(%{served | pages: []})), &page_button?/1)
 
     assert Enum.any?(labels(Screens.page(served, :n)), &(&1 =~ "connect to arcade"))
 
@@ -604,6 +603,9 @@ defmodule Cauldron2D.Drafter.ClientTest do
 
   defp flatten_tree({:layout, _, children, _}), do: Enum.flat_map(children, &flatten_tree/1)
   defp flatten_tree(other), do: [other]
+
+  defp page_button?({:button, _text, opts}), do: match?({:page, _}, opts[:on_click])
+  defp page_button?(_node), do: false
 
   defmodule KindsOfWorld do
     @moduledoc false
@@ -1225,7 +1227,8 @@ defmodule Cauldron2D.Drafter.ClientControllerTest do
 
   use ExUnit.Case, async: false
 
-  alias Cauldron2D.{Atlas, World}
+  alias Cauldron.World
+  alias Cauldron2D.Atlas
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.Drafter.ClientTest.DotsClient
   alias Cauldron2D.TestGames.Dots
@@ -1400,7 +1403,8 @@ defmodule Cauldron2D.Drafter.ClientProjectionTest do
 
   use ExUnit.Case, async: false
 
-  alias Cauldron2D.{Atlas, World}
+  alias Cauldron.World
+  alias Cauldron2D.Atlas
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.Drafter.ClientTest.DotsClient
   alias Cauldron2D.TestGames.Dots
@@ -1586,7 +1590,7 @@ defmodule Cauldron2D.Drafter.ClientProjectionTest do
 
     DT.send_mouse(ctx, %{type: :move, x: 10, y: 5, modifiers: []})
     DT.sync(ctx)
-    assert DT.get_state(ctx).pad_aim == nil
+    assert DT.get_state(ctx).party.controls.aim == nil
   end
 
   test "mouse look turns the eye with the pointer in first person once switched on",
@@ -1633,7 +1637,8 @@ defmodule Cauldron2D.Drafter.ClientSteeringTest do
 
   use ExUnit.Case, async: false
 
-  alias Cauldron2D.{Atlas, World}
+  alias Cauldron.World
+  alias Cauldron2D.Atlas
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.TestGames.Dots
   alias Drafter.Test, as: DT
@@ -1642,7 +1647,7 @@ defmodule Cauldron2D.Drafter.ClientSteeringTest do
 
   defmodule FourWays do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "FOUR", tagline: "ways"}
     def atlas, do: :dots
@@ -1760,7 +1765,8 @@ defmodule Cauldron2D.Drafter.ClientFlowTest do
 
   use ExUnit.Case, async: false
 
-  alias Cauldron2D.{Atlas, World}
+  alias Cauldron.World
+  alias Cauldron2D.Atlas
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.Drafter.ClientTest.DotsClient
   alias Cauldron2D.TestGames.Dots
@@ -1770,7 +1776,7 @@ defmodule Cauldron2D.Drafter.ClientFlowTest do
 
   defmodule Direct do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     defdelegate title, to: DotsClient
     defdelegate atlas, to: DotsClient
@@ -1789,7 +1795,7 @@ defmodule Cauldron2D.Drafter.ClientFlowTest do
 
   defmodule Custom do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     defdelegate title, to: DotsClient
     defdelegate atlas, to: DotsClient
@@ -1915,76 +1921,5 @@ defmodule Cauldron2D.Drafter.ClientFlowTest do
   test "the mount prop wins over the game's start" do
     ctx = start(Direct, %{start: :lobby})
     assert DT.get_state(ctx).screen == :title
-  end
-end
-
-defmodule Cauldron2D.Drafter.ClientSteeredTest do
-  @moduledoc """
-  `Cauldron2D.Drafter.Client.steered/2` answers for every projection the client offers,
-  and for the isometric view at more facings than four.
-  """
-
-  use ExUnit.Case, async: true
-
-  alias Cauldron2D.Drafter.{Client, Surface}
-
-  test "it answers for every projection a game can put the client in" do
-    for projection <- Surface.projections() do
-      look = %{projection: projection, facing: 0, facings: 4, heading: 0.0}
-
-      steered = Client.steered(read([:up]), look)
-
-      assert MapSet.member?(steered.held, :up) or Map.has_key?(steered, :heading),
-             "#{projection} steered an :up into nothing the world can walk"
-    end
-  end
-
-  defp read(held, strength \\ %{}),
-    do: %{
-      held: MapSet.new(held),
-      strength: strength,
-      pressed: MapSet.new(),
-      released: MapSet.new()
-    }
-
-  test "isometric at finer facings sends the directions as held, with the view's heading" do
-    look = %{projection: :iso, facing: 5, facings: 16, heading: 0.0}
-    steered = Client.steered(read([:left]), look)
-    assert MapSet.to_list(steered.held) == [:left]
-    assert_in_delta steered.heading, :math.pi() / 8, 1.0e-9
-  end
-
-  test "the oblique view steers as held at its default facing and turns at four" do
-    fixed = %{projection: :oblique, facing: 1, facings: 4, heading: 0.0}
-
-    assert MapSet.to_list(Client.steered(read([:up]), fixed).held) == [:up]
-
-    asked = %{projection: :oblique, facing: 1, facings: %{oblique: 4}, heading: 0.0}
-    turned = Client.steered(read([:up]), asked)
-
-    assert MapSet.size(turned.held) == 1
-    refute MapSet.member?(turned.held, :up)
-  end
-
-  test "a facings map picks the count for the projection in view" do
-    assert Client.turns_with_pointer?(%{projection: :iso, facings: %{iso: 16}})
-    refute Client.turns_with_pointer?(%{projection: :iso, facings: %{iso: 4}})
-    refute Client.turns_with_pointer?(%{projection: :oblique, facings: %{oblique: 4}})
-    refute Client.turns_with_pointer?(%{projection: :oblique, facings: 16})
-  end
-
-  test "a drag turns first person, mode 7 and a free isometric view, but not four facings" do
-    assert Client.turns_with_pointer?(%{projection: :first_person})
-    assert Client.turns_with_pointer?(%{projection: :mode7})
-    assert Client.turns_with_pointer?(%{projection: :iso, facings: 16})
-    refute Client.turns_with_pointer?(%{projection: :iso, facings: 4})
-    refute Client.turns_with_pointer?(%{projection: :oblique})
-    refute Client.turns_with_pointer?(%{projection: :top})
-  end
-
-  test "of the directions a stick holds, the isometric view keeps the one pushed hardest" do
-    look = %{projection: :iso, facing: 0, facings: 4, heading: 0.0}
-    read = read([:left, :up], %{left: 0.9, up: 0.3})
-    assert MapSet.to_list(Client.steered(read, look).held) == [:left]
   end
 end

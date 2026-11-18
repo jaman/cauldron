@@ -1,13 +1,14 @@
-defmodule Cauldron2D.Net.Link.LocalTest do
+defmodule Cauldron.Net.Link.LocalTest do
   use ExUnit.Case, async: false
 
-  alias Cauldron2D.{Atlas, World}
-  alias Cauldron2D.Net.Link
+  alias Cauldron.Net.Link
+  alias Cauldron.World
+  alias Cauldron2D.Atlas
   alias FrenchCurve.Raster
 
   defmodule Dots do
     @moduledoc false
-    @behaviour Cauldron2D.Game
+    @behaviour Cauldron.Game
 
     @impl true
     def init(_opts), do: %{players: %{}, events: []}
@@ -49,7 +50,7 @@ defmodule Cauldron2D.Net.Link.LocalTest do
 
   defmodule DotsWx do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "DOTS"}
     def atlas, do: :dots_wx
@@ -57,13 +58,6 @@ defmodule Cauldron2D.Net.Link.LocalTest do
     def keymaps, do: [arrows: %{left: [:left], right: [:right], fire: [:" "]}]
     def toggles, do: []
     def worlds(_props), do: [%{id: :main, name: "Main", world: :dots_wx_world, players: 0}]
-
-    def map(view),
-      do: %{
-        width: view.width,
-        height: view.height,
-        cell: fn {x, y} -> if x == 0 or y == 0, do: :wall, else: nil end
-      }
 
     def scene(view),
       do: %{
@@ -89,12 +83,13 @@ defmodule Cauldron2D.Net.Link.LocalTest do
     :ok
   end
 
-  test "a local link joins a world on this node, hands over the sheet, the map once and frames, takes input and leaves" do
+  test "a local link joins a world on this node, hands over the sheet, statuses and pictures of its pane, takes input and leaves" do
     {:ok, world} = World.start_link(game: Dots, hz: 50, name: :dots_wx_world)
 
     {:ok, link} =
       Link.Local.start_link(
         game: DotsWx,
+        drawer: Cauldron2D.Net.Drawer,
         world: world,
         name: "alice",
         props: %{},
@@ -102,26 +97,43 @@ defmodule Cauldron2D.Net.Link.LocalTest do
         sink: TuningFork.Sink.Silent
       )
 
-    assert_receive {:cauldron_link, :sheet, %{tile: 4, frames: [_ | _]},
-                    <<137, "PNG", _::binary>>}
+    assert_receive {:cauldron_link, :sheet, %{tile: 4, url: _}, <<137, "PNG", _::binary>>}
 
-    assert_receive {:cauldron_link, :map, %{width: 8, height: 6, wrap: false, rows: rows}}, 500
-    assert length(rows) == 6
+    assert_receive {:cauldron_link, :drawing, %{world: :server, screen: :server}}
 
-    assert_receive {:cauldron_link, :frame,
-                    %{focus: {5.0, 5.0}, movers: [{_, 5.0, 5.0}], hud: [[{"x=5.0", "#ffffff"}]]}},
+    assert_receive {:cauldron_link, :status, %{focus: {5.0, 5.0}, hud: [[{"x=5.0", "#ffffff"}]]}},
                    500
 
-    refute_receive {:cauldron_link, :map, _}, 100
+    refute_receive {:cauldron_link, :picture, _}, 100
+    Link.Local.pane(link, {10, 6})
+    assert_receive {:cauldron_link, :picture, %Raster{width: 40, height: 24}}, 500
 
-    Link.Local.input(link, %{held: ["right"], aim: nil})
+    Link.Local.key(link, :right, [], true)
     Process.sleep(100)
-    assert_receive {:cauldron_link, :frame, %{focus: {x, 5.0}}} when x > 5.0, 500
+    assert_receive {:cauldron_link, :status, %{focus: {x, 5.0}}} when x > 5.0, 500
 
     assert "alice" in World.players(world)
     Link.Local.leave(link)
     Process.sleep(50)
     refute "alice" in World.players(world)
     GenServer.stop(world)
+  end
+
+  test "a local link starts a world of the player's own from `{module, opts}` and plays in it" do
+    {:ok, link} =
+      Link.Local.start_link(
+        game: DotsWx,
+        drawer: Cauldron2D.Net.Drawer,
+        world: {Dots, [hz: 50]},
+        name: "alice",
+        props: %{},
+        owner: self(),
+        sink: TuningFork.Sink.Silent
+      )
+
+    assert_receive {:cauldron_link, :status, %{focus: {5.0, 5.0}}}, 500
+    Link.Local.key(link, :right, [], true)
+    assert_receive {:cauldron_link, :status, %{focus: {x, 5.0}}} when x > 5.0, 500
+    Link.Local.leave(link)
   end
 end

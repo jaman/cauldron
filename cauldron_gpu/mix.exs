@@ -84,9 +84,10 @@ defmodule CauldronGPU.MixProject do
 
   defp deps do
     [
-      family(:cauldron_2d, "~> 0.3.4", "../cauldron_2d", optional: true),
-      family(:cauldron_3d, "~> 0.3.4", "../cauldron_3d", optional: true),
-      family(:cauldron_3d_formats, "~> 0.3.4", "../cauldron_3d_formats", optional: true),
+      family(:cauldron_3d_scene, "~> 0.4.0", "../cauldron_3d_scene", []),
+      family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", only: [:dev, :test]),
+      family(:cauldron_3d, "~> 0.4.0", "../cauldron_3d", only: [:dev, :test]),
+      family(:cauldron_3d_formats, "~> 0.4.0", "../cauldron_3d_formats", only: [:dev, :test]),
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:elixir_make, "~> 0.9", runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}

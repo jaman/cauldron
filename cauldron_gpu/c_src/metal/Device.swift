@@ -59,11 +59,20 @@ final class Device {
     let finished = released.filter { $0.frame <= completed }
     released.removeAll { $0.frame <= completed }
     for entry in finished { forget(entry.object) }
-    if residencyChanged {
-      residency.commit()
-      residencyChanged = false
-    }
+    commitResidencyLocked()
     lock.unlock()
+  }
+
+  func commitResidency() {
+    lock.lock()
+    commitResidencyLocked()
+    lock.unlock()
+  }
+
+  private func commitResidencyLocked() {
+    guard residencyChanged else { return }
+    residency.commit()
+    residencyChanged = false
   }
 
   private func forget(_ object: AnyObject) {

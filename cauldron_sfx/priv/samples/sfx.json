@@ -1,0 +1,22 @@
+{
+  "channels": 2,
+  "events": {
+    "explosion": {
+      "gain": 1.0,
+      "pan": 0.0,
+      "priority": 2,
+      "space": 0.0,
+      "variants": [
+        {
+          "file": "explosion-impact.wav",
+          "gain": 0.9,
+          "kind": "sample",
+          "pan": 0.0,
+          "sound": null
+        }
+      ]
+    }
+  },
+  "format": 1,
+  "rate": 44100
+}

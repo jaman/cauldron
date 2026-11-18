@@ -168,6 +168,23 @@ defmodule Cauldron2D.Camera do
     {wx - ox + columns / 2, wy - oy + rows / 2}
   end
 
+  @doc """
+  `focus` moved as little as it must so a view reaching `{half_width, half_height}` tiles
+  either side of it stays inside `bounds`, `{left, top, right, bottom}`: the camera stops
+  at a level's edges. Along an axis where the bounds are narrower than the view, the
+  focus is their middle.
+
+      Cauldron2D.Camera.within({hero.x, hero.y}, {0, 0, level.width, level.height}, {12, 6})
+  """
+  @spec within(
+          {number(), number()},
+          {number(), number(), number(), number()},
+          {number(), number()}
+        ) ::
+          {float(), float()}
+  def within({x, y}, {left, top, right, bottom}, {half_width, half_height}),
+    do: {inside(x, left, right, half_width), inside(y, top, bottom, half_height)}
+
   @doc "How many tiles wide a pane `width` terminal cells across can show; always at least 1."
   @spec columns_for(non_neg_integer()) :: pos_integer()
   def columns_for(width), do: max(1, div(max(width, 1), 2))
@@ -175,4 +192,9 @@ defmodule Cauldron2D.Camera do
   @doc "How many tiles tall a pane `height` terminal cells high can show; always at least 1."
   @spec rows_for(non_neg_integer()) :: pos_integer()
   def rows_for(height), do: max(1, height)
+
+  defp inside(_value, low, high, half) when high - low <= 2 * half, do: (low + high) / 2
+
+  defp inside(value, low, high, half),
+    do: value |> max(low + half) |> min(high - half) |> Kernel.*(1.0)
 end

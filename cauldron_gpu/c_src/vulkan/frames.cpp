@@ -172,6 +172,11 @@ void retire(cg_device &device, std::function<void()> release) {
   device.retirements.push_back({.serial = serial, .release = std::move(release)});
 }
 
+uint64_t frames_completed(cg_device *device) noexcept {
+  update_completed_serial(*device);
+  return device->completed_serial;
+}
+
 void collect_retirements(cg_device &device) {
   update_completed_serial(device);
   std::vector<Retirement> pending;

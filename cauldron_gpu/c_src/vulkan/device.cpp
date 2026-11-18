@@ -1,6 +1,10 @@
 #include "internal.hpp"
 
+#if defined(CG_WINDOWS)
 #include <SDL3/SDL_vulkan.h>
+#else
+#include <dlfcn.h>
+#endif
 
 #include <algorithm>
 #include <cstring>
@@ -62,9 +66,17 @@ vk::PhysicalDeviceFeatures2 base_features(vk::PhysicalDevice physical) {
 }
 
 void initialize_device(cg_device &device) {
+#if defined(CG_WINDOWS)
   if (!SDL_Vulkan_LoadLibrary(nullptr)) throw std::runtime_error(SDL_GetError());
   device.sdl_library_loaded = true;
   VULKAN_HPP_DEFAULT_DISPATCHER.init(reinterpret_cast<PFN_vkGetInstanceProcAddr>(SDL_Vulkan_GetVkGetInstanceProcAddr()));
+#else
+  device.library = dlopen("libvulkan.so", RTLD_NOW | RTLD_LOCAL);
+  if (!device.library) throw std::runtime_error(dlerror());
+  auto get_instance_proc = reinterpret_cast<PFN_vkGetInstanceProcAddr>(dlsym(device.library, "vkGetInstanceProcAddr"));
+  if (!get_instance_proc) throw std::runtime_error("libvulkan.so has no vkGetInstanceProcAddr");
+  VULKAN_HPP_DEFAULT_DISPATCHER.init(get_instance_proc);
+#endif
   InstanceSetup setup = create_instance();
   device.instance = setup.instance;
   device.messenger = setup.messenger;
@@ -196,5 +208,9 @@ cg_device::~cg_device() {
   device.destroy();
   if (messenger) instance.destroyDebugUtilsMessengerEXT(messenger);
   instance.destroy();
+#if defined(CG_WINDOWS)
   if (sdl_library_loaded) SDL_Vulkan_UnloadLibrary();
+#else
+  if (library) dlclose(library);
+#endif
 }

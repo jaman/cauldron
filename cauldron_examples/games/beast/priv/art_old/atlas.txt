@@ -1,0 +1,7 @@
+runner	@ 	#f0ece0	10
+bat	v 	#9a5aa8	10
+crawler	x 	#c06030	8
+sky	  	#b00422	
+mountains	^ 	#2a1a4a	
+ruins	I 	#101214	
+scrub	" 	#6b5a3a	

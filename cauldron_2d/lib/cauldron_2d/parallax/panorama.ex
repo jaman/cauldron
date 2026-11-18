@@ -15,20 +15,26 @@ defmodule Cauldron2D.Parallax.Panorama do
   top-left corner sits in the layer's own tiles. `wrap` repeats it along `:x`, `:y`, `:both`
   or `:none`, laying down as many copies as the pane needs.
 
+  `cover: true` makes the picture fill the pane's height whatever the pane's size: it is
+  enlarged by the smallest whole number that makes it as tall as the pane, sits with its
+  bottom on the pane's bottom, and repeats along `x` from `at`'s column. A sky behind
+  everything wants it, with a vertical `factor` of `0`.
+
   Every other option is `Cauldron2D.Parallax.Layer.new/1`'s. The picture is copied into the
   pane rather than drawn tile by tile, so a layer of this kind costs no blending.
   """
 
   alias Cauldron2D.{Atlas, Surface}
   alias Cauldron2D.Parallax.Layer
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @type wrap :: :x | :y | :both | :none
   @type picture :: %{
           art: term(),
           size: {pos_integer(), pos_integer()},
           wrap: wrap(),
-          at: {integer(), integer()}
+          at: {integer(), integer()},
+          cover: boolean()
         }
 
   @doc "A layer drawing `art` across the pane."
@@ -38,8 +44,9 @@ defmodule Cauldron2D.Parallax.Panorama do
     {size, opts} = Keyword.pop!(opts, :size)
     {wrap, opts} = Keyword.pop(opts, :wrap, :x)
     {at, opts} = Keyword.pop(opts, :at, {0, 0})
+    {cover, opts} = Keyword.pop(opts, :cover, false)
 
-    picture = %{art: art, size: size, wrap: wrap, at: at}
+    picture = %{art: art, size: size, wrap: wrap, at: at, cover: cover}
 
     Layer.new([cell: &clear/1, picture: picture] ++ opts)
   end
@@ -73,22 +80,19 @@ defmodule Cauldron2D.Parallax.Panorama do
           :opaque | :transparent
         ) :: Raster.t()
   def render(atlas, picture, {ox, oy}, {width, height}, tile, scale, at, void) do
-    {rgba, art_width, art_height} = Surface.sprite_rgba(atlas, picture.art, scale, at)
+    sprite = Surface.sprite_rgba(atlas, picture.art, scale, at)
+    times = enlargement(picture, elem(sprite, 2), height)
+    {rgba, art_width, art_height} = enlarged(sprite, times)
     {tiles_wide, tiles_tall} = picture.size
     {ax, ay} = picture.at
     blank = blank_pixel(atlas, void)
 
     columns =
-      picture.wrap
-      |> wraps?(:x)
-      |> places(ox, ceil(width / tile), tiles_wide, ax)
+      (wraps?(picture.wrap, :x) or picture.cover)
+      |> places(ox, ceil(width / tile), tiles_wide * times, ax)
       |> Enum.map(&((&1 - ox) * tile))
 
-    rows =
-      picture.wrap
-      |> wraps?(:y)
-      |> places(oy, ceil(height / tile), tiles_tall, ay)
-      |> Enum.map(&((&1 - oy) * tile))
+    rows = tops(picture, {oy, ay}, {height, art_height}, tile, tiles_tall)
 
     pixels =
       for y <- 0..(height - 1)//1,
@@ -102,6 +106,31 @@ defmodule Cauldron2D.Parallax.Panorama do
       nil -> :binary.copy(blank, width)
       top -> line(rgba, art_width, y - top, columns, width, blank)
     end
+  end
+
+  defp enlargement(%{cover: true}, art_height, height), do: max(1, ceil(height / art_height))
+  defp enlargement(_picture, _art_height, _height), do: 1
+
+  defp enlarged(sprite, 1), do: sprite
+
+  defp enlarged({rgba, width, height}, times) do
+    rows =
+      for <<row::binary-size(^width * 4) <- rgba>> do
+        line = for <<pixel::binary-4 <- row>>, into: <<>>, do: :binary.copy(pixel, times)
+        :binary.copy(line, times)
+      end
+
+    {IO.iodata_to_binary(rows), width * times, height * times}
+  end
+
+  defp tops(%{cover: true}, _origin, {height, art_height}, _tile, _tiles_tall),
+    do: [height - art_height]
+
+  defp tops(picture, {oy, ay}, {height, _art_height}, tile, tiles_tall) do
+    picture.wrap
+    |> wraps?(:y)
+    |> places(oy, ceil(height / tile), tiles_tall, ay)
+    |> Enum.map(&((&1 - oy) * tile))
   end
 
   defp clear(_coordinate), do: :void

@@ -24,12 +24,23 @@ defmodule Cauldron2D.Camera.Follow do
   @spec new({number(), number()}) :: t()
   def new({x, y}), do: %__MODULE__{pos: {x / 1, y / 1}}
 
-  @doc "Move toward `target` for `dt` seconds, the distance halving every `lag` seconds."
-  @spec follow(t(), {number(), number()}, number(), number()) :: t()
-  def follow(%__MODULE__{} = follow, {tx, ty}, _dt, lag) when lag <= 0,
+  @doc """
+  Move toward `target` for `dt` seconds, the distance halving every `lag` seconds.
+
+  Option `:deadzone`, `{width, height}` in tiles: a box round the camera that the target
+  moves inside without the camera following; the camera follows only how far the target
+  is outside it. Default none.
+  """
+  @spec follow(t(), {number(), number()}, number(), number(), keyword()) :: t()
+  def follow(follow, target, dt, lag, opts \\ [])
+
+  def follow(%__MODULE__{} = follow, target, dt, lag, deadzone: {width, height}),
+    do: follow(follow, outside(follow.pos, target, width / 2, height / 2), dt, lag)
+
+  def follow(%__MODULE__{} = follow, {tx, ty}, _dt, lag, _opts) when lag <= 0,
     do: %{follow | pos: {tx / 1, ty / 1}}
 
-  def follow(%__MODULE__{pos: {x, y}} = follow, {tx, ty}, dt, lag) do
+  def follow(%__MODULE__{pos: {x, y}} = follow, {tx, ty}, dt, lag, _opts) do
     share = 1 - :math.pow(0.5, dt / lag)
     %{follow | pos: {x + (tx - x) * share, y + (ty - y) * share}}
   end
@@ -67,4 +78,11 @@ defmodule Cauldron2D.Camera.Follow do
     {dx, dy} = offset(follow)
     {x + dx, y + dy}
   end
+
+  defp outside({x, y}, {tx, ty}, half_width, half_height),
+    do: {beyond(x, tx, half_width), beyond(y, ty, half_height)}
+
+  defp beyond(at, target, half) when target > at + half, do: target - half
+  defp beyond(at, target, half) when target < at - half, do: target + half
+  defp beyond(at, _target, _half), do: at
 end

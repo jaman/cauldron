@@ -189,7 +189,7 @@ defmodule Cauldron2D.GameMaker.Sprite do
 
   defp widen(bits, {box_width, box_height}, {left, top}, {width, height}) do
     stride = div(box_width + 7, 8)
-    rows = for <<row::binary-size(stride) <- bits>>, do: row
+    rows = for <<row::binary-size(^stride) <- bits>>, do: row
     rows = List.to_tuple(rows)
     padding = div(width + 7, 8) * 8 - width
 
@@ -203,7 +203,7 @@ defmodule Cauldron2D.GameMaker.Sprite do
   end
 
   defp place(row, box_width, left, width, padding) when left >= 0 and left + box_width <= width do
-    <<picked::bitstring-size(box_width), _::bitstring>> = row
+    <<picked::bitstring-size(^box_width), _::bitstring>> = row
     <<0::size(left), picked::bitstring, 0::size(width - left - box_width + padding)>>
   end
 
@@ -213,7 +213,7 @@ defmodule Cauldron2D.GameMaker.Sprite do
   end
 
   defp pixel(row, x, box_width) when x >= 0 and x < box_width do
-    <<_::bitstring-size(x), bit::1, _::bitstring>> = row
+    <<_::bitstring-size(^x), bit::1, _::bitstring>> = row
     bit
   end
 

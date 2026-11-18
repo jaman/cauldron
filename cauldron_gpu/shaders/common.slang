@@ -15,6 +15,13 @@ public struct Instance {
   public float4 shading_direction;
   public float4 swell;
   public float4 standing;
+  public float4 sway;
+  public float4 fade;
+}
+
+public struct Placement {
+  public float4 position_scale;
+  public float4 rotation;
 }
 
 public struct Material {
@@ -31,6 +38,14 @@ public struct Material {
   public DescriptorHandle<SamplerState> lightmap_sampler;
   public DescriptorHandle<Texture2D> normal_texture;
   public DescriptorHandle<Texture2D> occlusion_texture;
+  public DescriptorHandle<Texture2D> layer0;
+  public DescriptorHandle<Texture2D> layer1;
+  public DescriptorHandle<Texture2D> layer2;
+  public DescriptorHandle<Texture2D> layer3;
+  public float4 liquid_shallow;
+  public float4 liquid_deep;
+  public float4 liquid_foam;
+  public float4 liquid_waves;
 }
 
 public struct Light {
@@ -68,6 +83,11 @@ public struct Frame {
   public float4 resolution;
   public float4 curve;
   public float4 layers;
+  public float4 toon;
+  public float4 shade;
+  public float4 outline;
+  public float4 wind;
+  public float4 pushers[8];
   public DescriptorHandle<Texture2D> gbuffer_albedo;
   public DescriptorHandle<Texture2D> gbuffer_normal;
   public DescriptorHandle<Texture2D> gbuffer_emissive;
@@ -141,6 +161,23 @@ public struct Layer {
   public uint4 counts;
   public DescriptorHandle<Texture2D> source;
   public DescriptorHandle<SamplerState> sampler;
+  public DescriptorHandle<Texture2D> palette;
+  public DescriptorHandle<Texture2D> behind;
+  public DescriptorHandle<Texture2D> coverage;
+}
+
+public struct Tile {
+  public float4 placement;
+  public float4 source;
+  public uint4 shape;
+}
+
+public struct TilePush {
+  public Frame *frame;
+  public Layer *layer;
+  public Tile *tiles;
+  public uint first;
+  public uint pad;
 }
 
 public struct SpritePush {
@@ -186,6 +223,7 @@ public struct DrawPush {
   public float4 *gi;
   public History *history;
   public uint *colors;
+  public Placement *scatter;
 }
 
 public static const uint MATERIAL_UNLIT = 1;
@@ -197,6 +235,9 @@ public static const uint MATERIAL_WARP = 64;
 public static const uint MATERIAL_ADD = 256;
 public static const uint MATERIAL_MULTIPLY = 512;
 public static const uint MATERIAL_REFLECTION = 1024;
+public static const uint MATERIAL_LAYERS = 2048;
+public static const uint MATERIAL_LIQUID = 4096;
+public static const uint MATERIAL_NO_OUTLINE = 8192;
 public static const uint SKY_LAYERS = 1;
 public static const uint SKY_BOX = 2;
 public static const float SKY_MARK = 2;
@@ -208,42 +249,42 @@ public static const uint EFFECT_RT_REFLECTIONS = 2;
 public static const uint EFFECT_RT_GLOBAL_ILLUMINATION = 4;
 public static const uint EFFECT_RT_AMBIENT_OCCLUSION = 32;
 
-public float3 world_position(Frame frame, float2 uv, float depth) {
+public float3 world_position(Frame *frame, float2 uv, float depth) {
   float4 clip = float4(uv.x * 2 - 1, 1 - uv.y * 2, depth, 1);
-  float4 world = mul(frame.inverse_view_proj, clip);
+  float4 world = mul(frame->inverse_view_proj, clip);
   return world.xyz / world.w;
 }
 
-float3 layered_sky(Frame frame, float3 direction) {
+float3 layered_sky(Frame *frame, float3 direction) {
   float reach = length(float3(direction.x, direction.z, 3 * direction.y));
   float2 point = float2(direction.x, -direction.z) * (378.0 / 128.0) / max(reach, 1e-6);
-  float seconds = frame.sky_picture.w;
-  float3 back = frame.sky0.SampleLevel(frame.sky_sampler, point + seconds * frame.sky_picture.y, 0).rgb;
-  float4 front = frame.sky1.SampleLevel(frame.sky_sampler, point + seconds * frame.sky_picture.z, 0);
+  float seconds = frame->sky_picture.w;
+  float3 back = frame->sky0.SampleLevel(frame->sky_sampler, point + seconds * frame->sky_picture.y, 0).rgb;
+  float4 front = frame->sky1.SampleLevel(frame->sky_sampler, point + seconds * frame->sky_picture.z, 0);
   return lerp(back, front.rgb, front.a);
 }
 
-float3 boxed_sky(Frame frame, float3 direction) {
+float3 boxed_sky(Frame *frame, float3 direction) {
   float3 size = abs(direction);
   if (size.x >= size.y && size.x >= size.z) {
     float2 uv = float2(-direction.z * sign(direction.x), -direction.y) / size.x * 0.5 + 0.5;
-    return direction.x > 0 ? frame.sky0.SampleLevel(frame.sky_sampler, uv, 0).rgb : frame.sky1.SampleLevel(frame.sky_sampler, uv, 0).rgb;
+    return direction.x > 0 ? frame->sky0.SampleLevel(frame->sky_sampler, uv, 0).rgb : frame->sky1.SampleLevel(frame->sky_sampler, uv, 0).rgb;
   }
   if (size.y >= size.z) {
     float2 uv = float2(direction.x, direction.z * sign(direction.y)) / size.y * 0.5 + 0.5;
-    return direction.y > 0 ? frame.sky2.SampleLevel(frame.sky_sampler, uv, 0).rgb : frame.sky3.SampleLevel(frame.sky_sampler, uv, 0).rgb;
+    return direction.y > 0 ? frame->sky2.SampleLevel(frame->sky_sampler, uv, 0).rgb : frame->sky3.SampleLevel(frame->sky_sampler, uv, 0).rgb;
   }
   float2 uv = float2(direction.x * sign(direction.z), -direction.y) / size.z * 0.5 + 0.5;
-  return direction.z > 0 ? frame.sky4.SampleLevel(frame.sky_sampler, uv, 0).rgb : frame.sky5.SampleLevel(frame.sky_sampler, uv, 0).rgb;
+  return direction.z > 0 ? frame->sky4.SampleLevel(frame->sky_sampler, uv, 0).rgb : frame->sky5.SampleLevel(frame->sky_sampler, uv, 0).rgb;
 }
 
-public float3 sky(Frame frame, float3 direction) {
-  uint picture = uint(frame.sky_picture.x);
+public float3 sky(Frame *frame, float3 direction) {
+  uint picture = uint(frame->sky_picture.x);
   if (picture == SKY_LAYERS) return layered_sky(frame, direction);
   if (picture == SKY_BOX) return boxed_sky(frame, direction);
   float up = direction.y;
-  float3 above = lerp(frame.sky_horizon.rgb, frame.sky_top.rgb, pow(saturate(up), 0.6));
-  float3 below = lerp(frame.sky_horizon.rgb, frame.sky_ground.rgb, pow(saturate(-up), 0.4));
+  float3 above = lerp(frame->sky_horizon.rgb, frame->sky_top.rgb, pow(saturate(up), 0.6));
+  float3 below = lerp(frame->sky_horizon.rgb, frame->sky_ground.rgb, pow(saturate(-up), 0.4));
   return up >= 0 ? above : below;
 }
 
@@ -260,11 +301,11 @@ public float3 mapped_normal(Material material, float3 normal, float3 world, floa
   return normalize(tangent * scale * tangent_normal.x + bitangent * scale * tangent_normal.y + normal * tangent_normal.z);
 }
 
-public float3 light_style(Frame frame, uint style) {
-  return frame.light_styles[style].rgb;
+public float3 light_style(Frame *frame, uint style) {
+  return frame->light_styles[style].rgb;
 }
 
-public float3 baked_light(Frame frame, Material material, float4 lightmap) {
+public float3 baked_light(Frame *frame, Material material, float4 lightmap) {
   uint slots = clamp(material.flags.y, 1u, 4u);
   uint first = uint(lightmap.z), last = uint(lightmap.w);
   uint4 styles = uint4(first & 255, first >> 8, last & 255, last >> 8);
@@ -278,17 +319,17 @@ public float3 baked_light(Frame frame, Material material, float4 lightmap) {
   return light * material.params.w;
 }
 
-public float2 surface_uv(Frame frame, Material material, float2 uv, float3 world, float3 normal) {
+public float2 surface_uv(Frame *frame, Material material, float2 uv, float3 world, float3 normal) {
   if ((material.flags.x & MATERIAL_REFLECTION) != 0) {
-    float3 reflected = reflect(normalize(world - frame.camera_position.xyz), normal);
+    float3 reflected = reflect(normalize(world - frame->camera_position.xyz), normal);
     uv = float2(0.5 - reflected.z * 0.5, 0.5 - reflected.y * 0.5);
   }
-  return warped_uv(frame, material, uv + material.extra.xy * frame.sky_picture.w);
+  return warped_uv(frame, material, uv + material.extra.xy * frame->sky_picture.w);
 }
 
-public float3 swollen(Frame frame, Instance instance, float3 position, float3 normal, float2 uv) {
+public float3 swollen(Frame *frame, Instance instance, float3 position, float3 normal, float2 uv) {
   if (instance.swell.y == 0) return position;
-  return position + normal * instance.swell.y * sin(uv.x * instance.swell.x + frame.sky_picture.w * instance.swell.z);
+  return position + normal * instance.swell.y * sin(uv.x * instance.swell.x + frame->sky_picture.w * instance.swell.z);
 }
 
 public float4 vertex_colour(uint *colors, uint vertex_id) {
@@ -298,12 +339,82 @@ public float4 vertex_colour(uint *colors, uint vertex_id) {
   return float4(srgb_decode(bytes.rgb), bytes.a);
 }
 
-public float2 warped_uv(Frame frame, Material material, float2 uv) {
+public float4 vertex_weights(uint *colors, uint vertex_id) {
+  if (colors == nullptr) return float4(1, 0, 0, 0);
+  uint packed = colors[vertex_id];
+  return float4(packed & 255, (packed >> 8) & 255, (packed >> 16) & 255, packed >> 24) / 255.0;
+}
+
+public float3 turned(float4 rotation, float3 vector) {
+  return vector + 2 * cross(rotation.xyz, cross(rotation.xyz, vector) + rotation.w * vector);
+}
+
+public float3 swayed(Frame *frame, Instance instance, float3 world, float3 foot) {
+  float rise = saturate(max(world.y - foot.y, 0) / max(instance.sway.z, 1e-3));
+  float lift = rise * rise;
+  float seconds = frame->sky_picture.w;
+  float pace = frame->wind.w;
+  float phase = dot(foot.xz, float2(0.37, 0.53));
+  float gust = 0.5 + 0.3 * sin(seconds * pace + phase) + 0.2 * sin(seconds * pace * 2.7 + phase * 1.9);
+  float2 lean = frame->wind.xy * gust * frame->wind.z * instance.sway.x * lift;
+  float flutter = sin(seconds * pace * 6.0 + dot(world, float3(1.7, 2.3, 1.1))) * instance.sway.y * frame->wind.z * rise;
+  world.xz += lean + float2(-frame->wind.y, frame->wind.x) * flutter;
+  world.y += flutter * 0.3;
+  for (uint index = 0; index < frame->counts.w; index++) {
+    float4 pusher = frame->pushers[index];
+    float2 off = foot.xz - pusher.xz;
+    float reach = length(off);
+    float press = saturate(1 - reach / max(pusher.w, 1e-3)) * saturate(1 - abs(foot.y - pusher.y) / 2.0);
+    float shove = press * press * instance.sway.w * lift;
+    world.xz += off / max(reach, 1e-3) * shove;
+    world.y -= shove * 0.5;
+  }
+  return world;
+}
+
+public float4 placed(Frame *frame, Instance instance, Placement *scatter, uint item, float3 local, inout float3 normal) {
+  float3 foot = float3(0);
+  if (scatter != nullptr) {
+    Placement placement = scatter[item];
+    local = turned(placement.rotation, local * placement.position_scale.w) + placement.position_scale.xyz;
+    normal = turned(placement.rotation, normal);
+    foot = placement.position_scale.xyz;
+  }
+  float4 world = mul(instance.model, float4(local, 1));
+  if (instance.fade.y <= 0 && !any(instance.sway.xyw != 0)) return world;
+  float3 base = mul(instance.model, float4(foot, 1)).xyz;
+  if (instance.fade.y > 0) {
+    float keep = 1 - smoothstep(instance.fade.x, instance.fade.y, distance(base, frame->camera_position.xyz));
+    world.xyz = base + (world.xyz - base) * keep;
+  }
+  if (any(instance.sway.xyw != 0)) world.xyz = swayed(frame, instance, world.xyz, base);
+  return world;
+}
+
+public float4 layered_base(Material material, float4 weights, float3 world, float3 normal) {
+  float scale = material.extra.z;
+  float3 steep = abs(normal);
+  bool flat = steep.y > 0.7;
+  bool along_x = steep.x > steep.z;
+  float2 uv = (flat ? world.xz : (along_x ? world.zy : world.xy)) * scale;
+  float3 across = ddx(world) * scale, down = ddy(world) * scale;
+  float2 uv_across = flat ? across.xz : (along_x ? across.zy : across.xy);
+  float2 uv_down = flat ? down.xz : (along_x ? down.zy : down.xy);
+  float4 mixed = float4(0);
+  if (weights.x > 0) mixed += weights.x * material.layer0.SampleGrad(material.sampler, uv, uv_across, uv_down);
+  if (weights.y > 0) mixed += weights.y * material.layer1.SampleGrad(material.sampler, uv, uv_across, uv_down);
+  if (weights.z > 0) mixed += weights.z * material.layer2.SampleGrad(material.sampler, uv, uv_across, uv_down);
+  if (weights.w > 0) mixed += weights.w * material.layer3.SampleGrad(material.sampler, uv, uv_across, uv_down);
+  float total = weights.x + weights.y + weights.z + weights.w;
+  return float4(mixed.rgb / max(total, 1e-4), 1);
+}
+
+public float2 warped_uv(Frame *frame, Material material, float2 uv) {
   if ((material.flags.x & MATERIAL_WARP) == 0) return uv;
   uint width, height;
   material.base_texture.GetDimensions(width, height);
   float2 texels = uv * float2(width, height);
-  float seconds = frame.sky_picture.w;
+  float seconds = frame->sky_picture.w;
   float2 moved = texels + 8 * sin(texels.yx / 8 + seconds);
   return moved / float2(width, height);
 }
@@ -324,17 +435,17 @@ public float4 squeezed_in_front(Instance instance, float4 clip) {
   return clip;
 }
 
-public float4 surface_light(Frame frame, Material material, Instance instance, float4 lightmap_uv, float3 normal, float3 world) {
+public float4 surface_light(Frame *frame, Material material, Instance instance, float4 lightmap_uv, float3 normal, float3 world) {
   bool shaded = instance.shading_ambient.w > 0;
   bool has_lightmap = (material.flags.x & MATERIAL_HAS_LIGHTMAP) != 0;
   if (!shaded && !has_lightmap) return float4(0);
   float3 light = shaded ? max(instance.shading_ambient.rgb + instance.shading_directional.rgb * dot(normal, instance.shading_direction.xyz), float3(0))
                         : baked_light(frame, material, lightmap_uv);
-  if (frame.display.w > 0) {
-    float row = saturate(dot(world - frame.camera_position.xyz, frame.view_forward.xyz) / frame.display.z);
-    light = float3(frame.light_table.SampleLevel(frame.linear_clamp, float2(saturate(light.r), row), 0).r,
-                   frame.light_table.SampleLevel(frame.linear_clamp, float2(saturate(light.g), row), 0).g,
-                   frame.light_table.SampleLevel(frame.linear_clamp, float2(saturate(light.b), row), 0).b);
+  if (frame->display.w > 0) {
+    float row = saturate(dot(world - frame->camera_position.xyz, frame->view_forward.xyz) / frame->display.z);
+    light = float3(frame->light_table.SampleLevel(frame->linear_clamp, float2(saturate(light.r), row), 0).r,
+                   frame->light_table.SampleLevel(frame->linear_clamp, float2(saturate(light.g), row), 0).g,
+                   frame->light_table.SampleLevel(frame->linear_clamp, float2(saturate(light.b), row), 0).b);
   }
   return float4(light, 1);
 }
@@ -343,11 +454,11 @@ public float3 display_lit(float3 albedo, float3 light, float3 emissive) {
   return any(emissive > 0) ? emissive : srgb_decode(srgb_encode(albedo) * light);
 }
 
-public bool hidden_while_standing(Frame frame, Instance instance, float4 position) {
-  float2 uv = position.xy * frame.screen.zw;
-  float nearest = frame.nearest.SampleLevel(frame.point_clamp, uv, 0).r;
+public bool hidden_while_standing(Frame *frame, Instance instance, float4 position) {
+  float2 uv = position.xy * frame->screen.zw;
+  float nearest = frame->nearest.SampleLevel(frame->point_clamp, uv, 0).r;
   if (nearest <= position.z) return false;
-  float3 normal = normalize(frame.gbuffer_normal.SampleLevel(frame.point_clamp, uv, 0).xyz);
+  float3 normal = normalize(frame->gbuffer_normal.SampleLevel(frame->point_clamp, uv, 0).xyz);
   float height = world_position(frame, uv, nearest).y;
   bool own_floor = normal.y > 0.7071 && height <= instance.standing.x + 1e-3;
   bool own_ceiling = normal.y < -0.7071 && height >= instance.standing.y - 1e-3;

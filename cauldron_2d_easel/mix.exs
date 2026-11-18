@@ -29,7 +29,7 @@ defmodule Cauldron2D.Easel.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.3.4", "../cauldron_2d", []),
+      family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
       family(:linocut, "~> 0.3.4", "../linocut", []),
       family(:french_curve, "~> 0.2.1", "../../french_curve", override: true)
     ]

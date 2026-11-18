@@ -22,6 +22,22 @@ defmodule Cauldron3D.Net.Socket do
 
       channel(unquote(prefix) <> ":*", unquote(channel))
 
+      unquote(connect(verify))
+
+      @impl true
+      def id(_socket), do: nil
+    end
+  end
+
+  defp connect(nil) do
+    quote do
+      @impl true
+      def connect(_params, socket, _connect_info), do: {:ok, socket}
+    end
+  end
+
+  defp connect(verify) do
+    quote do
       @impl true
       def connect(params, socket, _connect_info) do
         case Cauldron3D.Net.Socket.verify(unquote(verify), params) do
@@ -29,9 +45,6 @@ defmodule Cauldron3D.Net.Socket do
           :error -> :error
         end
       end
-
-      @impl true
-      def id(_socket), do: nil
     end
   end
 

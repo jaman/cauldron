@@ -25,7 +25,7 @@ defmodule Cauldron2D.GameMaker.MixProject do
 
   defp deps do
     [
-      family(:cauldron_2d, "~> 0.3.4", "../cauldron_2d", []),
+      family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
       family(:linocut, "~> 0.3.4", "../linocut", override: true),
       family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

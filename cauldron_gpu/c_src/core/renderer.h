@@ -6,6 +6,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -43,9 +44,16 @@ struct PendingCapture {
   cg_buffer *readback;
   uint32_t width;
   uint32_t height;
-  uint64_t frame;
+  uint64_t submission;
   bool swap_red_blue;
   std::vector<CaptureReply> replies;
+};
+
+struct FrameStream {
+  CaptureReply reply;
+  uint32_t ahead;
+  uint32_t credits;
+  double interval;
 };
 
 struct Batch {
@@ -72,6 +80,9 @@ class Renderer {
   void submit(Batch batch);
   void resize(uint32_t width, uint32_t height);
   void request_capture(bool generated, CaptureReply reply);
+  void start_stream(CaptureReply reply, uint32_t ahead, float fps);
+  void stop_stream();
+  void frame_shown();
   void set_offscreen(bool offscreen) { offscreen_ = offscreen; }
   void set_refresh_rate(float hertz) { refresh_rate_ = hertz; }
   FrameStats stats() const;
@@ -79,7 +90,12 @@ class Renderer {
 
  private:
   void run();
-  bool has_work();
+  bool offscreen_frame_due(uint64_t &signals);
+  void wait_offscreen(uint64_t signals);
+  void schedule_stream_frame();
+  void signal_locked();
+  cg_buffer *take_readback(uint64_t size, const char *label);
+  void keep_readback(cg_buffer *readback, uint64_t size);
   bool draw_frame();
   void take_batches();
   std::vector<CaptureRequest> take_capture_requests();
@@ -92,6 +108,7 @@ class Renderer {
   bool build_layers(FrameArena &arena, FrameInputs &inputs);
   void build_sprites(FrameArena &arena, const Layer &layer, LayerDraw &draw);
   void build_columns(FrameArena &arena, const Layer &layer, LayerDraw &draw, GpuLayer &gpu);
+  void build_tiles(FrameArena &arena, const Layer &layer, LayerDraw &draw, GpuLayer &gpu, const GpuTexture *canvas);
   size_t layer_bytes() const;
   void write_materials(FrameArena &arena, FrameInputs &inputs, std::unordered_map<uint32_t, uint32_t> &slots);
   void write_sky(GpuFrame &frame, const Environment &environment, double now);
@@ -114,6 +131,11 @@ class Renderer {
   std::deque<Batch> batches_;
   std::vector<CaptureRequest> capture_requests_;
   std::vector<PendingCapture> captures_;
+  std::vector<std::pair<uint64_t, cg_buffer *>> spare_readbacks_;
+  std::optional<FrameStream> stream_;
+  double next_stream_frame_ = 0;
+  uint64_t signals_ = 0;
+  uint64_t submissions_ = 0;
   std::thread thread_;
   std::atomic<bool> running_{false};
   std::atomic<uint32_t> pending_width_{0};

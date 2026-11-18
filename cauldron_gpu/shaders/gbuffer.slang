@@ -11,6 +11,7 @@ struct Varyings {
   float4 current_clip;
   float4 previous_clip;
   float4 colour;
+  float4 weights;
 }
 
 struct Targets {
@@ -23,21 +24,25 @@ struct Targets {
 }
 
 [shader("vertex")]
-Varyings vertex_main(uint vertex_id : SV_VertexID) {
+Varyings vertex_main(uint vertex_id : SV_VertexID, uint item : SV_InstanceID) {
   Vertex vertex = push.vertices[vertex_id];
   Instance instance = push.instances[push.instance];
   float2 uv = float2(vertex.position_u.w, vertex.normal_v.w);
-  float4 world = mul(instance.model, float4(swollen(*push.frame, instance, vertex.position_u.xyz, vertex.normal_v.xyz, uv), 1));
+  float3 normal = vertex.normal_v.xyz;
+  float3 local = swollen(push.frame, instance, vertex.position_u.xyz, vertex.normal_v.xyz, uv);
+  float4 world = placed(push.frame, instance, push.scatter, item, local, normal);
   Varyings out;
   out.position = squeezed_in_front(instance, mul(push.frame->view_proj, world));
-  out.normal = mul(instance.normal, float4(vertex.normal_v.xyz, 0)).xyz;
+  out.normal = mul(instance.normal, float4(normal, 0)).xyz;
   out.world = world.xyz;
   out.uv = uv;
   out.colour = vertex_colour(push.colors, vertex_id);
+  out.weights = vertex_weights(push.colors, vertex_id);
   out.lightmap_uv = vertex.lightmap_uv;
   out.current_clip = mul(push.frame->unjittered_view_proj, world);
   float3 previous_position = push.previous_vertices != nullptr ? push.previous_vertices[vertex_id].position_u.xyz : vertex.position_u.xyz;
-  out.previous_clip = mul(push.frame->previous_view_proj, mul(instance.previous_model, float4(previous_position, 1)));
+  float4 previous_world = push.scatter != nullptr ? world : mul(instance.previous_model, float4(previous_position, 1));
+  out.previous_clip = mul(push.frame->previous_view_proj, previous_world);
   return out;
 }
 
@@ -54,8 +59,10 @@ Targets fragment_main(Varyings input, bool front : SV_IsFrontFace) {
     out.baked = float4(0, 0, 0, SKY_MARK);
     return out;
   }
-  input.uv = surface_uv(*push.frame, material, input.uv, input.world, normalize(input.normal));
-  float4 base = material.base_color * material.base_texture.Sample(material.sampler, input.uv) * input.colour;
+  bool layered = (material.flags.x & MATERIAL_LAYERS) != 0;
+  input.uv = surface_uv(push.frame, material, input.uv, input.world, normalize(input.normal));
+  float4 base = layered ? material.base_color * layered_base(material, input.weights, input.world, normalize(input.normal))
+                        : material.base_color * material.base_texture.Sample(material.sampler, input.uv) * input.colour;
   if (base.a < material.params.z) discard;
   float4 metallic_roughness = material.metallic_roughness_texture.Sample(material.sampler, input.uv);
   float metallic = material.params.x * metallic_roughness.b;
@@ -64,9 +71,10 @@ Targets fragment_main(Varyings input, bool front : SV_IsFrontFace) {
   float3 normal = mapped_normal(material, normalize(input.normal) * (front ? 1.0 : -1.0), input.world, input.uv);
   float occlusion = material.occlusion_texture.Sample(material.sampler, input.uv).r;
   bool unlit = (material.flags.x & MATERIAL_UNLIT) != 0;
-  float4 baked = surface_light(*push.frame, material, push.instances[push.instance], input.lightmap_uv, normal, input.world);
+  float4 baked = surface_light(push.frame, material, push.instances[push.instance], input.lightmap_uv, normal, input.world);
+  float plain = (material.flags.x & MATERIAL_NO_OUTLINE) != 0 ? -1.0 : 1.0;
   out.albedo = float4(unlit ? float3(0) : base.rgb, occlusion);
-  out.normal = float4(normal, max(roughness, 0.04));
+  out.normal = float4(normal, max(roughness, 0.04) * plain);
   out.emissive = float4(unlit ? base.rgb + emissive : emissive, metallic);
   out.baked = baked;
   return out;

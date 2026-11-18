@@ -1,0 +1,28 @@
+backdrop	  	#4a2c55	
+title_art	  	#4a2c55	
+ground	==	#8a6436	
+grate	##	#5a5a6a	
+squall	@@	#b2aecb	
+squall_grin	@@	#e2e0ee	
+squall_sulk	@@	#7a5a90	
+squall_gust	@@	#ffffff	
+keeper	& 	#e0b850	
+jar	u 	#d9804a	
+yoke	--	#a87840	
+brim	~ 	#4aa8e0	6
+drop	' 	#6cc8ff	6
+hail	o 	#e0f0ff	
+shadow_far	. 	#6c98b8	
+shadow_mid	o 	#88b8d8	
+shadow_near	O 	#b8e4ff	
+splash_1	* 	#d0f0ff	
+splash_2	* 	#6cc8ff	
+splash_3	. 	#3a88c8	
+bolt	/ 	#fff4a0	
+frame	[]	#b5562c	
+cursor	> 	#4aa8e0	
+jar_icon	u 	#d9804a	
+gauge	| 	#6a5a4a	
+gauge_water	| 	#4aa8e0	
+fill_track	- 	#3a2c44	
+fill_bar	= 	#4aa8e0	

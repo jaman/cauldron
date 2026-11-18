@@ -33,11 +33,12 @@ defmodule Cauldron2D.Drafter.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.3.4", "../cauldron_2d", []),
+      family(:cauldron_core, "~> 0.4.0", "../cauldron_core", []),
+      family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
       family(:drafter, "~> 0.5.7", "../../drafter", []),
       family(:gamepad, "~> 0.1.0", "../../gamepad", []),
       family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
-      family(:cauldron_gpu, "~> 0.3.4", "../cauldron_gpu", optional: true)
+      family(:cauldron_gpu, "~> 0.4.0", "../cauldron_gpu", optional: true)
     ]
   end
 

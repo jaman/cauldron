@@ -21,7 +21,7 @@ METAL_SWIFT := $(wildcard c_src/metal/*.swift)
 SHADERS := $(wildcard shaders/*.slang)
 SHADER_ENTRIES := $(filter-out shaders/common.slang shaders/shading.slang,$(SHADERS))
 
-CXXFLAGS_BASE := -std=c++20 -fPIC -O2 -Wall -Wextra -I$(ERTS_INCLUDE_DIR) $(SDL_CFLAGS)
+CXXFLAGS_BASE := -std=c++20 -fPIC -O2 -Wall -Wextra -I$(ERTS_INCLUDE_DIR) -isystem c_src/third_party $(SDL_CFLAGS)
 CFLAGS_BASE := -std=c11 -fPIC -O2 -Wall -Wextra $(SDL_CFLAGS)
 
 ifeq ($(UNAME_S),Darwin)
@@ -36,7 +36,7 @@ WITH_METAL :=
 WITH_VULKAN := 1
 endif
 
-DEFINES :=
+DEFINES := -DCG_WINDOWS
 OBJECTS := $(patsubst c_src/core/%.cpp,$(BUILD_DIR)/core/%.o,$(CORE_SOURCES))
 LIBS := $(SDL_LIBS)
 
@@ -95,7 +95,7 @@ $(BUILD_DIR)/vulkan/vma.o: c_src/vulkan/vma.cpp
 
 $(BUILD_DIR)/vulkan/%.o: c_src/vulkan/%.cpp c_src/vulkan/*.hpp c_src/gpu.h
 	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS_BASE) $(VULKAN_CFLAGS) -c $< -o $@
+	$(CXX) $(CXXFLAGS_BASE) $(DEFINES) $(VULKAN_CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/metal/swift.o: $(METAL_SWIFT) c_src/gpu.h
 	@mkdir -p $(dir $@)
@@ -104,10 +104,86 @@ $(BUILD_DIR)/metal/swift.o: $(METAL_SWIFT) c_src/gpu.h
 
 $(BUILD_DIR)/metal/backend.o: c_src/metal/backend.c c_src/gpu.h
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS_BASE) -c $< -o $@
+	$(CC) $(CFLAGS_BASE) $(DEFINES) -c $< -o $@
 
 $(PRIV_DIR):
 	mkdir -p $(PRIV_DIR)
+
+STATIC_DIR ?= priv/static
+STATIC_BUILD := $(STATIC_DIR)/objects
+IOS_MINIMUM ?= 18.0
+APPLE_SDK ?= iphoneos
+APPLE_TARGET ?= arm64-apple-ios$(IOS_MINIMUM)
+APPLE_FRAMEWORKS = -framework Metal $(if $(wildcard $(shell xcrun -sdk $(APPLE_SDK) --show-sdk-path 2>/dev/null)/System/Library/Frameworks/MetalFX.framework),-framework MetalFX) -framework QuartzCore -framework Foundation
+STATIC_CORE_SOURCES := $(filter-out c_src/core/window.cpp,$(CORE_SOURCES))
+IOS_SHADERS := $(patsubst shaders/%.slang,priv/shaders/ios/%.metallib,$(SHADER_ENTRIES))
+APPLE_SHADER_SETS := ios_simulator tvos tvos_simulator
+APPLE_SHADERS := $(foreach set,$(APPLE_SHADER_SETS),$(patsubst shaders/%.slang,priv/shaders/$(set)/%.metallib,$(SHADER_ENTRIES)))
+
+ifneq ($(filter $(CAULDRON_TARGET),ios tvos macos),)
+STATIC_OBJECTS := $(patsubst c_src/core/%.cpp,$(STATIC_BUILD)/core/%.o,$(STATIC_CORE_SOURCES)) \
+	$(STATIC_BUILD)/metal/swift.o $(STATIC_BUILD)/metal/backend.o
+
+static: $(STATIC_OBJECTS)
+	$(AR) rcs $(STATIC_DIR)/cauldron_gpu.a $(STATIC_OBJECTS)
+	echo "$(APPLE_FRAMEWORKS) -lc++" > $(STATIC_DIR)/cauldron_gpu.ldflags
+
+$(STATIC_BUILD)/core/%.o: c_src/core/%.cpp c_src/core/*.h c_src/gpu.h
+	@mkdir -p $(dir $@)
+	$(CC) -x c++ -std=c++20 $(CFLAGS) -DCG_HAVE_METAL -DSTATIC_ERLANG_NIF_LIBNAME=cauldron_gpu -I$(ERTS_INCLUDE_DIR) -isystem c_src/third_party -c $< -o $@
+
+$(STATIC_BUILD)/metal/backend.o: c_src/metal/backend.c c_src/gpu.h
+	@mkdir -p $(dir $@)
+	$(CC) -std=c11 $(CFLAGS) -c $< -o $@
+
+$(STATIC_BUILD)/metal/swift.o: $(METAL_SWIFT) c_src/gpu.h
+	@mkdir -p $(dir $@)
+	xcrun -sdk $(APPLE_SDK) swiftc -target $(APPLE_TARGET) -swift-version 5 -O -parse-as-library -wmo \
+		-module-name CauldronGPUMetal -import-objc-header c_src/gpu.h -emit-object $(METAL_SWIFT) -o $@
+else ifeq ($(CAULDRON_TARGET),android)
+ANDROID_VULKAN_CFLAGS := $(if $(VULKAN_FROM_HEADERS),-isystem $(VULKAN_INCLUDE),$(patsubst -I%,-isystem %,$(shell $(PKG_CONFIG) --cflags vulkan))) -isystem c_src/vulkan/vma
+ANDROID_CXXFLAGS := -x c++ -std=c++20 $(CFLAGS) -DCG_HAVE_VULKAN -DSTATIC_ERLANG_NIF_LIBNAME=cauldron_gpu \
+	-I$(ERTS_INCLUDE_DIR) -isystem c_src/third_party $(ANDROID_VULKAN_CFLAGS)
+STATIC_OBJECTS := $(patsubst c_src/core/%.cpp,$(STATIC_BUILD)/core/%.o,$(STATIC_CORE_SOURCES)) \
+	$(patsubst c_src/vulkan/%.cpp,$(STATIC_BUILD)/vulkan/%.o,$(VULKAN_SOURCES))
+
+static: $(STATIC_OBJECTS)
+	$(AR) rcs $(STATIC_DIR)/cauldron_gpu.a $(STATIC_OBJECTS)
+	echo "-ldl -landroid" > $(STATIC_DIR)/cauldron_gpu.ldflags
+
+$(STATIC_BUILD)/core/%.o: c_src/core/%.cpp c_src/core/*.h c_src/gpu.h
+	@mkdir -p $(dir $@)
+	$(CC) $(ANDROID_CXXFLAGS) -c $< -o $@
+
+$(STATIC_BUILD)/vulkan/vma.o: c_src/vulkan/vma.cpp
+	@mkdir -p $(dir $@)
+	$(CC) $(ANDROID_CXXFLAGS) -w -c $< -o $@
+
+$(STATIC_BUILD)/vulkan/%.o: c_src/vulkan/%.cpp c_src/vulkan/*.hpp c_src/gpu.h
+	@mkdir -p $(dir $@)
+	$(CC) $(ANDROID_CXXFLAGS) -c $< -o $@
+else
+static:
+	@echo "cauldron_gpu: no static build for $(CAULDRON_TARGET); the app runs without the renderer"
+endif
+
+shaders-ios: $(IOS_SHADERS) $(APPLE_SHADERS)
+
+priv/shaders/ios/%.metallib: priv/shaders/%.metallib
+	@mkdir -p priv/shaders/ios
+	xcrun -sdk iphoneos metal -std=metal3.1 -mios-version-min=$(IOS_MINIMUM) -o $@ _build/shaders/$*.metal
+
+priv/shaders/ios_simulator/%.metallib: priv/shaders/%.metallib
+	@mkdir -p priv/shaders/ios_simulator
+	xcrun -sdk iphonesimulator metal -std=metal3.1 -target air64-apple-ios$(IOS_MINIMUM)-simulator -o $@ _build/shaders/$*.metal
+
+priv/shaders/tvos/%.metallib: priv/shaders/%.metallib
+	@mkdir -p priv/shaders/tvos
+	xcrun -sdk appletvos metal -std=metal3.1 -mtvos-version-min=$(IOS_MINIMUM) -o $@ _build/shaders/$*.metal
+
+priv/shaders/tvos_simulator/%.metallib: priv/shaders/%.metallib
+	@mkdir -p priv/shaders/tvos_simulator
+	xcrun -sdk appletvsimulator metal -std=metal3.1 -target air64-apple-tvos$(IOS_MINIMUM)-simulator -o $@ _build/shaders/$*.metal
 
 slang:
 	mkdir -p tools
@@ -132,4 +208,4 @@ priv/shaders/%.metallib: shaders/%.slang shaders/common.slang shaders/shading.sl
 clean:
 	rm -rf $(BUILD_DIR) $(LIBRARY) $(HOST)
 
-.PHONY: all clean slang shaders
+.PHONY: all clean slang shaders shaders-ios static

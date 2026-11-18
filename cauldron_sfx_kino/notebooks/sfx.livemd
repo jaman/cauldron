@@ -1,0 +1,174 @@
+# Sound effects in a notebook
+
+## Section
+
+```elixir
+# The packages are siblings in the Cauldron checkout. With them on Hex,
+# `{:cauldron_sfx_kino, "~> 0.4"}` is all this cell needs.
+# If `__DIR__` is not the notebook's folder in your Livebook, put the absolute path in
+# `package` instead.
+package = Path.expand("..", __DIR__)
+cauldron = Path.expand("..", package)
+
+Mix.install([
+  {:cauldron_core, path: Path.join(cauldron, "cauldron_core")},
+  {:cauldron_sfx_kino, path: package}
+])
+```
+
+> **After changing the packages**, restart the runtime (or re-run this cell with
+> "reinstall dependencies") — a path dependency is compiled once into Livebook's runtime,
+> and an edit on disk does not reach a running one.
+
+## What this notebook is
+
+A game's sound effects are a table: an event name the game plays, and the sound it makes.
+`Cauldron.SFX` is that table as data — a bank, `sfx.json` — and `Cauldron.Audio` uses it
+unchanged:
+
+```elixir
+# bank = Cauldron.SFX.read!("priv/sfx/sfx.json")
+# Cauldron.Audio.start(sounds: Cauldron.SFX.sounds(bank))
+# Cauldron.Audio.play([:fire])
+```
+
+The cell below edits one. The same editor runs in a terminal (`mix cauldron.sfx`) and in a
+browser (`mix cauldron.sfx.web`); all three drive `Cauldron.SFX.Editor`, the state machine
+in `cauldron_core`, and nothing else.
+
+## The editor
+
+This is a widget, not a smart cell: run the cell and the editor appears under it. (A smart
+cell — one you add from Livebook's insert menu — is a different thing, and this package
+does not have one yet.)
+
+Click an event to select it, or use the arrows. **play** renders the sound and plays it in
+the cell — it is the game's own `Cauldron.Audio.Voice`. The buttons shape it:
+
+|                                              |                                                  |
+| -------------------------------------------- | ------------------------------------------------ |
+| `shape`, `pitch`, `decay`, `sweep`, `cutoff` | the tone itself                                  |
+| `attack`, `release`                          | how it starts and ends                           |
+| `+` `-`, `pan`                               | the event's level and place                      |
+| `space`                                      | a cheap room: the sound again, later and quieter |
+| `variant +` / `variant -`                    | another take of the same event, or one fewer     |
+| `preset`                                     | what a new event starts from                     |
+| `delete event`, `write`                      | the bank                                         |
+
+Type a name under the list and **add event** to make a new one; it starts as the preset in
+the summary line. The name is the event the game plays, so `Cauldron.Audio.play([:laser])`
+needs an event called `laser`. **write** writes `sfx.json`, in the notebook's working
+directory.
+
+```elixir
+Cauldron.SFX.Kino.Editor.new()
+```
+
+## Hear every preset, without the widget
+
+This is the quickest way to judge the sound: each preset rendered to a WAV and handed to
+`Kino.Audio`, one tab each.
+
+```elixir
+tabs =
+  for {name, %{recipe: recipe, space: space}} <- Cauldron.SFX.Presets.all() do
+    try do
+      bank =
+        Cauldron.SFX.new()
+        |> Cauldron.SFX.put_event(name, %{variants: [recipe], space: space})
+
+      wav = bank |> Cauldron.SFX.voice(name) |> Cauldron.SFX.Audio.wav()
+
+      {name, Kino.Audio.new(wav, :wav)}
+    rescue
+      error ->
+        {name, Kino.Markdown.new("could not render: #{Exception.message(error)}")}
+    end
+  end
+
+Kino.Layout.tabs(tabs)
+```
+
+`clang` plays a recording from `TuningFork.Kit`, so it is fetched the first time and needs
+network once; the rest are synthesised.
+
+## A recipe that plays a recording
+
+A variant of kind `sample` plays a recording instead of a tone. `sound` names one of the
+kit's hits; `file` is a path, which works offline.
+
+```elixir
+Cauldron.SFX.from_map(%{
+  "events" => %{
+    "clank" => %{
+      "space" => 0.3,
+      "variants" => [%{"kind" => "sample", "sound" => "hh", "gain" => 0.7}]
+    }
+  }
+})
+|> Cauldron.SFX.event("clank")
+```
+
+## If the widget comes up blank, or silent
+
+The widget draws itself with JavaScript and plays through an `<audio>` element, so a
+browser that blocks the sound leaves the controls there to press. If the cell itself is
+empty, this plays the same sound with nothing but Elixir and `Kino.Audio`:
+
+```elixir
+bank = Cauldron.SFX.starter()
+wav = bank |> Cauldron.SFX.voice("fire", variant: 0) |> Cauldron.SFX.Audio.wav()
+
+Kino.Audio.new(wav, :wav, autoplay: true)
+```
+
+## Start from a bank file instead
+
+`new/1` takes a path, so a game's own bank opens here with the effects it already has:
+
+```elixir
+# Cauldron.SFX.Kino.Editor.new("priv/sfx/sfx.json")
+```
+
+A layered event — `explosion` among the presets — is two recipes playing together. Its
+parts are shown but not edited one by one; the whole event's gain, pan, space and variants
+are.
+
+## What the bank holds
+
+An event is a gain, a pan, a space, a priority and its variants. A variant is a recipe: a
+tone, a noise, layers of them, or a recording.
+
+```elixir
+bank = Cauldron.SFX.starter()
+
+bank
+|> Cauldron.SFX.events()
+|> Enum.map(fn name -> {name, length(Cauldron.SFX.event(bank, name).variants)} end)
+```
+
+The recipe behind one of them:
+
+```elixir
+Cauldron.SFX.variant(bank, "fire", 0)
+```
+
+And the sound that recipe makes:
+
+```elixir
+Cauldron.SFX.voice(bank, "fire", variant: 0)
+```
+
+## In the game
+
+```elixir
+# In the game's start-up:
+#   bank = Cauldron.SFX.read!("priv/sfx/sfx.json")
+#   Cauldron.Audio.start(sounds: Cauldron.SFX.sounds(bank))
+#
+# Wherever the event happens:
+#   Cauldron.Audio.play([:fire])
+#
+# An event the game varies — {:bomb, by} — stays in the game's own sounds/0: a bank names
+# sounds, and a compound event is the table's business.
+```

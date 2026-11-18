@@ -6,7 +6,7 @@ defmodule Cauldron2D.Drafter.ServerTest do
 
   defmodule Served do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "SERVED"}
     def atlas, do: :served_test
@@ -15,7 +15,7 @@ defmodule Cauldron2D.Drafter.ServerTest do
     def toggles, do: []
 
     def worlds(_props),
-      do: [%{id: :pit, name: "Pit", world: Cauldron2D.Worlds.world_name(:served_pit), players: 0}]
+      do: [%{id: :pit, name: "Pit", world: Cauldron.Worlds.world_name(:served_pit), players: 0}]
 
     def scene(view),
       do: %{
@@ -35,7 +35,7 @@ defmodule Cauldron2D.Drafter.ServerTest do
   @tag :tmp_dir
   test "the server starts the ssh daemon and the accounts with sound ports, and stops again",
        %{tmp_dir: dir} do
-    :ok = Cauldron2D.Worlds.register(:served_pit, game: Dots)
+    :ok = Cauldron.Worlds.register(:served_pit, game: Dots)
     port = 39_000 + :rand.uniform(900)
 
     assert {:ok, server} =
@@ -65,6 +65,6 @@ defmodule Cauldron2D.Drafter.ServerTest do
              :gen_tcp.connect({127, 0, 0, 1}, port, [:binary, active: false], 2_000)
 
     assert_receive {:DOWN, ^accounts, :process, _pid, _reason}, 5_000
-    Cauldron2D.Worlds.close(:served_pit)
+    Cauldron.Worlds.close(:served_pit)
   end
 end

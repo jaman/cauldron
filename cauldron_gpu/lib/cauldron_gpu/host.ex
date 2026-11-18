@@ -5,8 +5,8 @@ defmodule CauldronGPU.Host do
   return the same values as `CauldronGPU`'s; a caller switches by module.
 
       {:ok, gpu} = CauldronGPU.Host.open(window: false, width: 640, height: 360)
-      cube = CauldronGPU.Host.mesh(gpu, CauldronGPU.Mesh.cube(1.0))
-      CauldronGPU.Host.submit(gpu, [{:instance, 1, %CauldronGPU.Instance{mesh: cube}}])
+      cube = CauldronGPU.Host.mesh(gpu, Cauldron3D.Scene.Mesh.cube(1.0))
+      CauldronGPU.Host.submit(gpu, [{:instance, 1, %Cauldron3D.Scene.Instance{mesh: cube}}])
 
   A server process owns the renderer process and keeps the scene sent to it. When the
   renderer process exits, the `:events` process receives
@@ -26,8 +26,9 @@ defmodule CauldronGPU.Host do
 
   use GenServer
 
-  alias CauldronGPU.{Canvas, Handle, Material, Mesh, Native, Stream, Texture}
-  alias CauldronGPU.Host.Record
+  alias Cauldron3D.Scene.{Canvas, Capabilities, Handle, Material, Mesh, Scatter, Stream, Texture}
+  alias Cauldron3D.Scene.Host.Record
+  alias CauldronGPU.Native
 
   @type t :: %__MODULE__{server: pid(), id: non_neg_integer(), info: CauldronGPU.info()}
 
@@ -62,10 +63,10 @@ defmodule CauldronGPU.Host do
     :exit, _reason -> :ok
   end
 
-  @doc "Sends one tick of changes (see `CauldronGPU.Stream`); a `:tick` is put before them."
+  @doc "Sends one tick of changes (see `Cauldron3D.Scene.Stream`); a `:tick` is put before them."
   @spec submit(t(), [Stream.change()]) :: :ok | {:error, String.t()}
   def submit(%__MODULE__{server: server}, changes) do
-    changes = [:tick | changes]
+    changes = [:tick | CauldronGPU.decoded(changes)]
     call(server, {:submit, changes, IO.iodata_to_binary(Stream.encode(changes))})
   end
 
@@ -73,9 +74,12 @@ defmodule CauldronGPU.Host do
   @spec mesh(t(), Mesh.t()) :: Handle.t()
   def mesh(host, %Mesh{} = mesh), do: put(host, :mesh, &{:mesh, &1, mesh}, [])
 
-  @doc "Uploads a texture and returns its handle."
+  @doc "Uploads a texture and returns its handle. An encoded texture is decoded first (`CauldronGPU.decode/1`)."
   @spec texture(t(), Texture.t()) :: Handle.t()
-  def texture(host, %Texture{} = texture), do: put(host, :texture, &{:texture, &1, texture}, [])
+  def texture(host, %Texture{} = texture) do
+    decoded = CauldronGPU.decode!(texture)
+    put(host, :texture, &{:texture, &1, decoded}, [])
+  end
 
   @doc "Makes a canvas and returns its handle, a texture's."
   @spec canvas(t(), Canvas.t()) :: Handle.t()
@@ -85,6 +89,10 @@ defmodule CauldronGPU.Host do
   @spec material(t(), Material.t()) :: Handle.t()
   def material(host, %Material{} = material),
     do: put(host, :material, &{:material, &1, material}, Material.textures(material))
+
+  @doc "Uploads a scatter and returns its handle."
+  @spec scatter(t(), Scatter.t()) :: Handle.t()
+  def scatter(host, %Scatter{} = scatter), do: put(host, :scatter, &{:scatter, &1, scatter}, [])
 
   @doc "Releases a handle: the renderer frees its object once no scene entry uses it."
   @spec release(t(), Handle.t()) :: :ok
@@ -113,6 +121,27 @@ defmodule CauldronGPU.Host do
       end
     end
   end
+
+  @doc """
+  Sends the calling process every frame the renderer process draws; see
+  `CauldronGPU.stream/2`. After `restart/1` the new renderer streams to the same process.
+  """
+  @spec stream(t(), keyword()) :: :ok | {:error, String.t()}
+  def stream(%__MODULE__{server: server}, opts \\ []) do
+    request =
+      {Keyword.get(opts, :shared_memory, []), Keyword.get(opts, :ahead, 2),
+       Keyword.get(opts, :fps, 60)}
+
+    call(server, {:stream, request})
+  end
+
+  @doc "Stops the frames `stream/2` started."
+  @spec stop_stream(t()) :: :ok | {:error, String.t()}
+  def stop_stream(%__MODULE__{server: server}), do: call(server, {:stop_stream})
+
+  @doc "Tells the renderer one streamed frame has been used; see `CauldronGPU.frame_shown/1`."
+  @spec frame_shown(t()) :: :ok
+  def frame_shown(%__MODULE__{server: server}), do: GenServer.cast(server, :frame_shown)
 
   @doc "The size of the terminal the VM runs in; see `CauldronGPU.terminal_size/0`."
   @spec terminal_size() :: {:ok, map()} | {:error, String.t()}
@@ -164,7 +193,8 @@ defmodule CauldronGPU.Host do
       waiting: %{},
       shared: MapSet.new(),
       next_shared: 0,
-      owners: %{}
+      owners: %{},
+      stream: nil
     }
 
     case start_renderer(state) do
@@ -208,6 +238,20 @@ defmodule CauldronGPU.Host do
     {:reply, {:ok, tag}, %{state | waiting: Map.put(state.waiting, tag, {:capture, caller})}}
   end
 
+  def handle_call({:stream, _request}, _from, %{port: nil} = state),
+    do: {:reply, {:error, "renderer exited"}, state}
+
+  def handle_call({:stream, request}, {caller, _tag} = from, state) do
+    {tag, state} = next_tag(state)
+    command(state, stream_request(tag, request))
+    waiting = Map.put(state.waiting, tag, {:call, from})
+    {:noreply, %{state | waiting: waiting, stream: {caller, request}}}
+  end
+
+  def handle_call({:stop_stream}, from, state) do
+    handle_call({:request, :stop_stream, nil}, from, %{state | stream: nil})
+  end
+
   def handle_call({:request, _kind, _argument}, _from, %{port: nil} = state),
     do: {:reply, {:error, "renderer exited"}, state}
 
@@ -222,7 +266,7 @@ defmodule CauldronGPU.Host do
       {:ok, state} ->
         replay = [:tick | Record.replay(state.record)]
         {_reply, state} = send_stream(state, IO.iodata_to_binary(Stream.encode(replay)))
-        {:reply, :ok, state}
+        {:reply, :ok, resume_stream(state)}
 
       {:error, message} ->
         {:reply, {:error, message}, state}
@@ -230,6 +274,14 @@ defmodule CauldronGPU.Host do
   end
 
   def handle_call(:restart, _from, state), do: {:reply, {:error, "running"}, state}
+
+  @impl GenServer
+  def handle_cast(:frame_shown, %{port: nil} = state), do: {:noreply, state}
+
+  def handle_cast(:frame_shown, state) do
+    command(state, <<11>>)
+    {:noreply, state}
+  end
 
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state),
@@ -325,11 +377,34 @@ defmodule CauldronGPU.Host do
   defp request(:relative_mouse, tag, enabled), do: <<6, tag::32, flag(enabled)>>
   defp request(:resize, tag, {width, height}), do: <<5, tag::32, width::32, height::32>>
   defp request(:frames, tag, nil), do: <<7, tag::32>>
+  defp request(:stop_stream, tag, nil), do: <<10, tag::32>>
+
+  defp stream_request(tag, {names, ahead, fps}) do
+    encoded =
+      for name <- names, into: <<length(names)::8>>, do: <<byte_size(name)::8, name::binary>>
+
+    <<9, tag::32, ahead::32, fps::32, encoded::binary>>
+  end
+
+  defp resume_stream(%{stream: nil} = state), do: state
+
+  defp resume_stream(%{stream: {_receiver, request}} = state) do
+    {tag, state} = next_tag(state)
+    command(state, stream_request(tag, request))
+    state
+  end
 
   defp host_message({:event, event}, state) do
     send(state.events, {:cauldron_gpu, state.id, event})
     state
   end
+
+  defp host_message({:stream, frame}, %{stream: {receiver, _request}} = state) do
+    send(receiver, {:cauldron_gpu, state.id, frame})
+    state
+  end
+
+  defp host_message({:stream, _frame}, state), do: state
 
   defp host_message({:released, name}, state),
     do: %{state | shared: MapSet.delete(state.shared, name)}
@@ -443,6 +518,18 @@ defmodule CauldronGPU.Host do
   defp drop(:mesh), do: :drop_mesh
   defp drop(:texture), do: :drop_texture
   defp drop(:material), do: :drop_material
+  defp drop(:scatter), do: :drop_scatter
   defp flag(true), do: 1
   defp flag(false), do: 0
+
+  defimpl Cauldron3D.Scene.Target do
+    def submit(host, changes), do: @for.submit(host, changes)
+    def mesh(host, mesh), do: @for.mesh(host, mesh)
+    def texture(host, texture), do: @for.texture(host, texture)
+    def canvas(host, canvas), do: @for.canvas(host, canvas)
+    def material(host, material), do: @for.material(host, material)
+    def scatter(host, scatter), do: @for.scatter(host, scatter)
+    def release(host, handle), do: @for.release(host, handle)
+    def capabilities(host), do: Capabilities.from_info(host.info)
+  end
 end

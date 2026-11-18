@@ -9,13 +9,13 @@ Mix project in its own directory of this repository.
 
 A Cauldron game is two modules.
 
-* **The world module** implements `Cauldron2D.Game`. It holds the game's state and changes
+* **The world module** implements `Cauldron.Game`. It holds the game's state and changes
   it. Its callbacks are `init/1`, `join/3`, `leave/2`, `handle_input/3`, `step/2`,
   `view/2` and `drain_events/1`. Every one of them is pure: none reads a clock or draws.
-  `Cauldron2D.World` runs this module at a fixed tick and sends each player their own
+  `Cauldron.World` runs this module at a fixed tick and sends each player their own
   view every tick. A turn-based game starts its world with `tick: :on_input`, so the world
   steps only when input arrives.
-* **The client module** implements `Cauldron2D.Client.Game`. It tells every front end how
+* **The client module** implements `Cauldron.Client.Game`. It tells every front end how
   to show the game. It names the title, the atlas of pictures, the actions and the keys
   that press them, and the worlds a player can join. It turns a view into a scene and a
   hud. It also gives the game's sounds and music.
@@ -25,16 +25,18 @@ lobby, the settings, the world, the summary when play is over, and the guide. Th
 client module works with every front end.
 
 Because the world module is pure, you can test it with no process and no clock.
-`Cauldron2D.Test` joins players, holds actions, runs ticks and reads views and events.
+`Cauldron.Test` joins players, holds actions, runs ticks and reads views and events.
 
 ## Where a game can be played
 
 | Target | Package | How you start it |
 | --- | --- | --- |
 | A terminal | [`cauldron_2d_drafter`](cauldron_2d_drafter) | `Drafter.run(Cauldron2D.Drafter.Client, props: %{game: MyGame.Client})` |
-| A terminal over ssh | [`cauldron_2d_drafter`](cauldron_2d_drafter) | `Cauldron2D.Drafter.Server.start(game: MyGame.Client, port: 2222)` serves accounts, sound and a beacon. `Drafter.Server.start_ssh/2` and `start_telnet/2` serve `Cauldron2D.Drafter.Client` without them |
-| A browser | [`cauldron_2d_net`](cauldron_2d_net) | Forward a path to `Cauldron2D.Net.Pages`. Add a socket that uses `Cauldron2D.Net.Socket` and a channel that uses `Cauldron2D.Net.Channel` |
+| A terminal over ssh | [`cauldron_2d_drafter`](cauldron_2d_drafter) | `Cauldron2D.Drafter.Server.start(game: MyGame.Client, port: 2222)` serves accounts, sound and a beacon. `Cauldron2D.Drafter.Server.start_telnet/2` serves it over telnet without them |
+| A browser | [`cauldron_2d_net`](cauldron_2d_net) | `Cauldron2D.Net.Serve.run(MyGame.Client, argv)` in a mix task serves the game with no web code of its own. In your own endpoint, forward a path to `Cauldron2D.Net.Pages` and add a socket that uses `Cauldron.Net.Socket` and a channel that uses `Cauldron.Net.Channel` with `drawer: Cauldron2D.Net.Drawer`. The server draws each frame, or sends the scene for the browser to draw (`Cauldron2D.Net.Drawing`) |
 | A desktop window | [`cauldron_2d_wx`](cauldron_2d_wx) | `Cauldron2D.Wx.Client.run(game: MyGame.Client, username: "alice")` |
+| A phone or tablet (iOS, Android) | [`cauldron_2d_native`](cauldron_2d_native) with [`cauldron_native`](cauldron_native) | `config :cauldron_2d_native, game: MyGame.Client`, then `mix cauldron_native.build ios --run` or `android --run`. The [mobile releases guide](https://hexdocs.pm/cauldron_native/building_apps.html) walks through it |
+| An app with native controls on a phone or tablet | [`cauldron_native`](cauldron_native) | `config :cauldron_native, app: MyApp.App`, a `CauldronNative.App` whose screens SwiftUI and Jetpack Compose draw, then `mix cauldron_native.build ios --run` or `android --run` |
 | The graphics card, in the terminal pane or its own window | [`cauldron_gpu`](cauldron_gpu) with [`cauldron_2d_drafter`](cauldron_2d_drafter) | Give the scene a `:gpu` function. The terminal client then draws on the card when there is one. The player's Drawing setting, or the picture options `software`, `gpu` and `window`, change that |
 | 3D in a browser | [`cauldron_3d_net`](cauldron_3d_net) | Open a `Cauldron3D.Net.Scene` and serve `Cauldron3D.Net.Page`. three.js draws it |
 
@@ -51,19 +53,22 @@ later runs start straight away.
 
 ## The other pieces
 
-**Sound and music.** `Cauldron2D.Audio` plays a game's events as sound. It runs on
+**Sound and music.** `Cauldron.Audio` plays a game's events as sound. It runs on
 [`tuning_fork`](https://hexdocs.pm/tuning_fork). An event placed at `{x, y}` is quieter
 and panned the farther it is from the listener. Music is pieces in sections and layers,
-played by `Cauldron2D.Audio.Music`. Your client module's `sounds/0`, `music/0` and `cue/2`
+played by `Cauldron.Audio.Music`. Your client module's `sounds/0`, `music/0` and `cue/2`
 provide them. Add `tuning_fork_speaker` to your deps to hear sound on the local machine.
 
 **Pictures and art.**
 
 * `Cauldron2D.Atlas` holds a game's pictures. Build an atlas in code with `Atlas.new/2`
   and `Atlas.put/4`, or load a directory of `.png` and `.pic` files with `Atlas.load/3`.
-* [`linocut`](linocut) writes pictures as code (`Linocut.sprite/3`) and reads `.pic`
-  files. It derives one picture from another with a line, such as a recolour or a flip.
-  `Linocut.Font` draws text onto a picture with a small pixel font.
+* `Cauldron2D.Picture` writes pictures as code (`Cauldron2D.Picture.sprite/3`), reads
+  `.png` and `.pic` files, and flips, turns, tints, scales and cuts them into frames.
+  `Cauldron2D.Shapes` draws lines, rectangles, circles and polygons;
+  `Cauldron2D.Raster` is a picture's pixels; `Cauldron2D.Font` measures and draws text in
+  an atlas's pixel fonts. An atlas derives one art from another with a line, such as a
+  recolour or a flip (`Cauldron2D.Atlas.Manifest`).
 * The easel packages edit an art directory. [`cauldron_2d_easel`](cauldron_2d_easel)
   is the editing as data. [`cauldron_2d_easel_drafter`](cauldron_2d_easel_drafter) is the
   editor in a terminal (`mix cauldron.easel`). [`cauldron_2d_easel_web`](cauldron_2d_easel_web)
@@ -77,11 +82,18 @@ provide them. Add `tuning_fork_speaker` to your deps to hear sound on the local 
 * [`cauldron_3d`](cauldron_3d) is a 3D engine in pure Elixir. It draws polygons, meshes,
   billboards and BSP worlds into indexed-colour frames.
 * [`cauldron_3d_formats`](cauldron_3d_formats) reads the Quake family of files into
-  `cauldron_3d`: paks, maps, models, sprites, textures and sounds.
+  `cauldron_3d`: paks, maps, models, sprites, textures and sounds. It also reads glTF
+  2.0 (`.gltf`, `.glb`) with meshes, materials, skins and the node tree, and VRM
+  avatars with their humanoid bones and swinging bone chains.
 * [`quake_c`](quake_c) is a QuakeC virtual machine. It runs compiled QuakeC programs
   against builtins you supply.
 * [`cauldron_gpu`](cauldron_gpu) draws 3D scenes on the graphics card with Metal or Vulkan.
+* [`cauldron_3d_scene`](cauldron_3d_scene) is a 3D scene as plain Elixir: meshes,
+  materials, lights, cameras, sprites and the change stream, drawn by `cauldron_gpu`, by a
+  browser, or on the CPU (`Cauldron3D.Scene.Software`) where there is no graphics card.
 * [`cauldron_3d_net`](cauldron_3d_net) sends a `cauldron_gpu` scene to browsers.
+* [`cauldron_3d_kino`](cauldron_3d_kino) shows a `cauldron_gpu` scene in a Livebook
+  cell, drawn by the browser.
 
 ## Your first game
 
@@ -93,9 +105,9 @@ up coins. It uses `cauldron_2d`, `cauldron_2d_drafter` and `linocut`.
 ```elixir
 def deps do
   [
-    {:cauldron_2d, "~> 0.2"},
-    {:cauldron_2d_drafter, "~> 0.2"},
-    {:linocut, "~> 0.2"},
+    {:cauldron_2d, "~> 0.4"},
+    {:cauldron_2d_drafter, "~> 0.4"},
+    {:linocut, "~> 0.3"},
     {:tuning_fork_speaker, "~> 0.1"}
   ]
 end
@@ -105,14 +117,14 @@ end
 
 The state is a map. `step/2` moves each player by the actions they hold. When a player
 reaches the coin, the score goes up, the coin moves, and a `{:coin, {x, y}}` event is
-recorded. `Cauldron2D.Rng` keeps the random numbers in the state, so the same seed plays
+recorded. `Cauldron.Rng` keeps the random numbers in the state, so the same seed plays
 the same game.
 
 ```elixir
 defmodule Gather.Game do
-  @behaviour Cauldron2D.Game
+  @behaviour Cauldron.Game
 
-  alias Cauldron2D.Rng
+  alias Cauldron.Rng
 
   @size {16, 10}
   @speed 6.0
@@ -186,16 +198,16 @@ end
 ### 3. Test it without a world
 
 ```elixir
-driver = Cauldron2D.Test.new(Gather.Game, hz: 30)
-{:ok, driver} = Cauldron2D.Test.join(driver, :alice, %{username: "alice"})
-driver = driver |> Cauldron2D.Test.hold(:alice, [:right, :down]) |> Cauldron2D.Test.tick(40)
-Cauldron2D.Test.view(driver, :alice).me.pos
+driver = Cauldron.Test.new(Gather.Game, hz: 30)
+{:ok, driver} = Cauldron.Test.join(driver, :alice, %{username: "alice"})
+driver = driver |> Cauldron.Test.hold(:alice, [:right, :down]) |> Cauldron.Test.tick(40)
+Cauldron.Test.view(driver, :alice).me.pos
 #=> {9.0, 9.0}
 ```
 
 ### 4. Write the client module
 
-The atlas has three pictures, drawn with `Linocut.sprite/3`. A tile here is 8 pixels
+The atlas has three pictures, drawn with `Cauldron2D.Picture.sprite/3`. A tile here is 8 pixels
 square. Each picture also has a glyph and a colour for terminals without images.
 
 `scene/1` describes what to draw. `cell` gives each tile as `{base, overlays, tint}`, so
@@ -205,9 +217,10 @@ players move smoothly between tiles. The one world in `worlds/1` is
 
 ```elixir
 defmodule Gather.Client do
-  @behaviour Cauldron2D.Client.Game
+  use Cauldron2D.Client.Game
 
-  alias Cauldron2D.Atlas
+  alias Cauldron.Audio.{Envelope, Voice}
+  alias Cauldron2D.{Atlas, Picture}
 
   @impl true
   def title, do: %{name: "GATHER", tagline: "pick up the coins"}
@@ -219,15 +232,15 @@ defmodule Gather.Client do
 
   defp install_atlas do
     Atlas.new(:gather, tile: 8)
-    |> Atlas.put(:grass, Linocut.sprite(String.duplicate("GGGGGGGG\n", 8), G: "#2e6b34"),
+    |> Atlas.put(:grass, Picture.sprite(String.duplicate("GGGGGGGG\n", 8), G: "#2e6b34"),
       glyph: ". ",
       color: {70, 140, 80}
     )
-    |> Atlas.put(:coin, Linocut.sprite("..YY..\n.YYYY.\n.YYYY.\n..YY..", Y: "#ffd040"),
+    |> Atlas.put(:coin, Picture.sprite("..YY..\n.YYYY.\n.YYYY.\n..YY..", Y: "#ffd040"),
       glyph: "()",
       color: {255, 208, 64}
     )
-    |> Atlas.put(:hero, Linocut.sprite(".BB.\nBBBB\n.BB.\nB..B", B: "#6cb8ff"),
+    |> Atlas.put(:hero, Picture.sprite(".BB.\nBBBB\n.BB.\nB..B", B: "#6cb8ff"),
       glyph: "@ ",
       color: {108, 184, 255}
     )
@@ -283,7 +296,7 @@ defmodule Gather.Client do
   def cue(_view, _screen), do: nil
 
   defp voice(:coin) do
-    TuningFork.Voice.new(shape: :sine, freq: 880.0, envelope: TuningFork.Envelope.hit(0.15), gain: 0.3)
+    Voice.new(shape: :sine, freq: 880.0, envelope: Envelope.hit(0.15), gain: 0.3)
   end
 
   defp voice(_event), do: nil
@@ -292,20 +305,14 @@ end
 
 ### 5. Run it in the terminal
 
-Register the surface widget with drafter, then run the terminal client with your client
-module. A mix task is a convenient place for this:
+Run the terminal client with your client module from a mix task:
 
 ```elixir
 defmodule Mix.Tasks.Gather do
   use Mix.Task
 
   @impl Mix.Task
-  def run(_argv) do
-    Mix.Task.run("app.start")
-    Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
-    Drafter.Widget.Registry.register(Cauldron2D.Drafter.Surface)
-    Drafter.run(Cauldron2D.Drafter.Client, props: %{game: Gather.Client, username: "alice"})
-  end
+  def run(argv), do: Cauldron2D.Drafter.Play.run(Gather.Client, argv, name: "alice")
 end
 ```
 
@@ -315,10 +322,13 @@ your field. Move with the arrows or WASD. Press `Esc` to go back a screen.
 ### Where to go next
 
 * [Your first game](cauldron_2d/guides/tutorial.md) builds
-  [`examples/cistern`](examples/cistern) step by step. It adds art from `.pic` files,
+  [`cauldron_examples/games/cistern`](cauldron_examples/games/cistern) step by step. It adds art from `.pic` files,
   settings, music, shared worlds, a robot player, the browser and the window.
 * To serve the same game in a browser, see [`cauldron_2d_net`](cauldron_2d_net/README.md).
 * To open it in a window, see [`cauldron_2d_wx`](cauldron_2d_wx/README.md).
+* To put it on a phone or tablet, see the
+  [mobile releases guide](https://hexdocs.pm/cauldron_native/building_apps.html)
+  ([in this repository](cauldron_native/guides/building_apps.md)).
 * To serve it over ssh, see [`cauldron_2d_drafter`](cauldron_2d_drafter/README.md).
 * For the engine's modules (camera, collision, maps, projections, robots, replay), see
   [`cauldron_2d`](cauldron_2d/README.md).
@@ -332,31 +342,48 @@ picture as text and as code, an animation, and a directory installed as an atlas
 
 | Package | What it does |
 | --- | --- |
-| [`cauldron_2d`](cauldron_2d) | The 2D engine. It has tiles, sprites, the camera, physics, collision, input, worlds, players, replay and audio. It has no terminal or UI code |
+| [`cauldron_core`](cauldron_core) | The engine every game runs on, with no way of drawing: games and worlds, players, play across machines, replay, input, menus, the client side every front end shares, sound and saving |
+| [`cauldron_2d`](cauldron_2d) | Draws tile worlds: tiles, sprites, atlases, the camera, the 2D projections, maps, grids, 2D physics and collision. It has no terminal or UI code |
 | [`cauldron_2d_drafter`](cauldron_2d_drafter) | Plays a game in a terminal, on [drafter](https://hexdocs.pm/drafter). It has a surface widget, a ready-made client and an ssh server |
-| [`cauldron_2d_net`](cauldron_2d_net) | Plays a game in a browser. It has a Phoenix channel, socket, pages and API, and the browser script `cauldron.js`. Elixir clients use it to join a world on another machine |
+| [`cauldron_net`](cauldron_net) | A world on the network, whatever the game draws with: the Phoenix channel and socket, the player sessions behind them, the HTTP API, and the links Elixir clients join a world on another machine by. A drawer decides what each frame looks like on the wire |
+| [`cauldron_2d_net`](cauldron_2d_net) | Plays a 2D game in a browser: the drawer that sends each scene as a picture or as scene data, the pages, the browser script `cauldron.js`, and `Serve`, which serves a game with no web code of its own |
 | [`cauldron_2d_wx`](cauldron_2d_wx) | Plays a game in a desktop window, with wx |
+| [`cauldron_2d_native`](cauldron_2d_native) | Plays a game on a phone or tablet: the game's screens and worlds, an on-screen controller, game controllers, touch |
+| [`cauldron_native`](cauldron_native) | Builds any Elixir release as an iOS or Android app: the runtime inside the app, the screen, touch and controllers, signing, installing. Apps that are not games show SwiftUI and Jetpack Compose controls written in Elixir (`CauldronNative.App`) |
 | [`linocut`](linocut) | Writes pictures as code and loads them from files. It derives new pictures from old ones and draws text with a pixel font |
+| [`cauldron_2d_assets`](cauldron_2d_assets) | Makes a game's art with image models through NxDiffusion Studio: asked for in an `assets.exs`, chosen from sheets of candidates, finished as pixel art |
 | [`cauldron_2d_easel`](cauldron_2d_easel) | Edits an atlas as data: pictures, palettes, frames and undo. It reads and writes an art directory with its manifest |
 | [`cauldron_2d_easel_drafter`](cauldron_2d_easel_drafter) | The atlas editor in a terminal (`mix cauldron.easel`). It also has a sector map editor (`mix cauldron.sectors`) |
 | [`cauldron_2d_easel_web`](cauldron_2d_easel_web) | The atlas editor in a browser, with LiveView |
 | [`cauldron_2d_easel_kino`](cauldron_2d_easel_kino) | The atlas editor in a Livebook cell. It shows pictures, sheets and animations as images |
+| [`cauldron_sfx`](cauldron_sfx) | Edits a game's sound effects in a terminal (`mix cauldron.sfx`): plays each event and changes its recipe as you listen |
+| [`cauldron_sfx_web`](cauldron_sfx_web) | The sound-effect editor in a browser, with LiveView (`mix cauldron.sfx.web`): the same editor, sound pushed to the page |
+| [`cauldron_sfx_kino`](cauldron_sfx_kino) | The sound-effect editor in a Livebook cell: the same editor, sound played by the notebook's browser |
 | [`cauldron_2d_gamemaker`](cauldron_2d_gamemaker) | Reads a GameMaker game's data file: sprites, texture pages, tilesets, objects, rooms, sounds, fonts and paths. It can also run the game |
 | [`cauldron_3d`](cauldron_3d) | A 3D engine in pure Elixir. It has cameras, polygons, keyframed meshes, billboards, and BSP worlds with lightmaps and collision |
-| [`cauldron_3d_formats`](cauldron_3d_formats) | Reads Quake and Half-Life files into `cauldron_3d`: paks, pk3s, maps, models, sprites, WADs, TGA, BMP and WAVE |
+| [`cauldron_3d_formats`](cauldron_3d_formats) | Reads Quake and Half-Life files into `cauldron_3d`: paks, pk3s, maps, models, sprites, WADs, TGA, BMP and WAVE. Reads glTF 2.0 and VRM models: meshes, materials, skins, and VRM humanoid bones and swinging chains |
 | [`quake_c`](quake_c) | A QuakeC virtual machine. It runs id's and FTE's compiled programs against the host's builtins |
 | [`cauldron_gpu`](cauldron_gpu) | Draws 3D on the graphics card with Metal and Vulkan. It draws to a window or to offscreen frames for the terminal, and converts BSP worlds, models and Doom sector maps |
+| [`cauldron_3d_scene`](cauldron_3d_scene) | A 3D scene with no native code, drawn by any renderer: meshes, textures, materials, instances, lights, cameras, sprites, the change stream and its encoding, and glTF conversion. It also draws a scene on the CPU, with `cauldron_3d`, where there is no graphics card |
 | [`cauldron_3d_net`](cauldron_3d_net) | Sends a `cauldron_gpu` scene to browsers over a Phoenix channel. A three.js client draws it |
+| [`cauldron_3d_kino`](cauldron_3d_kino) | Shows a `cauldron_gpu` scene in a Livebook cell. The browser draws it with three.js |
 
 ## Examples
 
+The examples live in [`cauldron_examples`](cauldron_examples), each its own Mix project.
+Its README lists them by technique as well.
+
 | Example | What it shows |
 | --- | --- |
-| [`examples/cistern`](examples/cistern) | The tutorial's game. It uses every 2D package and has tests |
-| [`examples/town`](examples/town) | A town you walk top-down, isometric or in first person. It uses the engine's projections, standing art with doors, villagers and a game controller |
-| [`examples/beast`](examples/beast) | A side-scroller with parallax layers. A runner crosses endless terrain while bats and crawlers attack |
-| [`examples/megablast`](examples/megablast) | A vertical shooter with parallax. Waves of creatures fly in formation, with music from tuning_fork |
-| [`examples/parade`](examples/parade) | A courtyard of knights. Spells are aimed and cast as areas, and `Cauldron2D.Route` finds paths |
+| [`cauldron_examples/games/cistern`](cauldron_examples/games/cistern) | The tutorial's game: catch a storm cloud's rain in three jars. It uses every 2D package and has tests |
+| [`cauldron_examples/games/cistern_complete`](cauldron_examples/games/cistern_complete) | Cistern finished: pouring, the Squall's moods, hail, lightning, versus, its own title, menus and hud, art made with image models |
+| [`cauldron_examples/games/town`](cauldron_examples/games/town) | A town you walk top-down, isometric or in first person. It uses the engine's projections, standing art with doors, villagers and a game controller |
+| [`cauldron_examples/games/beast`](cauldron_examples/games/beast) | An action platformer across four hand-built lands: combos, rolls, creatures that show their blows, four bosses, art made with image models and animated from video |
+| [`cauldron_examples/games/megablast`](cauldron_examples/games/megablast) | A vertical shooter: five stages, guardians and multi-part bosses, chains, credits and a shop, art made with image models |
+| [`cauldron_examples/games/parade`](cauldron_examples/games/parade) | A courtyard of knights. Spells are aimed and cast as areas, and `Cauldron2D.Route` finds paths |
+| [`cauldron_examples/3d/courtyard`](cauldron_examples/3d/courtyard) | Lit 3D scenes drawn by the graphics card in the terminal or a window, with a character walked by keys, mouse or controller under a camera that follows her |
+| [`cauldron_examples/3d/gpu_showcase`](cauldron_examples/3d/gpu_showcase) | `cauldron_gpu` in a window: the lit courtyard, ray tracing and upscaling, a load test, and the showcase as a program of its own |
+| [`cauldron_examples/3d/web_3d`](cauldron_examples/3d/web_3d) | The courtyard served to a browser by `cauldron_3d_net` |
 
 ## Working from this repository
 
@@ -366,11 +393,24 @@ dependencies one level up. Run `mix test`, `mix credo --strict` and
 `mix format --check-formatted` inside each package. Each package's documentation is on
 [hexdocs.pm](https://hexdocs.pm/cauldron_2d).
 
+The other documents at this level are working notes for the people building Cauldron,
+not documentation of the packages:
+
+* `LIBRARY_GAPS.md` — what the packages offer against what their documentation says,
+  what other 2D libraries provide, and what a game is made to take on
+* `ENGINE_ADDITIONS.md` — design notes for pieces the engine does not have yet
+* `GAMEMAKER_DESIGN.md` — how GameMaker games are read and run
+* `GAMES_OVERHAUL.md` — the overhaul of Megablast, Beast and Cistern
+* `MOBILE.md` — the plan for `cauldron_ios` and `cauldron_android`, the native
+  interop packages that take games and apps to Android and iOS
+* `THE_TOWER.md` — a game idea
+* `STATE.md` — the record of work done to the packages
+
 ## Built with it
 
 * ExPilot: multiplayer XPilot over ssh, in a browser and in a window.
 * Carom: real-time Arkanoid on `Cauldron2D.Drafter.Client`.
-* Scriber: a turn-based roguelike in a `Cauldron2D.World` stepped on input.
+* Scriber: a turn-based roguelike in a `Cauldron.World` stepped on input.
 * ElixirDoom: Doom on the sector maps of `cauldron_2d`. It is its own GPL package.
 * ElixirQuake: Quake on `cauldron_3d`, with its QuakeC run on `quake_c`. It is its own GPL package.
 * ElixirHalfLife: Half-Life with FreeHL's QuakeC on `quake_c`. It is its own GPL package.

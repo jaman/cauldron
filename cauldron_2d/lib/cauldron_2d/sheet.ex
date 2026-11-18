@@ -14,7 +14,7 @@ defmodule Cauldron2D.Sheet do
   """
 
   alias Cauldron2D.Atlas
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @columns 16
 

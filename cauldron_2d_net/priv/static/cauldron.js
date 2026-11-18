@@ -61,23 +61,26 @@
     this.cssTile = scale;
     this.void = "#000000";
     this.sheet = null;
-    this.image = null;
-    this.map = null;
     this.frame = null;
-    this.origin = [0, 0];
-    this.pan = [0, 0];
-    this.chunks = {};
-    this.chunkKey = null;
-    this.chunkTiles = 1;
-    this.chunkUse = 0;
-    this.animated = [];
+    this.drawing = { world: "server", screen: "server" };
+    this.picture = null;
+    this.overlay = null;
+    this.atlas = null;
+    this.reader = null;
+    this.view = null;
+    this.pending = 0;
+    this.waiting = [];
+    this.scratch = global.document.createElement("canvas");
+    this.screenCanvas = global.document.createElement("canvas");
+    this.drawnAt = 0;
   }
 
-  Renderer.prototype.at = function (index) {
-    var anim = this.sheet && this.sheet.anim && this.sheet.anim[index];
-    if (!anim) return index;
-    var now = (global.performance && global.performance.now) ? global.performance.now() : Date.now();
-    return anim.indices[Math.floor(now * anim.fps / 1000) % anim.indices.length];
+  Renderer.prototype.serverDrawn = function () {
+    return this.drawing.world === "server";
+  };
+
+  Renderer.prototype.now = function () {
+    return global.performance && global.performance.now ? global.performance.now() : Date.now();
   };
 
   Renderer.prototype.setTile = function (cssTile) {
@@ -85,77 +88,27 @@
     this.scale = cssTile * this.ratio;
   };
 
-  var CHUNK_PIXELS = 1024;
-  var CHUNKS_KEPT = 16;
-
-  Renderer.prototype.refreshChunks = function () {
-    var key = this.scale + "/" + this.map.width + "x" + this.map.height;
-    if (this.chunkKey === key && this.chunkImage === this.image && this.chunkMap === this.map) return;
-    this.chunks = {};
-    this.chunkKey = key;
-    this.chunkImage = this.image;
-    this.chunkMap = this.map;
-    this.chunkTiles = Math.max(1, Math.ceil(CHUNK_PIXELS / this.scale));
-    var anim = this.sheet.anim || {};
-    var animated = [];
-    for (var y = 0; y < this.map.height; y++) {
-      var row = this.map.rows[y];
-      for (var x = 0; x < this.map.width; x++) {
-        if (row[x] && anim[row[x]]) animated.push([x, y, row[x]]);
-      }
-    }
-    this.animated = animated;
-  };
-
-  Renderer.prototype.chunk = function (cx, cy) {
-    var key = cx + "," + cy;
-    var kept = this.chunks[key];
-    if (kept) { kept.used = ++this.chunkUse; return kept.canvas; }
-    var map = this.map;
-    var scale = this.scale;
-    var tiles = this.chunkTiles;
-    var anim = this.sheet.anim || {};
-    var tile = this.sheet.tile;
-    var left = Math.round(cx * tiles * scale);
-    var top = Math.round(cy * tiles * scale);
-    var canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round((cx + 1) * tiles * scale) - left + 1);
-    canvas.height = Math.max(1, Math.round((cy + 1) * tiles * scale) - top + 1);
+  function pixels(image) {
+    var canvas = global.document.createElement("canvas");
+    canvas.width = image.width;
+    canvas.height = image.height;
     var context = canvas.getContext("2d");
-    context.imageSmoothingEnabled = false;
-    for (var y = 0; y < tiles && cy * tiles + y < map.height; y++) {
-      var row = map.rows[cy * tiles + y];
-      for (var x = 0; x < tiles && cx * tiles + x < map.width; x++) {
-        var index = row[cx * tiles + x];
-        if (!index || anim[index]) continue;
-        var frame = this.sheet.frames[index];
-        if (!frame) continue;
-        context.drawImage(this.image, frame[0], frame[1], tile, tile, Math.round((cx * tiles + x) * scale) - left, Math.round((cy * tiles + y) * scale) - top, Math.ceil(scale), Math.ceil(scale));
-      }
-    }
-    var keys = Object.keys(this.chunks);
-    if (keys.length >= CHUNKS_KEPT) {
-      var oldest = keys.reduce(function (a, b) { return this.chunks[a].used < this.chunks[b].used ? a : b; }.bind(this));
-      delete this.chunks[oldest];
-    }
-    this.chunks[key] = { canvas: canvas, used: ++this.chunkUse };
-    return canvas;
+    context.drawImage(image, 0, 0);
+    return context.getImageData(0, 0, image.width, image.height).data;
+  }
+
+  Renderer.prototype.held = function (done) {
+    var self = this;
+    this.pending += 1;
+    return function () {
+      done.apply(null, arguments);
+      self.pending -= 1;
+      if (self.pending === 0) { var waiting = self.waiting; self.waiting = []; waiting.forEach(function (fn) { fn(); }); }
+    };
   };
 
-  Renderer.prototype.drawStatic = function (context, lx, ly) {
-    var tiles = this.chunkTiles;
-    var span = tiles * this.scale;
-    var columns = Math.ceil(this.map.width / tiles);
-    var rows = Math.ceil(this.map.height / tiles);
-    var firstX = Math.max(0, Math.floor(-lx / span));
-    var lastX = Math.min(columns - 1, Math.floor((this.canvas.width - lx) / span));
-    var firstY = Math.max(0, Math.floor(-ly / span));
-    var lastY = Math.min(rows - 1, Math.floor((this.canvas.height - ly) / span));
-    for (var cy = firstY; cy <= lastY; cy++) {
-      for (var cx = firstX; cx <= lastX; cx++) {
-        context.drawImage(this.chunk(cx, cy), Math.round(lx) + Math.round(cx * span), Math.round(ly) + Math.round(cy * span));
-      }
-    }
+  Renderer.prototype.whenReady = function (fn) {
+    if (this.pending === 0) fn(); else this.waiting.push(fn);
   };
 
   Renderer.prototype.setSheet = function (sheet) {
@@ -163,9 +116,73 @@
     this.sheet = sheet;
     if (sheet.void) this.void = sheet.void;
     if (!this.scale) this.scale = sheet.tile;
+    if (!global.CauldronDraw) return;
     var image = new Image();
-    image.onload = function () { self.image = image; };
+    image.onload = this.held(function () {
+      self.atlas = global.CauldronDraw.atlas(sheet, pixels(image), image.width, image.height);
+      self.reader = global.CauldronDraw.reader(self.atlas);
+    });
     image.src = sheet.url;
+  };
+
+  Renderer.prototype.addTinted = function (tinted) {
+    var self = this;
+    var image = new Image();
+    image.onload = this.held(function () {
+      self.whenAtlas(function () { self.atlas.addTinted(tinted.art, tinted.tint, tinted.index, pixels(image), image.width, image.height); });
+    });
+    image.src = "data:image/png;base64," + tinted.png;
+  };
+
+  Renderer.prototype.addTintedCell = function (cell) {
+    var self = this;
+    var image = new Image();
+    image.onload = this.held(function () {
+      self.whenAtlas(function () { self.atlas.addTintedCell(cell.base, cell.overlays, cell.tint, cell.index, pixels(image), image.width, image.height); });
+    });
+    image.src = "data:image/png;base64," + cell.png;
+  };
+
+  Renderer.prototype.whenAtlas = function (fn) {
+    var self = this;
+    if (this.atlas) fn(); else this.waiting.push(function () { self.whenAtlas(fn); });
+  };
+
+  Renderer.prototype.setScene = function (payload) {
+    var self = this;
+    this.whenReady(function () {
+      if (!self.reader) return;
+      self.view = self.reader.read(payload);
+      self.screenDrawn = null;
+    });
+  };
+
+  Renderer.prototype.setPicture = function (buffer) {
+    this.nextPicture = buffer;
+    if (!this.decoding) this.decodeNext();
+  };
+
+  Renderer.prototype.decodeNext = function () {
+    var self = this;
+    var buffer = this.nextPicture;
+    if (!buffer) { this.decoding = false; return; }
+    this.nextPicture = null;
+    this.decoding = true;
+    global.createImageBitmap(new Blob([buffer], { type: "image/png" })).then(function (bitmap) {
+      if (self.picture && self.picture.close) self.picture.close();
+      self.picture = bitmap;
+      self.screenDrawn = null;
+      self.decodeNext();
+    }, function () { self.decodeNext(); });
+  };
+
+  Renderer.prototype.setOverlay = function (buffer) {
+    var self = this;
+    if (!buffer || buffer.byteLength === 0) { this.overlay = null; return; }
+    global.createImageBitmap(new Blob([buffer], { type: "image/png" })).then(function (bitmap) {
+      if (self.overlay && self.overlay.close) self.overlay.close();
+      self.overlay = bitmap;
+    });
   };
 
   Renderer.prototype.fit = function (cssTile, ratio) {
@@ -182,86 +199,9 @@
     this.context.imageSmoothingEnabled = false;
   };
 
-  Renderer.prototype.viewport = function () {
-    return [this.canvas.width / this.scale, this.canvas.height / this.scale];
-  };
-
-  Renderer.prototype.sprite = function (index, x, y) {
-    if (index <= 0 || !this.image) return;
-    var frame = this.sheet.frames[this.at(index)];
-    if (!frame) return;
-    var tile = this.sheet.tile;
-    this.context.drawImage(this.image, frame[0], frame[1], tile, tile, Math.round(x), Math.round(y), this.scale, this.scale);
-  };
-
-  Renderer.prototype.draw = function () {
-    var context = this.context;
-    context.fillStyle = this.void;
-    context.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    if (!this.frame || !this.map || !this.sheet) return;
-
-    var view = this.viewport();
-    var focus = this.frame.focus;
-    var originX = focus[0] + this.pan[0] - view[0] / 2;
-    var originY = focus[1] + this.pan[1] - view[1] / 2;
-    var map = this.map;
-    this.origin = [originX, originY];
-
-    if (this.image) {
-      this.refreshChunks();
-      var layerWidth = map.width * this.scale;
-      var layerHeight = map.height * this.scale;
-      var copies = map.wrap ? [[0, 0], [map.width, 0], [-map.width, 0], [0, map.height], [0, -map.height], [map.width, map.height], [-map.width, -map.height], [map.width, -map.height], [-map.width, map.height]] : [[0, 0]];
-      for (var c = 0; c < copies.length; c++) {
-        var lx = (copies[c][0] - originX) * this.scale;
-        var ly = (copies[c][1] - originY) * this.scale;
-        if (lx > this.canvas.width || ly > this.canvas.height || lx + layerWidth < 0 || ly + layerHeight < 0) continue;
-        this.drawStatic(context, lx, ly);
-        for (var a = 0; a < this.animated.length; a++) {
-          var cell = this.animated[a];
-          this.sprite(cell[2], lx + cell[0] * this.scale, ly + cell[1] * this.scale);
-        }
-      }
-    }
-
-    var movers = this.frame.movers;
-    for (var i = 0; i < movers.length; i++) {
-      var mover = movers[i];
-      this.mover(mover[0], mover[1], mover[2], originX, originY, view, map);
-    }
-
-    var labels = this.frame.labels || [];
-    for (var l = 0; l < labels.length; l++) {
-      var label = labels[l];
-      this.label(label[0], label[1], label[2], label[3], label[4], originX, originY, view, map);
-    }
-  };
-
-  Renderer.prototype.label = function (text, x, y, colour, scale, originX, originY, view, map) {
-    var offsets = map.wrap ? [[0, 0], [map.width, 0], [-map.width, 0], [0, map.height], [0, -map.height]] : [[0, 0]];
-    var context = this.context;
-    var size = Math.max(6, Math.round(this.scale * 0.45 * (scale || 1)));
-    context.font = size + "px monospace";
-    context.textBaseline = "top";
-    context.fillStyle = colour || "#ffffff";
-    for (var i = 0; i < offsets.length; i++) {
-      var px = x + offsets[i][0] - originX;
-      var py = y + offsets[i][1] - originY;
-      if (px > -4 && py > -2 && px < view[0] + 1 && py < view[1] + 1) {
-        context.fillText(text, Math.round(px * this.scale), Math.round(py * this.scale));
-      }
-    }
-  };
-
-  Renderer.prototype.mover = function (index, x, y, originX, originY, view, map) {
-    var offsets = map.wrap ? [[0, 0], [map.width, 0], [-map.width, 0], [0, map.height], [0, -map.height], [map.width, map.height], [-map.width, -map.height], [map.width, -map.height], [-map.width, map.height]] : [[0, 0]];
-    for (var i = 0; i < offsets.length; i++) {
-      var px = x + offsets[i][0] - originX;
-      var py = y + offsets[i][1] - originY;
-      if (px > -1 && py > -1 && px < view[0] && py < view[1]) {
-        this.sprite(index, px * this.scale, py * this.scale);
-      }
-    }
+  Renderer.prototype.pane = function () {
+    var tile = (this.sheet ? this.sheet.tile : 16) * (this.ratio || 1);
+    return [Math.max(1, Math.round(this.canvas.width / tile)), Math.max(1, Math.round(this.canvas.height / tile))];
   };
 
   Renderer.prototype.pixelAt = function (clientX, clientY) {
@@ -269,187 +209,80 @@
     return [(clientX - rect.left) * (this.canvas.width / rect.width), (clientY - rect.top) * (this.canvas.height / rect.height)];
   };
 
-  Renderer.prototype.worldAt = function (clientX, clientY) {
-    if (!this.scale) return null;
+  Renderer.prototype.fraction = function (clientX, clientY) {
     var pixel = this.pixelAt(clientX, clientY);
-    return [this.origin[0] + pixel[0] / this.scale, this.origin[1] + pixel[1] / this.scale];
+    return [pixel[0] / this.canvas.width, pixel[1] / this.canvas.height];
   };
 
-  Renderer.prototype.panBy = function (dx, dy) {
-    this.pan = [this.pan[0] + dx, this.pan[1] + dy];
+  Renderer.prototype.cover = function (image) {
+    this.context.imageSmoothingEnabled = false;
+    this.context.drawImage(image, 0, 0, this.canvas.width, this.canvas.height);
   };
 
-  Renderer.prototype.keepUnder = function (world, clientX, clientY) {
-    if (!this.frame || !world) return;
-    var pixel = this.pixelAt(clientX, clientY);
-    var view = this.viewport();
-    var focus = this.frame.focus;
-    this.pan = [world[0] - pixel[0] / this.scale + view[0] / 2 - focus[0], world[1] - pixel[1] / this.scale + view[1] / 2 - focus[1]];
+  Renderer.prototype.put = function (target, picture) {
+    if (target.width !== picture.width) target.width = picture.width;
+    if (target.height !== picture.height) target.height = picture.height;
+    target.getContext("2d").putImageData(new ImageData(picture.data, picture.width, picture.height), 0, 0);
+    return target;
   };
 
-  function Input(keymap, steering, onChange) {
-    this.keymap = keymap;
-    this.steering = steering;
-    this.onChange = onChange;
+  Renderer.prototype.draw = function () {
+    var context = this.context;
+    context.fillStyle = this.void;
+    context.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    var D = global.CauldronDraw;
+    if (this.serverDrawn()) {
+      if (!this.picture) return;
+      this.cover(this.picture);
+      if (this.drawing.screen === "client" && this.view && D) this.drawClientScreen(this.picture.width, this.picture.height);
+      return;
+    }
+    if (!this.view || !D) return;
+    var now = this.now();
+    if (!this.scened || now - this.drawnAt >= 33) {
+      this.scened = this.put(this.scratch, D.picturePane(this.view, this.paneDrawn || this.pane(), now));
+      this.drawnAt = now;
+    }
+    this.cover(this.scened);
+    if (this.overlay) this.cover(this.overlay);
+  };
+
+  Renderer.prototype.drawClientScreen = function (width, height) {
+    var D = global.CauldronDraw;
+    if (!this.screenDrawn) {
+      var items = D.screenItems(this.view);
+      this.screenDrawn = items.length ? this.put(this.screenCanvas, D.screen.compose(this.view.atlas, items, width, height, this.now())) : "none";
+    }
+    if (this.screenDrawn !== "none") this.cover(this.screenDrawn);
+  };
+
+  function Input(channel) {
+    this.channel = channel;
     this.held = {};
-    this.strength = {};
     this.aim = null;
-    this.buttons = keymap.mouse || {};
   }
-
-  Input.prototype.press = function (code) {
-    var action = this.keymap[code];
-    if (!action) return false;
-    if (this.steering.indexOf(action) >= 0) this.aim = null;
-    if (!this.held[action]) {
-      this.held[action] = true;
-      this.onChange();
-    }
-    return true;
-  };
-
-  Input.prototype.release = function (code) {
-    var action = this.keymap[code];
-    if (!action) return false;
-    if (this.held[action]) {
-      delete this.held[action];
-      this.onChange();
-    }
-    return true;
-  };
-
-  Input.prototype.button = function (which, down) {
-    var action = this.buttons[which];
-    if (!action) return;
-    if (down) this.held[action] = true; else delete this.held[action];
-    this.onChange();
-  };
 
   Input.prototype.hold = function (action, down, strength) {
     if (!action) return;
-    if (down && this.steering.indexOf(action) >= 0) this.aim = null;
-    if (down && !this.held[action]) {
-      this.held[action] = true;
-      if (strength !== undefined) this.strength[action] = strength;
-      this.onChange();
-    } else if (!down && this.held[action]) {
+    var before = this.held[action];
+    if (down) {
+      var value = strength === undefined ? null : strength;
+      if (before === value) return;
+      this.held[action] = value;
+      this.channel.push("hold", { action: action, down: true, strength: value });
+    } else if (before !== undefined) {
       delete this.held[action];
-      delete this.strength[action];
-      this.onChange();
-    } else if (down && strength !== undefined && this.strength[action] !== strength) {
-      this.strength[action] = strength;
-    } else if (down && strength === undefined && this.strength[action] !== undefined) {
-      delete this.strength[action];
+      this.channel.push("hold", { action: action, down: false });
     }
+  };
+
+  Input.prototype.letGo = function () {
+    for (var action in this.held) this.channel.push("hold", { action: action, down: false });
+    this.held = {};
   };
 
   Input.prototype.state = function () {
-    var state = { held: Object.keys(this.held), aim: this.aim };
-    if (Object.keys(this.strength).length) state.strength = this.strength;
-    return state;
-  };
-
-  function Pad(input, renderer, padmap, options, onAim) {
-    this.input = input;
-    this.renderer = renderer;
-    this.onAim = onAim;
-    this.buttons = (padmap && padmap.buttons) || {};
-    this.axes = (padmap && padmap.axes) || {};
-    this.aimStick = (padmap && padmap.aim) || null;
-    this.push = (padmap && padmap.push) || null;
-    this.deadzone = (options && options.deadzone) || 0.3;
-    this.distance = (options && options.distance) || 8;
-    this.holding = {};
-    this.sticks = {};
-    this.aiming = false;
-    var self = this;
-    this.reader = global.Gamepad.watch(function (line) { self.line(line); }, options);
-  }
-
-  Pad.prototype.line = function (line) {
-    var words = line.split(" ");
-    if (words[0] === "button") {
-      this.control(words[1] + ":" + words[2], this.buttons[words[2]] || [], words[3] === "1" ? null : undefined);
-    } else if (words[0] === "axis") {
-      var value = parseFloat(words[3]);
-      var directions = this.axes[words[2]] || {};
-      var magnitude = Math.abs(value) >= this.deadzone ? Math.abs(value) : undefined;
-      this.control(words[1] + ":" + words[2] + ":neg", directions.neg || [], value < 0 ? magnitude : undefined);
-      this.control(words[1] + ":" + words[2] + ":pos", directions.pos || [], value > 0 ? magnitude : undefined);
-      if (this.aimStick && (words[2] === this.aimStick + "_x" || words[2] === this.aimStick + "_y")) {
-        var stick = this.sticks[words[1]] || (this.sticks[words[1]] = { x: 0, y: 0 });
-        stick[words[2] === this.aimStick + "_x" ? "x" : "y"] = value;
-        this.aim();
-      }
-    } else if (words[0] === "gone") {
-      this.release(words[1] + ":");
-      delete this.sticks[words[1]];
-      this.aim();
-    }
-  };
-
-  Pad.prototype.aim = function () {
-    var strongest = { x: 0, y: 0 };
-    for (var device in this.sticks) {
-      var stick = this.sticks[device];
-      if (Math.hypot(stick.x, stick.y) > Math.hypot(strongest.x, strongest.y)) strongest = stick;
-    }
-    var length = Math.hypot(strongest.x, strongest.y);
-    var focus = this.renderer.frame && this.renderer.frame.focus;
-    if (this.push) {
-      var beyond = this.push.beyond;
-      var strength = Math.min(1, (length - beyond) / (1 - beyond) * this.push.gain);
-      this.control("push", [this.push.action], length >= beyond ? Math.max(this.push.least, strength) : undefined);
-    }
-    if (length >= this.deadzone && focus) {
-      var aim = [focus[0] + (strongest.x / length) * this.distance, focus[1] + (strongest.y / length) * this.distance];
-      var moved = !this.input.aim || aim[0] !== this.input.aim[0] || aim[1] !== this.input.aim[1];
-      this.input.aim = aim;
-      this.aiming = true;
-      if (moved) this.onAim();
-    } else if (this.aiming) {
-      this.input.aim = null;
-      this.aiming = false;
-      this.onAim();
-    }
-  };
-
-  Pad.prototype.reaim = function () {
-    if (this.aiming) this.aim();
-  };
-
-  Pad.prototype.control = function (control, actions, strength) {
-    for (var i = 0; i < actions.length; i++) {
-      var action = actions[i];
-      var holders = this.holding[action] || (this.holding[action] = {});
-      if (strength === undefined) delete holders[control]; else holders[control] = strength;
-      this.settle(action);
-    }
-  };
-
-  Pad.prototype.release = function (prefix) {
-    for (var action in this.holding) {
-      for (var control in this.holding[action]) {
-        if (control.indexOf(prefix) === 0) delete this.holding[action][control];
-      }
-      this.settle(action);
-    }
-  };
-
-  Pad.prototype.settle = function (action) {
-    var holders = this.holding[action];
-    var down = false;
-    var full = false;
-    var strongest = 0;
-    for (var control in holders) {
-      down = true;
-      if (holders[control] === null) full = true; else strongest = Math.max(strongest, holders[control]);
-    }
-    this.input.hold(action, down, down && !full ? strongest : undefined);
-  };
-
-  Pad.prototype.stop = function () {
-    this.reader.stop();
+    return { held: Object.keys(this.held), aim: this.aim };
   };
 
   function capture(element, pointerId) {
@@ -716,6 +549,7 @@
   function mount(canvas, options) {
     var scale = options.scale || null;
     var renderer = new Renderer(canvas, scale);
+    var drawer = global.CauldronDrawer ? global.CauldronDrawer.mount(canvas) : null;
     var sound = new Sound((options.audio && options.audio.rate) || options.rate || 44100, (options.audio && options.audio.channels) || 2);
     var hud = options.hud || null;
     var socket = new global.Phoenix.Socket(options.socketUrl || "/socket", { params: options.socketParams || {} });
@@ -724,8 +558,7 @@
     if (options.audio === false) joinParams.audio = false;
     else if (options.audio) joinParams.audio = { rate: options.audio.rate, channels: options.audio.channels };
     var channel = socket.channel(options.topic, joinParams);
-    var input = new Input(options.keymap || {}, options.steering || [], function () { send(); });
-    var sendTimer = null;
+    var input = new Input(channel);
     var statsTimer = null;
     var aimTimer = null;
     var stopped = false;
@@ -733,9 +566,38 @@
     var stats = { frames: 0, draws: 0 };
     var ratio = options.fit ? (global.devicePixelRatio || 1) : 1;
 
+    var sentAim = null;
     function send() {
       if (stopped) return;
-      channel.push("input", input.state());
+      var aim = input.aim;
+      if (aim === sentAim || (aim && sentAim && aim[0] === sentAim[0] && aim[1] === sentAim[1])) return;
+      sentAim = aim;
+      channel.push("aim", { at: aim });
+    }
+
+    var lastMove = 0;
+    var down = {};
+    function mouse(payload, clientX, clientY) {
+      payload.at = renderer.fraction(clientX, clientY);
+      channel.push("mouse", payload);
+    }
+
+    var lastHud = null;
+    var joined = false;
+
+    function sendPane() {
+      if (!joined) return;
+      var pane = drawer && drawer.pane ? drawer.pane() : renderer.pane();
+      channel.push("pane", { columns: pane[0], rows: pane[1] });
+    }
+
+    function mods(event) {
+      var list = [];
+      if (event.ctrlKey) list.push("ctrl");
+      if (event.shiftKey) list.push("shift");
+      if (event.altKey) list.push("alt");
+      if (event.metaKey) list.push("meta");
+      return list;
     }
 
     function aimed() {
@@ -746,52 +608,27 @@
     function aimAt(clientX, clientY) {
       if (touch) return;
       pointer = [clientX, clientY];
-      input.aim = renderer.worldAt(clientX, clientY);
-    }
-
-    function reaim() {
-      if (!pointer || !input.aim || watching || drag) return;
-      var aim = renderer.worldAt(pointer[0], pointer[1]);
-      if (!aim || (aim[0] === input.aim[0] && aim[1] === input.aim[1])) return;
-      input.aim = aim;
-      aimed();
+      input.aim = null;
+      sentAim = null;
+      var now = Date.now();
+      if (now - lastMove < (options.aimEvery || 33)) return;
+      lastMove = now;
+      mouse({ move: true }, clientX, clientY);
     }
 
     function refit() {
       if (options.fit) renderer.fit(renderer.cssTile || options.scale, ratio);
+      sendPane();
     }
 
-    var zoom = options.zoom || null;
     var baseTile = options.scale || null;
     var watching = options.watching === true || !!joinParams.spectate;
     var drag = null;
     var pointer = null;
-    var subject = null;
-
-    function zoomTo(cssTile, anchor) {
-      if (!zoom) return;
-      var map = renderer.map;
-      var whole = map ? Math.min(canvas.width / map.width, canvas.height / map.height) / (renderer.ratio || 1) : 0;
-      var least = Math.max(zoom.min || 2, whole);
-      var most = zoom.max || 64;
-      var tile = Math.max(least, Math.min(most, cssTile));
-      var under = anchor && watching ? renderer.worldAt(anchor[0], anchor[1]) : null;
-      renderer.setTile(tile);
-      if (under) renderer.keepUnder(under, anchor[0], anchor[1]);
-      if (options.onZoom) options.onZoom(tile);
-    }
-
-    function zoomBy(factor, anchor) {
-      zoomTo((renderer.cssTile || baseTile || 16) * factor, anchor);
-    }
 
     function panByPixels(dx, dy) {
-      if (!watching || !renderer.scale) return;
-      renderer.panBy(dx / renderer.scale, dy / renderer.scale);
-    }
-
-    function recentre() {
-      renderer.pan = [0, 0];
+      if (!watching) return;
+      channel.push("pan", { x: dx / canvas.width, y: dy / canvas.height });
     }
 
     channel.on("sheet", function (sheet) {
@@ -805,39 +642,56 @@
       sound.off = false;
       sound.format(format.rate, format.channels);
     });
-    channel.on("map", function (map) { renderer.map = map; });
-    channel.on("frame", function (frame) {
-      if (frame.subject !== undefined && frame.subject !== subject) {
-        subject = frame.subject;
-        renderer.pan = [0, 0];
-      }
+    channel.on("drawing", function (drawing) {
+      renderer.drawing = drawing;
+      sendPane();
+    });
+    channel.on("picture", function (payload) { renderer.setPicture(payload instanceof ArrayBuffer ? payload : payload.buffer); });
+    channel.on("go", function (go) { if (options.onGo) options.onGo(go.to, go); });
+    channel.on("front", function (front) { stopped = true; if (options.onFront) options.onFront(front.screen); });
+    channel.on("settings", function (settings) { if (options.onSettings) options.onSettings(settings); });
+    channel.on("clipboard", function (clip) { if (global.navigator.clipboard) global.navigator.clipboard.writeText(clip.text); });
+    channel.on("scene", function (payload) { renderer.setScene(payload); });
+    channel.on("world", function (world) { renderer.view = null; renderer.picture = null; stopped = false; if (options.onWorld) options.onWorld(world.id); });
+    channel.on("chat", function (message) { if (options.onChat) options.onChat(message); });
+    channel.on("chat_history", function (history) { if (options.onChatHistory) options.onChatHistory(history.messages); });
+    channel.on("talk", function () { if (options.onTalk) options.onTalk(); });
+    channel.on("tinted", function (tinted) { renderer.addTinted(tinted); });
+    channel.on("tinted_cell", function (cell) { renderer.addTintedCell(cell); });
+    channel.on("overlay", function (payload) { renderer.setOverlay(payload instanceof ArrayBuffer ? payload : payload.buffer); });
+    channel.on("status", function (frame) {
       renderer.frame = frame;
       counts.frames += 1;
-      if (hud) hud.innerHTML = frame.hud.map(function (row, i) {
+      var hudKey = hud ? JSON.stringify([frame.hud, frame.tags]) : null;
+      if (hud && hudKey !== lastHud) { lastHud = hudKey; hud.hidden = frame.hud.length === 0; hud.innerHTML = frame.hud.map(function (row, i) {
         var tag = frame.tags && frame.tags[i];
         return "<div" + (tag ? ' class="hud-' + escapeHtml(tag) + '"' : "") + ">" + row.map(function (run) {
           return run[1] ? '<span style="color:' + run[1] + '">' + escapeHtml(run[0]) + "</span>" : escapeHtml(run[0]);
         }).join(" ") + "</div>";
-      }).join("");
+      }).join(""); }
       if (frame.over && options.onOver) {
         stopped = true;
         options.onOver(frame.over);
       }
     });
     channel.on("pcm", function (payload) { sound.play(payload instanceof ArrayBuffer ? payload : payload.buffer); });
+    if (drawer && drawer.events) Object.keys(drawer.events).forEach(function (name) { channel.on(name, drawer.events[name]); });
 
     channel.join()
-      .receive("ok", function () { if (options.onJoin) options.onJoin(); })
+      .receive("ok", function () { joined = true; sendPane(); if (options.onJoin) options.onJoin(); })
       .receive("error", function (reply) { if (options.onError) options.onError(reply.reason || "refused"); });
 
+    function typing(event) {
+      var target = event.target;
+      return target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+    }
     function onKeyDown(event) {
+      if (typing(event)) return;
       sound.unlock();
       if (event.repeat) return;
-      if (zoom && zoom.keys !== false) {
-        if (event.code === "Equal" || event.code === "NumpadAdd") { zoomBy(1.25); event.preventDefault(); return; }
-        if (event.code === "Minus" || event.code === "NumpadSubtract") { zoomBy(0.8); event.preventDefault(); return; }
-        if (event.code === "Digit0" || event.code === "Numpad0") { zoomTo(baseTile || 16); recentre(); event.preventDefault(); return; }
-      }
+      down[event.code || event.key] = { key: event.key, code: event.code };
+      channel.push("key", { key: event.key, code: event.code, mods: mods(event), down: true });
+      if (!event.metaKey && !event.ctrlKey) event.preventDefault();
       if (watching) {
         var step = Math.max(canvas.width, canvas.height) / 8;
         if (event.code === "ArrowLeft") { panByPixels(-step, 0); event.preventDefault(); return; }
@@ -845,13 +699,10 @@
         if (event.code === "ArrowUp") { panByPixels(0, -step); event.preventDefault(); return; }
         if (event.code === "ArrowDown") { panByPixels(0, step); event.preventDefault(); return; }
       }
-      if (options.pause && event.code === options.pause) { channel.push("pause", {}); event.preventDefault(); return; }
-      if (input.press(event.code)) event.preventDefault();
     }
     function onWheel(event) {
-      if (!zoom || zoom.wheel === false) return;
       event.preventDefault();
-      zoomBy(Math.pow(1.1, -event.deltaY / 100), [event.clientX, event.clientY]);
+      mouse({ wheel: event.deltaY < 0 ? "up" : "down" }, event.clientX, event.clientY);
     }
     var pinch = {};
     function pinchPoints() {
@@ -864,16 +715,11 @@
       var dy = points[0][1] - points[1][1];
       return Math.sqrt(dx * dx + dy * dy);
     }
-    function pinchCentre() {
-      var points = pinchPoints();
-      if (points.length < 2) return null;
-      return [(points[0][0] + points[1][0]) / 2, (points[0][1] + points[1][1]) / 2];
-    }
     function onPinchDown(event) {
       if (event.pointerType !== "touch") return;
       pinch[event.pointerId] = [event.clientX, event.clientY];
       var ids = pinchPoints();
-      if (ids.length === 2 && zoom && zoom.pinch !== false) pinch.start = { distance: pinchDistance(), tile: renderer.cssTile || baseTile || 16 };
+      if (ids.length === 2 && options.pinch !== false) pinch.start = { distance: pinchDistance() };
       if (ids.length === 1 && watching) drag = { x: event.clientX, y: event.clientY, touch: true };
     }
     function onPinchMove(event) {
@@ -881,7 +727,11 @@
       pinch[event.pointerId] = [event.clientX, event.clientY];
       if (pinch.start) {
         var distance = pinchDistance();
-        if (distance > 0 && pinch.start.distance > 0) zoomTo(pinch.start.tile * distance / pinch.start.distance, pinchCentre());
+        if (distance > 0 && pinch.start.distance > 0) {
+          var grown = distance / pinch.start.distance;
+          if (grown >= 1.25) { channel.push("mouse", { wheel: "up" }); pinch.start.distance = distance; }
+          else if (grown <= 0.8) { channel.push("mouse", { wheel: "down" }); pinch.start.distance = distance; }
+        }
         return;
       }
       if (drag && drag.touch) {
@@ -896,7 +746,11 @@
       if (drag && drag.touch) drag = null;
     }
     function onKeyUp(event) {
-      if (input.release(event.code)) event.preventDefault();
+      var held = down[event.code || event.key];
+      if (typing(event) || !held) return;
+      delete down[event.code || event.key];
+      channel.push("key", { key: held.key, code: held.code, mods: mods(event), down: false });
+      event.preventDefault();
     }
     function onMouseMove(event) {
       if (drag && !drag.touch) {
@@ -906,7 +760,6 @@
         return;
       }
       aimAt(event.clientX, event.clientY);
-      aimed();
     }
     function onCanvasPointerDown(event) {
       sound.unlock();
@@ -923,18 +776,19 @@
         return;
       }
       aimAt(event.clientX, event.clientY);
-      input.button(event.button, true);
+      mouse({ button: ["left", "middle", "right"][event.button] || "left", down: true }, event.clientX, event.clientY);
       event.preventDefault();
     }
     function onMouseUp(event) {
       if (drag && !drag.touch) { drag = null; event.preventDefault(); return; }
-      input.button(event.button, false);
+      mouse({ button: ["left", "middle", "right"][event.button] || "left", down: false }, event.clientX, event.clientY);
       event.preventDefault();
     }
     function onBlur() {
-      input.held = {};
+      for (var id in down) channel.push("key", { key: down[id].key, code: down[id].code, mods: [], down: false });
+      down = {};
+      input.letGo();
       drag = null;
-      send();
     }
     function onDragEnd() {
       if (drag && !drag.touch) drag = null;
@@ -958,7 +812,7 @@
 
     var tilt = options.touch && options.touch.tilt ? new Tilt(input, renderer, options.touch.tilt, aimed) : null;
     var touch = options.touch ? new Touch(input, renderer, options.touch.zones || [], tilt, aimed, function () { sound.unlock(); }) : null;
-    var pad = options.padmap && global.Gamepad && global.Gamepad.available() ? new Pad(input, renderer, options.padmap, options.pad, function () { pointer = null; aimed(); }) : null;
+    var pad = global.Gamepad && global.Gamepad.available() ? global.Gamepad.watch(function (line) { channel.push("padline", { line: line }); }, options.pad) : null;
 
     var observer = null;
     if (options.fit && global.ResizeObserver) {
@@ -967,7 +821,6 @@
       refit();
     }
 
-    sendTimer = setInterval(send, options.inputEvery || 100);
     statsTimer = setInterval(function () {
       stats = { frames: counts.frames, draws: counts.draws };
       counts = { frames: 0, draws: 0 };
@@ -977,10 +830,8 @@
     var running = true;
     function loop() {
       if (!running) return;
-      renderer.draw();
+      if (!drawer) renderer.draw();
       counts.draws += 1;
-      reaim();
-      if (pad) pad.reaim();
       global.requestAnimationFrame(loop);
     }
     global.requestAnimationFrame(loop);
@@ -989,19 +840,21 @@
       levels: function (sfx, music) { channel.push("levels", { sfx: sfx, music: music }); },
       music: function (on) { channel.push("music", { on: !!on }); },
       stats: function () { return stats; },
-      aim: function (point) { pointer = null; input.aim = point ? [point[0], point[1]] : null; aimed(); },
+      aim: function (point) { pointer = null; input.aim = point ? [point[0], point[1]] : null; send(); },
       hold: function (action, down, strength) { input.hold(action, !!down, down ? strength : undefined); },
       focus: function () { var focus = renderer.frame && renderer.frame.focus; return focus ? [focus[0], focus[1]] : null; },
       input: function () { return input.state(); },
-      zoom: function (cssTile) { zoomTo(cssTile); },
-      zoomBy: function (factor) { zoomBy(factor); },
-      panBy: function (dx, dy) { if (watching) renderer.panBy(dx, dy); },
-      recentre: recentre,
+      zoomIn: function () { channel.push("mouse", { wheel: "up" }); },
+      zoomOut: function () { channel.push("mouse", { wheel: "down" }); },
+      panBy: function (fx, fy) { if (watching) channel.push("pan", { x: fx, y: fy }); },
+      recentre: function () { channel.push("recentre", {}); },
       unlockSound: function () { sound.unlock(); },
+      say: function (text) { channel.push("say", { text: text }); },
+      socket: function () { return socket; },
       stop: function () {
         running = false;
         stopped = true;
-        clearInterval(sendTimer);
+        if (drawer && drawer.stop) drawer.stop();
         clearInterval(statsTimer);
         if (aimTimer) clearTimeout(aimTimer);
         if (touch) touch.stop();

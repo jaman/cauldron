@@ -10,7 +10,7 @@ defmodule Cauldron2D.Wx.Client.Screens do
   as the client reads it, or `nil`.
   """
 
-  alias Cauldron2D.Client.{Game, Hud}
+  alias Cauldron.Client.{Game, Hud}
 
   @type item ::
           {integer() | {:centre, integer()}, integer(), String.t(), {byte(), byte(), byte()},
@@ -56,9 +56,12 @@ defmodule Cauldron2D.Wx.Client.Screens do
       {{:centre, centre}, div(height, 4) + 70, Map.get(title, :tagline, ""), @dim, :normal, nil},
       {{:centre, centre}, div(height, 2), "Enter  play  ·  as #{state.username}", @ink, :big,
        :play},
-      {{:centre, centre}, div(height, 2) + 50, "s  settings", @ink, :normal, :settings},
-      {{:centre, centre}, div(height, 2) + 80, "h  guide", @ink, :normal, :guide},
-      {{:centre, centre}, div(height, 2) + 110, "q  quit", @ink, :normal, :quit}
+      {{:centre, centre}, div(height, 2) + 50, "#{key_label(state, :settings_menu)}  settings",
+       @ink, :normal, :settings},
+      {{:centre, centre}, div(height, 2) + 80, "#{key_label(state, :guide)}  guide", @ink,
+       :normal, :guide},
+      {{:centre, centre}, div(height, 2) + 110, "#{key_label(state, :back)}  quit", @ink, :normal,
+       :quit}
     ] ++
       for {page, index} <- Enum.with_index(state.pages) do
         {{:centre, centre}, div(height, 2) + 150 + index * @line, "#{page.key}  #{page.hint}",
@@ -78,8 +81,10 @@ defmodule Cauldron2D.Wx.Client.Screens do
 
     header = [
       {@margin, 40, "Worlds  ·  #{state.username}", @accent, :big, nil},
-      {@margin, 90, "↑↓ choose   Enter join   w watch   t team   s settings   h guide   Esc back",
-       @dim, :small, nil}
+      {@margin, 90,
+       "↑↓ choose   Enter join   #{key_label(state, :watch)} watch   #{key_label(state, :team)} team   " <>
+         "#{key_label(state, :settings_menu)} settings   #{key_label(state, :guide)} guide   " <>
+         "#{key_label(state, :back)} back", @dim, :small, nil}
     ]
 
     rows =
@@ -87,14 +92,32 @@ defmodule Cauldron2D.Wx.Client.Screens do
         marker = if index == state.selected, do: "▶ ", else: "  "
         colour = if index == state.selected, do: @ink, else: @dim
 
-        {@margin, 130 + offset * @line, marker <> world_line(world), colour, :normal,
+        {@margin, 130 + offset * @line, marker <> world_line(state.game, world), colour, :normal,
          {:row, index}}
       end
 
-    header ++ rows ++ chosen_lines(state, chosen, 130 + @window * @line + 20)
+    header ++
+      rows ++
+      chosen_lines(state, chosen, 130 + @window * @line + 20) ++
+      chat_lines(state, 130 + @window * @line + 100)
   end
 
-  defp world_line(world) do
+  defp key_label(%{keys: keys}, action) do
+    case keys |> Map.get(action) |> List.wrap() do
+      [] -> "—"
+      [key | _] -> named(key)
+    end
+  end
+
+  defp key_label(_state, _action), do: "—"
+
+  defp named(:escape), do: "Esc"
+  defp named(:enter), do: "Enter"
+  defp named(:tab), do: "Tab"
+  defp named(:" "), do: "Space"
+  defp named(key), do: to_string(key)
+
+  defp world_line(game, world) do
     kind =
       case Map.get(world, :kind) do
         {text, _rgb} -> "  ·  #{text}"
@@ -103,8 +126,38 @@ defmodule Cauldron2D.Wx.Client.Screens do
       end
 
     map = if Map.get(world, :map), do: "  ·  #{world.map}", else: ""
-    "#{world.name}#{kind}  ·  #{Map.get(world, :players, 0)} playing#{map}"
+    "#{world.name}#{kind}  ·  #{players_text(game, world)}#{map}"
   end
+
+  defp players_text(game, %{humans: [_ | _] = humans}),
+    do: humans |> Enum.map(&Game.player_label(game, &1)) |> Enum.sort() |> Enum.join(", ")
+
+  defp players_text(_game, world), do: "#{Map.get(world, :players, 0)} playing"
+
+  defp chat_lines(%{chat?: true} = state, y) do
+    said =
+      state.chat
+      |> Enum.with_index()
+      |> Enum.map(fn {message, index} ->
+        {@margin, y + index * 22, "#{message.from}  #{message.text}", @dim, :small, nil}
+      end)
+
+    typing =
+      case state.chatting do
+        nil ->
+          [
+            {@margin, y + length(state.chat) * 22, "#{key_label(state, :chat)}  chat", @dim,
+             :small, nil}
+          ]
+
+        text ->
+          [{@margin, y + length(state.chat) * 22, "say: #{text}_", @warm, :small, nil}]
+      end
+
+    said ++ typing
+  end
+
+  defp chat_lines(_state, _y), do: []
 
   defp chosen_lines(_state, nil, _y), do: []
 
@@ -127,7 +180,7 @@ defmodule Cauldron2D.Wx.Client.Screens do
     note ++ team
   end
 
-  @settings [:preset, :sfx, :music, :pointer]
+  @settings [:preset, :sfx, :music, :pointer, :fps]
 
   defp settings(state, {_width, _height}) do
     presets = state.game.keymaps() |> Enum.map(&elem(&1, 0))
@@ -168,8 +221,14 @@ defmodule Cauldron2D.Wx.Client.Screens do
   defp setting_text(:music, settings, _presets),
     do: "music         #{round(settings.music * 100)}%"
 
+  defp setting_text(:fps, settings, _presets),
+    do: "frame rate    #{rate_text(Map.get(settings, :fps, :auto))}"
+
   defp setting_text(:pointer, settings, _presets),
     do: "pointer aims  #{if settings.pointer, do: "yes", else: "no"}"
+
+  defp rate_text(:auto), do: "auto"
+  defp rate_text(rate), do: "#{rate} a second"
 
   defp key_text({:mouse, button}), do: "mouse #{button}"
   defp key_text({key, mods}), do: Enum.map_join(mods, "+", &to_string/1) <> "+" <> to_string(key)

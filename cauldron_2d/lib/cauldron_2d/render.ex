@@ -14,7 +14,7 @@ defmodule Cauldron2D.Render do
     * `{:raster, picture, {x, y}}` — a picture drawn as it is, its top-left corner at
       `{x, y}`
 
-  A picture is a `FrenchCurve.Raster` or `{width, height, rgba}`. Operations draw in
+  A picture is a `Cauldron2D.Raster` or `{width, height, rgba}`. Operations draw in
   list order, each over what came before.
 
   The frame is made once and drawn in bands of rows, each band drawn by one call that
@@ -26,14 +26,14 @@ defmodule Cauldron2D.Render do
 
     * `:background` — what the frame starts as: a colour `{r, g, b, a}`, or a picture
       the frame's size; default transparent
-    * `:format` — `:rgba` (default) gives a `FrenchCurve.Raster`; `:rgb` gives the
+    * `:format` — `:rgba` (default) gives a `Cauldron2D.Raster`; `:rgb` gives the
       pixels as a binary of three bytes each, alpha dropped
     * `:bands` — how many bands to draw at once
     * `:native` — `false` draws in Elixir
   """
 
   alias Cauldron2D.Blend
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @type picture :: Raster.t() | {pos_integer(), pos_integer(), binary()}
   @type operation ::
@@ -67,7 +67,7 @@ defmodule Cauldron2D.Render do
        when red in 0..255 and green in 0..255 and blue in 0..255 and alpha in 0..255,
        do: {:colour, <<red, green, blue, alpha>>}
 
-  defp background(%Raster{} = picture, size), do: picture_background(picture, size)
+  defp background(%FrenchCurve.Raster{} = picture, size), do: picture_background(picture, size)
 
   defp background({_width, _height, rgba} = picture, size) when is_binary(rgba),
     do: picture_background(picture, size)
@@ -115,7 +115,7 @@ defmodule Cauldron2D.Render do
             "expected {:sprite, picture, placement} or {:raster, picture, {x, y}}"
   end
 
-  defp pixels(%Raster{} = raster) do
+  defp pixels(%FrenchCurve.Raster{} = raster) do
     {width, height} = Raster.dimensions(raster)
     {width, height, Raster.to_rgba_binary(raster)}
   end

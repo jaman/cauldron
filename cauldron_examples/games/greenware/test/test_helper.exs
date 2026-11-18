@@ -1,0 +1,6 @@
+base = Path.expand("tmp/test-data")
+File.mkdir_p!(base)
+System.put_env("XDG_DATA_HOME", base)
+System.put_env("XDG_CONFIG_HOME", Path.expand("tmp/test-config"))
+System.put_env("XDG_CACHE_HOME", Path.expand("tmp/test-cache"))
+ExUnit.start()

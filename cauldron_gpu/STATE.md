@@ -154,16 +154,16 @@ Researched, not yet built:
 **D19. The Elixir API.** (2026-10-16)
 `CauldronGPU.open/1` opens a window and returns a struct holding the window resource, its
 SDL window id, device info and an `:atomics` id counter. Meshes, textures and materials
-are uploaded with `mesh/2`, `texture/2`, `material/2`, which return `CauldronGPU.Handle`s;
+are uploaded with `mesh/2`, `texture/2`, `material/2`, which return `Cauldron3D.Scene.Handle`s;
 the renderer frees each when its handle is garbage collected (NIF resource destructor
 sends the drop operation). Scene entries — instances, lights, camera, environment,
 effects — are keyed by the caller's integer ids and changed by `submit/2`, one game tick
 per call. Events go to the `:events` pid as `{:cauldron_gpu, window_id, event}`.
-`capture/2` returns the next frame's RGBA bytes; `CauldronGPU.PNG` saves them.
+`capture/2` returns the next frame's RGBA bytes; `Cauldron3D.Scene.PNG` saves them.
 Coordinates follow glTF: right-handed, +Y up, the camera looking down -Z.
 
 **D20. Change stream format.** (2026-10-16)
-Operation codes and field order are in `CauldronGPU.Stream` (encoder) and
+Operation codes and field order are in `Cauldron3D.Scene.Stream` (encoder) and
 `c_src/core/stream.cpp` (decoder); both must change together. Vertices are 48 bytes:
 `position.xyz, u, normal.xyz, v, lightmap.uv, 0, 0`. Indices are `u32`. Transforms are
 position (3 floats), rotation quaternion (x, y, z, w), scale (3 floats). A `:tick`
@@ -310,7 +310,7 @@ There is no NIF resource for a host handle, so garbage collection frees nothing.
 `CauldronGPU.Host` (a GenServer owning the Port) releases a handle on `release/2`, and
 every handle a process made when that process exits (it monitors each process that made
 one). D29 still holds: a release only marks the object. The server keeps the scene it
-has relayed (`CauldronGPU.Host.Record`: resources, instances with their latest transform
+has relayed (`Cauldron3D.Scene.Host.Record`: resources, instances with their latest transform
 and pose, lights, camera, environment, effects); released objects stay in the record
 while a kept instance, pose or material names them. When the host process exits the
 server sends `{:cauldron_gpu, id, :renderer_exited}` to the events pid, answers waiting
@@ -321,7 +321,7 @@ choice; the server does not restart by itself. The server stops when the process
 called `open/1` exits.
 
 **D33. Vertex animation and skinning run on the GPU before everything else.** (2026-10-16)
-`{:pose, id, %CauldronGPU.Pose{blend_to:, blend:, bones:}}` bends an instance: a compute
+`{:pose, id, %Cauldron3D.Scene.Pose{blend_to:, blend:, bones:}}` bends an instance: a compute
 pass (`shaders/deform.slang`, `c_src/core/deformer.*`) blends towards a second mesh with
 the same vertex count (Quake keyframes) and then skins with up to four bones per vertex
 (`%Mesh{skin: <<4 indices, 4 weights>> per vertex}`, stream op 16), writing a per-instance
@@ -364,7 +364,7 @@ second.
   each face's lightmap for its `k`-th style; vertices carry their four style numbers in
   the lightmap coordinates' spare pair (`s0 + 256·s1`, `s2 + 256·s3`, 255 none); the
   material's `lightmap_styles` is the slot count; `{:light_styles, [scale]}` sets a 64-entry
-  table in the frame. `CauldronGPU.Bsp.light_style/2` reads `a`–`z` patterns (`m` = 1).
+  table in the frame. `Cauldron3D.Scene.Bsp.light_style/2` reads `a`–`z` patterns (`m` = 1).
 - Normal maps use tangents derived from screen-space derivatives of position and texture
   coordinates, so vertices carry no tangents. Occlusion maps ride in the albedo's alpha.
 - `Environment.tone_map`: `:aces` (default), `:neutral`, `:clamp`.
@@ -385,7 +385,7 @@ the browser in the change stream's own format, decoded by `priv/static/cauldron3
 no glTF conversion, since the stream already carries everything three.js needs (vertex
 arrays become `BufferGeometry` with groups per part, materials `MeshStandardMaterial`
 with the lightmap on the second UV set). `Cauldron3D.Net.Scene` keeps the scene with
-`CauldronGPU.Host.Record` (which now also keeps light styles) and broadcasts batches
+`Cauldron3D.Scene.Host.Record` (which now also keeps light styles) and broadcasts batches
 through `Phoenix.PubSub`; `Cauldron3D.Net.Channel` sends a joining browser the whole scene
 (subscribing first, so nothing is missed) and then each batch as a binary push; browser
 input comes back as `CauldronGPU` event shapes, key names from a fixed list.
@@ -399,11 +399,11 @@ in a headless Chromium, the courtyard drawn with shadows and lights, and held ar
 turning and moving the camera on the server.
 
 **D39. One protocol for every place a scene goes.** (2026-10-16)
-`CauldronGPU.Target` (`submit/2`, `mesh/2`, `texture/2`, `material/2`) is implemented by
+`Cauldron3D.Scene.Target` (`submit/2`, `mesh/2`, `texture/2`, `material/2`) is implemented by
 `CauldronGPU` (in the VM), `CauldronGPU.Host` (own process) and `Cauldron3D.Net.Scene`
 (browsers, now a struct opened with `open/1`; `start_link/1` and `lookup/1` for
 supervisors and channels). The converters upload through it, so the same
-`CauldronGPU.Bsp.upload/4`, model and Doom code fills a native window, a host or a browser.
+`Cauldron3D.Scene.Bsp.upload/4`, model and Doom code fills a native window, a host or a browser.
 Verified: `cauldron_3d_net/examples/quake_map.exs` puts E1M1 in a browser with its
 textures, lightmaps and light styles. A project depending on `cauldron_gpu` gets the
 converters only if it also depends on `cauldron_3d` (optional dependency); a dependency
@@ -412,7 +412,7 @@ compiled before that was added needs `mix deps.compile cauldron_gpu --force`.
 unreferenced).
 
 **D40. Games draw on the card only when asked, and fall back to their own picture.** (2026-10-16)
-A `Cauldron2D.Client.Game` scene may carry `:gpu`, a function `(target, cache, size,
+A `Cauldron.Client.Game` scene may carry `:gpu`, a function `(target, cache, size,
 aspect) -> {changes, cache}` describing the same picture as its `:picture`. The terminal
 client (`cauldron_2d_drafter`) uses it only when its picture options include `gpu` (drawn
 offscreen at the pane's pixels and shown through the usual image path, so every terminal
@@ -532,8 +532,8 @@ bilinearly, black outside the source).
   sprite goes in `LayerPush.first` and every draw starts at vertex 0.
 - **No scissor in `cg_backend`.** Ports clip in the fragment shader (`outside_port`).
 - `GpuFrame` is 2128 bytes (a `layers` float4 and the `flat` handle pair). `GpuSprite` is 96
-  bytes, `GpuLayer` 80, `LayerPush` 32.
-- **Targets.** `CauldronGPU.Target` gained `canvas/2`. `Host.Record` keeps canvases and the
+  bytes, `GpuLayer` 80 (96 since D60), `LayerPush` 32.
+- **Targets.** `Cauldron3D.Scene.Target` gained `canvas/2`. `Host.Record` keeps canvases and the
   last layer list and counts their handles as used. The browser (`cauldron3d.js`,
   `Layers2D`) draws the same layers with three.js render targets. Its canvases store the
   top row first, so they sample like uploaded textures. Its column layer blends four texels
@@ -598,6 +598,163 @@ remove an earlier renderer.
   (`brew install mingw-w64`) compiles every source for Windows here as a check before
   each Windows try; MSVC itself only runs on the user's machine.
 
+**D50. Livebook draws on the viewer's card only.** (2026-10-19)
+`cauldron_3d_kino` (`Cauldron3D.Kino`) is a `Kino.JS.Live` cell and a `Cauldron3D.Scene.Target`.
+The cell's process holds the scene (`Cauldron3D.Net.SceneState`, shared with
+`Cauldron3D.Net.Scene`) and sends stream bytes as Kino binary events. The browser draws
+them with `cauldron_3d_net`'s `cauldron3d.js`, through its transport-free `mount/2`.
+Nothing is drawn on the machine running the notebook, even when it is the same machine.
+Rejected: drawing offscreen with `cauldron_gpu` and sending frames.
+A Kino cell cannot use an import map, so the cell's copy of `cauldron3d.js` is rewritten at
+compile time to import three.js and its add-ons from jsDelivr's `+esm` builds. The add-on
+builds import `/npm/three@<version>/+esm`, the same URL, so there is one three.js.
+It depends on `cauldron_3d_scene` (D51), so installing it builds no native code.
+
+**D51. The plain-Elixir half is its own package, `cauldron_3d_scene`.** (2026-10-19)
+The structs, `Stream`, `Target`, `Host.Record`, `PNG` and the converters moved to
+`tui/cauldron/cauldron_gpu_scene` with their `CauldronGPU.*` names unchanged.
+`cauldron_gpu` keeps `CauldronGPU`, `Native`, `Host`, `Setup` and the mix task, and depends on
+the new package, so the games and `cauldron_2d_drafter` needed no edits. `cauldron_3d_net` and
+`cauldron_3d_kino` depend on `cauldron_3d_scene` only and build no native code.
+The renderers implement `Target` inside their own modules (`CauldronGPU`, `CauldronGPU.Host`).
+The scene package turns off protocol consolidation for its own standalone build. Built on its
+own, it has no `Target` implementation, and the type checker would then report every
+`Target` call as failing. As a dependency, the project using it consolidates.
+`cauldron_2d`, `cauldron_3d` and `cauldron_3d_formats` are optional dependencies of the scene
+package. `cauldron_gpu` lists them for its examples only.
+
+**D52. Frames are streamed, and a capture is answered when its frame is done.** (2026-10-19)
+Measured before: a capture was answered three frames after it was asked for, and an
+offscreen device drew only when asked. The terminal example asked, waited and asked again,
+so the card drew about four frames for each one shown (80 ms a capture at 1440×850).
+Now:
+- The backend table has `frames_completed`; the renderer counts its submissions and
+  answers a capture once that frame has completed (18 ms at 1440×850).
+- `CauldronGPU.stream/2` (and `Host.stream/2`) sends every drawn frame to a process. The
+  receiver hands each back with `frame_shown/1`; with no slot free the renderer draws but
+  reads nothing back. An offscreen device paces itself at `:fps` while streaming. The
+  courtyard streams at 56–59 frames a second at 1440×850.
+- Readback buffers are kept and reused (up to four of the current size).
+- The host protocol has requests 9 (stream), 10 (stop stream), 11 (frame shown); frames
+  arrive as `{:stream, frame}` and go to the process that started the stream, also after
+  `restart/1`.
+In Ghostty 1.3.1 the terminal examples slowed over minutes (59 fps and 12 ms a frame on the
+card falling to 25 fps and 39 ms within two minutes, Ghostty's CPU rising from 25% to 74%)
+while the same stream written to a file stayed flat. They drew on the main screen with no
+placement id. `examples/support/kitty_terminal.exs` now switches to the alternate screen and
+places every frame as placement 1 of image 1; two minutes in Ghostty then held 58–59 fps,
+12–14 ms on the card and Ghostty at 23–36% CPU.
+Fixed by D54. Measured before it, on the M3 Max: drawing itself cost about 64 ms a frame at 2880×1700 and
+24 ms at 1440×850 without ray tracing, 45 and 22 ms with ray-traced shadows, whatever
+the scene holds (the floor alone costs the same). The cost is in a per-pixel pass, and the
+renderer has no timing for each pass yet. Timing each pass comes first.
+
+**D53. The terminal is reached through Cauldron's drafter client, not from this package.** (2026-10-19)
+The hand-written terminal examples (`examples/terminal.exs`, `examples/quake_terminal.exs`,
+`examples/support/kitty_terminal.exs`, which D-entries above mention) are removed. A
+terminal picture comes from a Cauldron game whose scene has a `:gpu`, drawn by
+`cauldron_2d_drafter`'s client and `Stage`, which owns the terminal (alternate screen,
+mouse, key releases, settings). `cauldron/cauldron_examples/3d/courtyard` is that game for the
+courtyard, built the way Half-Life's client is: a 60 Hz world moves the viewer from held
+actions and pointer actions, the look carries the effects (`r`, `g`, `u`), and a small
+native picture is scaled by the terminal. `CauldronGPU.stream/2` stays; the client's
+pane still asks for one picture a frame.
+
+**D54. Shaders take `Frame` by pointer.** (2026-10-19)
+Measured on the M3 Max at 2880×1700 with no ray tracing: 61 ms a frame on the card for any
+scene, the floor alone included. Skipping passes in a scratch build showed the lighting pass
+cost 59 ms of it, and inside it the sun's shadow lookup. A single texture read in
+`shadow_factor` cost the same as nine, and reading another texture there cost the same
+again, so the read was not the cost. The Metal Slang generated showed
+`Frame_natural_0 _S = *frame;`: the 2 KB per-frame struct copied into each pixel's own
+memory, because the function indexed `frame.shadow_cascades[cascade]` with a run-time
+index or passed `Frame` on by value. Nine generated functions did this (lighting,
+G-buffer, forward and ray tracing).
+Every shader function now takes `Frame *frame` and reads `frame->field`, and entry points
+take `push.frame` itself. The generated Metal has no `Frame` copy left. The same frame
+draws in 3.6 ms, and pictures are byte-identical to before with ray tracing off and on.
+Vulkan (MoltenVK) builds and draws the showcase.
+Rule for new shader code: never write `Frame frame` or `*push.frame`.
+
+**D55. Cauldron's pane streams frames.** (2026-10-19)
+`cauldron_2d_drafter`'s `Stage` streams from its `CauldronGPU.Host` at the client's frame
+rate (`Stage.rate/2` follows the setting). A pane picture submits the scene and answers the
+newest frame, waiting up to 250 ms for the next before falling back to one capture. A frame
+replaced before it is used is handed back to the renderer. When the terminal is on this
+machine (no `:served_by`, no `SSH_CONNECTION`/`SSH_TTY`) and the surface stores kitty
+frames (`Surface.stores_pictures?/1`), frames come as shared-memory names that `Surface`
+transmits with `t=s`, so no pixels go through the port or a CPU compressor. Otherwise they
+come as pixels. A picture call took 0.16 ms (shared) or 0.26 ms (pixels) on average,
+against a submit-and-capture before. A scene's `:gpu_size` sets the size the card draws
+at, scaled by the terminal; without it the card draws at the pane's pixels. The client's
+fps row shows frames drawn a second next to the world's, and a game's look `fps?: true`
+starts with it shown.
+
+**D56. Metal commits residency before each frame's command buffer.** (2026-10-19)
+The Metal device adds every buffer and texture it creates to one residency set. It used to
+commit that set only at the start of the next frame, so anything created while a frame was
+recorded (a capture's readback buffer, textures and meshes uploaded that frame) was not
+resident for that frame's own command buffer. Drawing continuously hid it; after D52 an
+offscreen device draws one frame per capture, and the first captures after an upload, or
+after a quiet spell, came back black (`[0, 0, lit]` for three captures of Sponza, and of
+the sky alone). `frameEnd` now commits pending residency changes before `commit()`. Three
+rounds of three captures of Sponza are all lit. Vulkan has no residency sets and needed
+nothing.
+
+**D57. Pictures travel encoded; glTF is read in `cauldron_3d_formats`.** (2026-10-19)
+`Cauldron3D.Scene.Texture` has `encoding: :raw | :png | :jpeg`; `Texture.encoded/2` reads the
+size from the file's header and keeps the bytes. The native renderer decodes on a dirty CPU
+NIF with stb_image (vendored in `c_src/third_party` at commit 013ac3b, with
+stb_image_resize2 and stb_image_write); the browser decodes with `createImageBitmap`
+(stream op 23). `CauldronGPU.reduce_image/2` shrinks a picture with stb's resizer.
+`Cauldron3D.Formats.Gltf` reads `.gltf` and `.glb` with attributes as packed binaries
+(Intel Sponza, 2.0 M vertices and 3.7 M triangles, in about 200 ms).
+`Cauldron3D.Scene.Gltf.upload/3` puts a document through any `Target`, uploading only the
+meshes its nodes place and the materials and images those use.
+
+**D58. The courtyard example has three scenes.** (2026-10-19)
+`cauldron/cauldron_examples/3d/courtyard` switches between the courtyard made in code, a night alley
+from Poly Haven's CC0 "Hidden Alley" models, and Intel's Sponza (CC-BY), chosen over
+Khronos's Sponza, whose licence is the CRYENGINE agreement. `mix courtyard.fetch` pins
+every file in `priv/assets.json` and checks it; Sponza is read straight out of Intel's
+3.9 GB zip with ranged requests (central directory, then each entry, CRC-checked) and its
+4K textures are kept at 2048 and 1024 pixels a side. The Poly Haven facades are kits of
+parts laid out side by side, so `Courtyard.Kit` assembles building fronts from named parts:
+3-metre bays, each storey a dado band (0.5 m apartments, 0.55 m factory) under a 3-metre
+wall, which puts the fire escape's platforms (7 m apart) on the floors. Scenes upload in a
+task while the shown one stays dimmed, then fade in. The same scene modules upload to a
+Kino view in the notebook.
+
+**D59. A skinned character walks the courtyard's scenes in third person.** (2026-10-19)
+A proof of concept, using the VRoid Project's CC0 AvatarSample_D (Darkness), a VRM 0.x
+file (glTF with an avatar extension), downloaded straight from OpenGameArt without a
+login. Chosen for being hands-off: a standard humanoid bone map, spring bone settings
+for hair and clothes, mesh hair, and a licence with no strings. Not near-AAA; Sintel or a
+Sketchfab character (CC-BY-NC is fine, Cauldron being non-commercial) can replace it with
+the same code.
+- `cauldron_3d_formats` reads node trees, skins, joints and weights, and the VRM 0.x
+  extension. Primitives keep only the vertices their triangles use: VRoid files share one
+  vertex buffer across a mesh's primitives, and copying it per primitive gave 766k
+  vertices where there are 24k. The avatar reads in 40 ms.
+- `Gltf.Rig` orders a document's nodes parents first for `Cauldron3D.Skeleton.pose/3`;
+  every rest rotation is identity in VRoid files, so the gait turns bones in model axes.
+- `Cauldron3D.SpringBones` follows UniVRM's VRM 0.x spring bones (tails with inertia,
+  drag, stiffness towards the rest direction, gravity, sphere colliders); 74 joints cost
+  about 1 ms a tick. It is simulated in world space so the skirt swings when she runs,
+  and the bones are sent relative to the instance's transform (`Rig.bones/4` with the
+  inverse root).
+- Collision is `Cauldron3D.WalkGrid`: cells blocked by any triangle reaching between
+  0.3 m and 1.8 m above a flat floor, 0.1 m cells. Sponza (3.7 M triangles) builds in
+  about 4.5 s in Elixir, so grids are cached per scene in the asset folder. The camera is
+  pulled in along its arm where the grid blocks it.
+- The world holds the character, the grids, the springs and the camera; the mix task
+  loads the character and grids and hands them to the world through the client props.
+  The picture uploads the character once through the loader and sends its instances and
+  `{:pose, …}` every frame.
+Not built in the courtyard: playing clips (the gait is made from sines) and morph targets
+(face, blinks) although the library has both now; fading the character when the camera is very close, floors that are not flat, VRM 1.0,
+hair shading and toon shading (her materials are made lit, `Vrm.lit/2`).
+
 ## Open questions and checks
 
 Each must be settled before the work item named in brackets starts. Record the answer
@@ -639,15 +796,30 @@ as a decision.
 
 - [x] Deferred PBR, point/spot/directional lights, cascaded shadows (D34), sky, fog,
       transparency, bloom, tone map choice, normal and occlusion maps, per-part culling (D37)
-- [ ] Alpha-tested shadows (cut-out textures cast solid shadows in the shadow maps)
+- [x] Alpha-tested shadows (D65; not yet seen in a picture)
 - [ ] GPU-driven culling and indirect drawing (CPU culling covers the current scenes)
+- [x] Level of detail, and streaming scenery in and out as the viewer moves, for open-world cells (`Cauldron3D.Scene.OpenWorld.Shown`); meshes other than ground have no detail levels
+- [x] Terrain, foliage and many instances of one mesh drawn cheaply (D61, D62; `Cauldron3D.Scene.Terrain`, `Cauldron3D.Scene.OpenWorld`)
+- [ ] Many lights (light culling)
+- [x] Toon shading and outlines (D64)
+- [ ] Hair shading
+- [x] Morph targets (faces, blinks, speech): `Mesh.morphs`, `Pose.weights`, stream ops 24 and 25,
+      the deform pass on the card (Metal checked offscreen: a triangle moves in proportion to
+      its weight), the software renderer and the browser client
+- [x] Animation clips: `Gltf.Animations` reads them, `Gltf.Clip` samples and blends them (step,
+      linear, cubic spline; translation, rotation, scale, weights), `Gltf.Rig.pose_sample/3`
+      poses a rig, `Scene.Gltf.Animator` turns a sample into poses
+- [ ] Morph targets in the browser: written and syntax-checked; not yet run against a model with
+      morph targets in a browser
+- [ ] Clips: root motion, node animation of instances without a skin (doors, platforms), node
+      scale in a rig, and mixing several clips by bone mask or layer
 
 ### 6. Assets
 
-- [x] BSP worlds with every light style (`CauldronGPU.Bsp`)
-- [x] Quake alias models (`CauldronGPU.AliasModel`), Half-Life studio models
-      (`CauldronGPU.StudioModel`), placement helpers (`CauldronGPU.Placement`)
-- [x] Doom sector maps (`CauldronGPU.Sectors`) with an example-local WAD reader
+- [x] BSP worlds with every light style (`Cauldron3D.Scene.Bsp`)
+- [x] Quake alias models (`Cauldron3D.Scene.AliasModel`), Half-Life studio models
+      (`Cauldron3D.Scene.StudioModel`), placement helpers (`Cauldron3D.Scene.Placement`)
+- [x] Doom sector maps (`Cauldron3D.Scene.Sectors`) with an example-local WAD reader
 - [ ] Doom things/sprites, moving sectors, animated flats and walls
 - [ ] Half-Life chrome and additive textures; items dropped to the floor
 
@@ -687,8 +859,13 @@ as a decision.
 - [x] `cauldron_3d_net`: scene server, channel, socket, page, three.js client, input
 - [ ] Capability report from the browser to the server (the client ignores what it cannot
       draw; the server is not told)
-- [x] Converters upload to browser scenes through `CauldronGPU.Target` (D39); E1M1 verified
+- [x] Converters upload to browser scenes through `Cauldron3D.Scene.Target` (D39); E1M1 verified
 - [x] 2D layers and canvases in the browser (D47)
+- [ ] Skinning on the GPU in the browser: `cauldron3d.js` binds a `PosedSkeleton` to a
+      `THREE.SkinnedMesh` per skinned instance and writes each pose's matrices into its bone
+      texture; keyframe blends still run on the CPU. Written and syntax-checked; not yet run
+      against a skinned model in a browser
+- [x] Livebook cell `cauldron_3d_kino` and its notebook `notebooks/scene.livemd` (D50); checked in a browser with the cell's own JS, not yet in Livebook itself
 
 ### 12. 2D layers (D47)
 
@@ -717,10 +894,84 @@ on the M3 Max by captured frames unless it says otherwise.
   changing `shaders/`.
 - Examples: `showcase.exs` (`EFFECTS=rt,gi,upscale`), `spheres.exs` (load test, `COUNT=`, `=`/`-`), `quake_map.exs` (`MONSTERS=1`,
   light styles, `VIEW=`, `CAPTURE_AT=`), `doom_map.exs`, `studio_model.exs`,
-  `terminal.exs` (fills the terminal; not yet watched by the user after the sizing work).
+  the terminal examples were removed on 2026-10-19 (D53); the courtyard in a terminal
+  is `cauldron/cauldron_examples/3d/courtyard`.
 - 2026-10-17: 2D layers (D47) landed and NidhOX uses them. `make shaders` built
   `sprite`, `columns` and `present2d`.
+
+**D60. Tile and shadow layers.** (2026-11-10)
+Two more layer kinds in the `{:layers, ...}` list, for games whose pictures are palette
+indexed tiles (the Coinop arcade boards).
+- A `TileLayer` draws tiles `{source_x, source_y, width, height, x, y, flags, palette_base}`
+  from an atlas whose red channel holds pen numbers (texture format `:r8`, code 3, stored
+  expanded to RGBA8) through a palette texture. Flags: bit 0 mirrors across, bit 1 mirrors
+  down, bit 2 transposes (the tile is then drawn `height` wide). Pens are masked with
+  `pens` and `transparent` is not drawn. No filtering and no blending: the palette colour
+  replaces the pixel. `shaders/tile.slang`; `GpuTile` is 48 bytes, `GpuLayer` grew to 96
+  (palette and behind handles).
+- A `ShadowLayer` replaces each pixel its tiles cover by the colour a table gives for the
+  colour already there. A blit pass copies the target first (`tile_blit.slang`, the
+  "behind" target) and `tile_shadow.slang` reads the copy.
+- A canvas may be made `srgb: true` (flag bit 1 of the canvas op); tile layers then write
+  decoded colours so a material shows the picture's colours. A sprite layer that draws such
+  a canvas into another target samples linear light, so the picture comes out darker in
+  the mid-tones: canvases for sprites and overlays are made plain.
+- Measured against the Coinop CPU renderer: Metal and Vulkan (MoltenVK), eight tile
+  orientations at 1920 px, shadows, and the arcade pictures of Final Fight, Psycho Soldier,
+  TD Fever, World Wars and 1941 through `Cauldron2D.Drafter.Client.Stage`: 0 pixels differ.
+- First user: `CoinopCauldron.Gpu` in `coinop_cauldron` (the terminal arcade, through the
+  client's `:gpu` scene function); the browser path is `CoinopVr.Picture` with
+  `cauldron3d.js`.
+
 - Open items, in rough order of value: D22's second
   step (needs the user's yes for the game projects), a stronger denoiser, alpha-tested
   shadows, Doom things and moving sectors, first runs on Linux/Windows (Vulkan RT, window,
   `Makefile.win`), DLSS/FSR on the machines that have them.
+
+**D61. Scatters: one mesh drawn at many places.** (2026-11-15)
+A scatter (`Cauldron3D.Scene.Scatter`, stream ops 30 and 31, handle kind `:scatter`) is a
+buffer of placements, 32 bytes each: position, scale, rotation quaternion. An instance
+that names one (op 32, sent after the instance) is drawn with a single instanced draw,
+its mesh once at each place; the places lie in the instance's own space. The same op
+carries `sway` and `fade`, which also apply to an instance without a scatter.
+- `GpuInstance` grew to 304 bytes (`sway`, `fade`), `DrawPush` to 120 (`scatter`).
+  `placed()` in `common.slang` places, fades and sways a vertex and is shared by the
+  geometry, shadow and forward vertex shaders.
+- Wind is `Environment.wind` (op 36). Pushers (op 37, up to eight) press swaying
+  instances away from a point: grass parts round a walker.
+- Culling is by the scatter's sphere plus the mesh's reach at the largest placement
+  scale; a scatter wholly past its fade distance is skipped.
+- Rays do not see scattered instances: they are left out of the scene acceleration
+  structure.
+- Measured on the M3 Max, offscreen at 1280×720: 60,000 grass blades and 140 trees in
+  two scatters with layered ground and water, 1.7 ms of GPU time a frame.
+
+**D62. Ground layers.** (2026-11-15)
+`Material.layers` (op 33) mixes up to four textures by the vertex colour's four
+channels, tiled by world position at `layer_scale`, over the upright planes where the
+surface is steep. `GpuMaterial` grew to 240 bytes (four layer handles and the liquid's
+four vectors).
+
+**D63. Standing water.** (2026-11-15)
+`Material.liquid` (`Cauldron3D.Scene.Liquid`, op 34) is drawn in the forward pass. It
+reads the opaque depth from the `nearest` target and the lit picture from `behind`
+(copied when a liquid or a smear surface is visible), bends what is behind it by its
+ripples, tints by depth, mirrors the sky at glancing angles, glints the sun and lines
+the shore with foam. Ripples are four summed sine waves, with no textures.
+
+**D64. Toon light and outlines.** (2026-11-15)
+`Environment.shading: :toon` (op 35) lights in bands in the lighting and forward
+shaders; shadowed and turned-away surfaces show the sun times `shade_color`. Outlines
+are drawn in the lighting pass from the depth and normal targets where a nearer surface
+stands beside a pixel or the normal turns sharply, fading by distance.
+`Material.outline: false` writes a negative roughness into the normal target, which
+keeps outlines off and round that surface; every reader of that channel takes its
+absolute value.
+
+**D65. Cut-out surfaces cast cut-out shadows.** (2026-11-15)
+A draw whose material has an alpha cutoff uses `shadow_cutout.slang`, whose fragment
+shader discards below the cutoff. Checked that the pipeline is created on Metal; not
+yet checked with a cut-out texture in a picture.
+
+Not yet run for D61–D65: the Vulkan backend, the iOS shader sets (`make shaders-ios`),
+and a phone. The browser client reads past the new ops and hides scattered instances.

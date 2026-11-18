@@ -1,0 +1,200 @@
+# A 3D scene in a notebook
+
+```elixir
+Mix.install([
+  {:cauldron_3d_kino, path: Path.join(__DIR__, "..")},
+  {:cauldron_3d_formats, path: Path.join(__DIR__, "../../cauldron_3d_formats")}
+])
+```
+
+## What this notebook shows
+
+`Cauldron3D.Kino` is a 3D scene in a cell. Elixir keeps the scene: meshes, materials,
+lights and the camera. The browser showing the notebook draws it with three.js on its
+own graphics card. The machine running the notebook draws nothing; it only sends the
+changes.
+
+The scene is described with `cauldron_gpu`'s structs, the same ones a game sends to
+the native renderer, so anything built here also runs in a window or a terminal.
+
+## An empty view
+
+A view starts empty. Evaluating it shows the cell, black until something is in it.
+
+```elixir
+alias Cauldron3D.Scene.{Camera, Environment, Instance, Light, Material, Mesh, Quat, Texture, Transform}
+
+view = Cauldron3D.Kino.new(height: 420)
+```
+
+## Things to draw
+
+Meshes, textures and materials are uploaded once and answered with handles. Instances
+place a mesh with its materials in the scene.
+
+```elixir
+checker = Cauldron3D.Kino.texture(view, Texture.checker(256, 8, {200, 200, 190, 255}, {70, 75, 80, 255}))
+
+assets = %{
+  plane: Cauldron3D.Kino.mesh(view, Mesh.plane(20, 5)),
+  cube: Cauldron3D.Kino.mesh(view, Mesh.cube(1.0)),
+  sphere: Cauldron3D.Kino.mesh(view, Mesh.sphere(0.8, 32)),
+  floor: Cauldron3D.Kino.material(view, %Material{base_texture: checker, roughness: 0.4}),
+  gold: Cauldron3D.Kino.material(view, %Material{base_color: {1.0, 0.78, 0.34, 1.0}, metallic: 1.0, roughness: 0.25}),
+  plastic: Cauldron3D.Kino.material(view, %Material{base_color: {0.1, 0.35, 0.9, 1.0}, roughness: 0.35}),
+  lamp: Cauldron3D.Kino.material(view, %Material{base_color: {1.0, 0.6, 0.2, 1.0}, unlit: true})
+}
+```
+
+## The scene
+
+One `submit/2` is one tick: everything in the list changes at once. The view above
+updates as soon as this cell runs.
+
+```elixir
+Cauldron3D.Kino.submit(view, [
+  %Environment{ambient_intensity: 0.25, exposure: 1.1, shadow_distance: 20.0},
+  {:instance, 1, %Instance{mesh: assets.plane, materials: [assets.floor]}},
+  {:instance, 2, %Instance{mesh: assets.sphere, materials: [assets.gold], transform: Transform.new(position: {-1.6, 0.8, 0.0})}},
+  {:instance, 3, %Instance{mesh: assets.cube, materials: [assets.plastic], transform: Transform.new(position: {1.6, 0.5, 0.0})}},
+  {:instance, 4, %Instance{mesh: assets.sphere, materials: [assets.lamp], shadows: false, transform: Transform.new(position: {0.0, 2.6, -2.0}, scale: 0.12)}},
+  {:light, 1, %Light{kind: :directional, direction: {-0.5, -1.0, -0.35}, color: {1.0, 0.95, 0.85}, intensity: 3.0, shadows: true}},
+  {:light, 2, %Light{kind: :point, position: {0.0, 2.6, -2.0}, color: {1.0, 0.6, 0.2}, intensity: 20.0, range: 8.0}},
+  %Camera{position: {0.0, 2.0, 6.0}, rotation: Quat.yaw_pitch(0.0, -0.25), fov_y: 1.0}
+])
+```
+
+## Moving things
+
+`Kino.listen/2` runs a function every 50 milliseconds in the background. Each run sends
+the cube's new turn as one tick; the browser blends between ticks, so it turns smoothly
+at the display's rate.
+
+```elixir
+Kino.listen(50, fn tick ->
+  Cauldron3D.Kino.submit(view, [
+    {:instance, 3,
+     %Instance{
+       mesh: assets.cube,
+       materials: [assets.plastic],
+       transform: Transform.new(position: {1.6, 0.5, 0.0}, rotation: Quat.axis_angle({0.3, 1.0, 0.2}, tick * 0.05))
+     }}
+  ])
+end)
+```
+
+## Looking around
+
+Input on the cell comes back as the events a native window sends. Drag with the left
+button to turn the camera around the middle of the scene, and use the wheel to come
+closer or move away.
+
+```elixir
+defmodule Orbit do
+  defstruct yaw: 0.0, pitch: -0.25, distance: 6.3, dragging: false
+
+  def handle(orbit, {:mouse_button, :down, 1, _x, _y}), do: %{orbit | dragging: true}
+  def handle(orbit, {:mouse_button, :up, 1, _x, _y}), do: %{orbit | dragging: false}
+
+  def handle(%{dragging: true} = orbit, {:mouse_motion, _x, _y, dx, dy}),
+    do: %{orbit | yaw: orbit.yaw - dx * 0.01, pitch: clamp(orbit.pitch - dy * 0.01, -1.4, -0.05)}
+
+  def handle(orbit, {:mouse_wheel, _dx, dy}),
+    do: %{orbit | distance: clamp(orbit.distance - dy, 2.0, 15.0)}
+
+  def handle(orbit, _event), do: orbit
+
+  def camera(orbit) do
+    rotation = Quat.yaw_pitch(orbit.yaw, orbit.pitch)
+    {x, y, z} = Quat.rotate(rotation, {0.0, 0.0, orbit.distance})
+    %Camera{position: {x, y + 0.5, z}, rotation: rotation, fov_y: 1.0}
+  end
+
+  defp clamp(value, low, high), do: value |> max(low) |> min(high)
+end
+```
+
+`Kino.listen/3` reads the view's events in the background, keeping the orbit between
+them, and sends a new camera when it moves.
+
+```elixir
+view
+|> Cauldron3D.Kino.events()
+|> Kino.listen(%Orbit{}, fn {_client, event}, orbit ->
+  moved = Orbit.handle(orbit, event)
+  if moved != orbit, do: Cauldron3D.Kino.submit(view, [Orbit.camera(moved)])
+  {:cont, moved}
+end)
+```
+
+## A detailed scene
+
+The courtyard example (`examples/courtyard`) has two downloaded scenes: a night-time
+alley built from Poly Haven's CC0 models, and Intel's Sponza atrium (CC-BY). Download
+them once from that folder:
+
+```sh
+mix courtyard.fetch alley
+mix courtyard.fetch atrium
+```
+
+The scenes are plain Elixir modules written against `CauldronGPU.Target`, so they upload
+to a view as they do to the native renderer. This cell loads them from the example.
+`cauldron_3d_formats`, installed above, reads their glTF files.
+
+```elixir
+courtyard = Path.join(__DIR__, "../../examples/courtyard/lib/courtyard")
+
+~w(scene.ex assets.ex kit.ex grounds.ex scenes.ex scenes/courtyard.ex scenes/alley/buildings.ex scenes/alley.ex scenes/atrium.ex)
+|> Enum.map(&Path.join(courtyard, &1))
+|> Kernel.ParallelCompiler.require(return_diagnostics: true)
+
+show = fn view, scene, view_state ->
+  pose = scene.start()
+  {x, y, z} = pose.position
+
+  camera = %Camera{
+    position: {x, y + 1.7, z},
+    rotation: Quat.yaw_pitch(pose.yaw, pose.pitch),
+    fov_y: 1.1
+  }
+
+  with {:ok, placed} <- scene.upload(view, side: 1024) do
+    Cauldron3D.Kino.submit(view, placed.changes ++ scene.frame(placed, view_state) ++ [camera])
+    {:ok, placed}
+  end
+end
+```
+
+The alley: lamps, security lights and a fire in a barrel stove. Its textures and meshes
+are about 80 MB, sent to the browser once.
+
+```elixir
+alley = Cauldron3D.Kino.new(height: 480)
+{:ok, alley_placed} = show.(alley, Courtyard.Scenes.Alley, %{time: 0.0})
+alley
+```
+
+The stove's fire flickers: `frame/2` gives its light for a moment in time.
+
+```elixir
+Kino.listen(50, fn tick ->
+  Cauldron3D.Kino.submit(alley, Courtyard.Scenes.Alley.frame(alley_placed, %{time: tick * 0.05}))
+end)
+```
+
+The atrium at three in the afternoon, with its textures at 1024 pixels a side. It is
+about 3.7 million triangles and 170 MB to send, so it takes a while to appear.
+
+```elixir
+atrium = Cauldron3D.Kino.new(height: 480)
+{:ok, _atrium_placed} = show.(atrium, Courtyard.Scenes.Atrium, %{hour: 15.0})
+atrium
+```
+
+## The same scene elsewhere
+
+A view is a `CauldronGPU.Target`, as a native renderer (`CauldronGPU.open/1`) and a
+browser page (`Cauldron3D.Net.Scene`) are. Code written against `CauldronGPU.Target`
+draws into any of them, and the `cauldron_gpu` converters upload Quake, Doom and
+Half-Life maps and models to a view the way they do to a window.

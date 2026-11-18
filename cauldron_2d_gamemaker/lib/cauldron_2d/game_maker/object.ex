@@ -56,7 +56,7 @@ defmodule Cauldron2D.GameMaker.Object do
   def read(data, at, %General{} = general) do
     flag = managed_flag_size(general)
 
-    <<_name::little-32, sprite::little-signed-32, visible::little-32, managed::binary-size(flag),
+    <<_name::little-32, sprite::little-signed-32, visible::little-32, managed::binary-size(^flag),
       solid::little-32, depth::little-signed-32, persistent::little-32, parent::little-signed-32,
       mask::little-signed-32, physics::little-32, sensor::little-32, shape::little-32,
       density::binary-4, restitution::binary-4, group::little-32, linear::binary-4,

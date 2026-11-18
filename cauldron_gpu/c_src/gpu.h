@@ -44,7 +44,9 @@ extern "C" {
  * device_info does not report frame_generation.
  *
  * frame_gpu_seconds is how long the GPU spent on the most recently completed frame, 0
- * before any has completed.
+ * before any has completed. frames_completed is how many of the frames submitted by
+ * frame_end and frame_end_pair the GPU has finished; frames are counted from 1 in the
+ * order they were submitted.
  */
 
 #define CG_MAX_COLOR 8
@@ -258,8 +260,11 @@ typedef struct cg_device_info {
 /**
  * One backend. `shader_extension` names the compiled shader files it loads
  * ("metallib" or "spv"); `window_flags` are the SDL window flags its surface needs.
- * `surface_attach` and `surface_detach` run on the window thread with an `SDL_Window *`;
- * every other function runs on the render thread. Front faces are counter-clockwise.
+ * `surface_attach` and `surface_detach` run on the window thread with an `SDL_Window *`.
+ * `surface_attach_native` attaches a surface the host made instead (a `CAMetalLayer *` for
+ * Metal, an `ANativeWindow *` for Vulkan on Android), on the thread that opens the view;
+ * it is NULL or answers false where the backend has none.
+ * Every other function runs on the render thread. Front faces are counter-clockwise.
  * `frame_begin` waits for a free frame and returns its command list. With a surface it
  * returns NULL while the surface is zero-sized; without one (offscreen rendering) it
  * always returns a command list, `frame_target` returns NULL and `frame_end` submits
@@ -275,6 +280,7 @@ typedef struct cg_backend {
   void (*device_info)(cg_device *device, cg_device_info *info);
 
   bool (*surface_attach)(cg_device *device, void *sdl_window);
+  bool (*surface_attach_native)(cg_device *device, void *native);
   void (*surface_detach)(cg_device *device);
   void (*surface_resize)(cg_device *device, uint32_t width, uint32_t height);
   cg_format (*surface_format)(cg_device *device);
@@ -310,6 +316,7 @@ typedef struct cg_backend {
   void (*frame_end)(cg_device *device, cg_cmd *cmd);
   void (*frame_end_pair)(cg_device *device, cg_cmd *cmd, cg_texture *first, cg_texture *second, float spacing);
   float (*frame_gpu_seconds)(cg_device *device);
+  uint64_t (*frames_completed)(cg_device *device);
 
   void (*cmd_copy_buffer)(cg_cmd *cmd, cg_buffer *src, uint64_t src_offset, cg_buffer *dst, uint64_t dst_offset, uint64_t size);
   void (*cmd_copy_to_texture)(cg_cmd *cmd, cg_buffer *src, uint64_t src_offset, uint32_t bytes_per_row, cg_texture *dst, uint32_t mip, uint32_t layer, uint32_t width, uint32_t height);

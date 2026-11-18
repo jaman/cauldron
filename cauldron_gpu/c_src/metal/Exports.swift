@@ -47,7 +47,9 @@ public func surfaceSet(_ pointer: OpaquePointer, _ layerPointer: UnsafeMutableRa
   layer.pixelFormat = .bgra8Unorm_srgb
   layer.framebufferOnly = false
   layer.maximumDrawableCount = 3
+  #if os(macOS)
   layer.displaySyncEnabled = true
+  #endif
   device.layer = layer
 }
 
@@ -237,6 +239,7 @@ public func frameEnd(_ pointer: OpaquePointer, _ commandsPointer: OpaquePointer)
   commands.buffer.addCompletedHandler { [weak device] buffer in
     device?.frameCompleted(frame, gpuSeconds: Float(buffer.gpuEndTime - buffer.gpuStartTime))
   }
+  device.commitResidency()
   commands.buffer.commit()
   device.drawable = nil
   device.target.texture = nil
@@ -269,6 +272,14 @@ public func frameGpuSeconds(_ pointer: OpaquePointer) -> Float {
   device.lock.lock()
   defer { device.lock.unlock() }
   return device.gpuSeconds
+}
+
+@_cdecl("cg_metal_frames_completed")
+public func framesCompleted(_ pointer: OpaquePointer) -> UInt64 {
+  let device: Device = borrowed(pointer)
+  device.lock.lock()
+  defer { device.lock.unlock() }
+  return device.completed
 }
 
 @_cdecl("cg_metal_cmd_copy_buffer")

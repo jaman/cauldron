@@ -1,17 +1,16 @@
 defmodule Cauldron2D.Net do
   @moduledoc """
-  A `cauldron_2d` world in a browser, and the links an Elixir client uses to join a
-  served world.
+  A `cauldron_2d` world in a browser: the drawer that sends its scenes over
+  `cauldron_net`'s channels and links, the pages that draw them, and a server for a game
+  in one line.
 
   | | |
   |---|---|
+  | `Cauldron2D.Net.Drawer`, `Cauldron2D.Net.Reader` | a 2D scene as it goes to a client, and as a client reads it |
   | `Cauldron2D.Net.Pages` | the pages around the worlds, from a `Cauldron2D.Client.Game` |
-  | `Cauldron2D.Net.Socket`, `Cauldron2D.Net.Channel` | the player socket and channel |
-  | `Cauldron2D.Net.Api` | tokens, worlds, stats and boards over plain HTTP |
-  | `Cauldron2D.Net.Session` | a player's life on a channel |
-  | `Cauldron2D.Net.Sheet`, `Cauldron2D.Net.Frame`, `Cauldron2D.Net.Wire` | what goes over the wire |
-  | `Cauldron2D.Net.Remote`, `Cauldron2D.Net.Remote.Worlds`, `Cauldron2D.Net.Link.World` | a server's worlds from elsewhere |
-  | `Cauldron2D.Net.Link.Socket`, `Cauldron2D.Net.Link.Local`, `Cauldron2D.Net.Sound` | an Elixir client's connection and speaker |
-  | `Cauldron2D.Net.Load` | a load test against a server |
+  | `Cauldron2D.Net.Serve` | a game served with no web code of its own |
+  | `Cauldron2D.Net.Drawing`, `Cauldron2D.Net.Drawn` | who draws, and the pushes that show a scene |
+  | `Cauldron2D.Net.Atlas`, `Cauldron2D.Net.Scene`, `Cauldron2D.Net.Picture`, `Cauldron2D.Net.Wire` | what goes over the wire |
+  | `Cauldron2D.Net.RemoteScene` | a remote world's view drawn as a scene |
   """
 end

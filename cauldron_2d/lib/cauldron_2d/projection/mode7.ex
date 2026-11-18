@@ -44,7 +44,7 @@ defmodule Cauldron2D.Projection.Mode7 do
 
   alias Cauldron2D.Atlas
   alias Cauldron2D.Projection.{Canvas, Ground, Volume}
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @fog_levels 6
   @near 0.2

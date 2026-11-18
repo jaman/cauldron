@@ -54,7 +54,7 @@ defmodule Cauldron2D.Projection.Iso do
 
   alias Cauldron2D.Atlas
   alias Cauldron2D.Projection.{Canvas, Volume}
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @left_shade 0.62
   @right_shade 0.82

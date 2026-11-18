@@ -10,12 +10,16 @@ namespace cg {
 
 namespace {
 
+#if defined(CG_WINDOWS)
 float refresh_rate_of(SDL_Window *window) {
   const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
   return mode && mode->refresh_rate > 0 ? mode->refresh_rate : 60.0f;
 }
+#endif
 
-std::atomic<SDL_WindowID> next_offscreen_id{1u << 30};
+constexpr float native_refresh_rate = 60.0f;
+
+std::atomic<ViewId> next_offscreen_id{1u << 30};
 
 }
 
@@ -50,6 +54,31 @@ bool RenderWindow::open(const OpenRequest &request, EventSink events, Renderer::
   return true;
 }
 
+bool RenderWindow::open_surface(const OpenRequest &request, void *native, Renderer::ErrorReporter errors, std::string &error) {
+  std::lock_guard lock(mutex_);
+  renderer_ = std::make_unique<Renderer>(request.backend, request.shader_directory, std::move(errors));
+  if (!renderer_->create_device(error)) {
+    renderer_.reset();
+    return false;
+  }
+  const cg_backend *backend = renderer_->backend();
+  if (!backend->surface_attach_native || !backend->surface_attach_native(renderer_->device(), native)) {
+    error = std::string("the ") + backend->name + " backend cannot draw into this surface";
+    renderer_.reset();
+    return false;
+  }
+  open_ = true;
+  native_ = true;
+  id_ = next_offscreen_id++;
+  renderer_->resize(static_cast<uint32_t>(request.width), static_cast<uint32_t>(request.height));
+  renderer_->set_refresh_rate(native_refresh_rate);
+  if (!renderer_->start(error)) {
+    close_locked();
+    return false;
+  }
+  return true;
+}
+
 void RenderWindow::close() {
   std::lock_guard lock(mutex_);
   close_locked();
@@ -61,14 +90,18 @@ void RenderWindow::close_locked() {
   renderer_->stop();
   unregister_window(id_);
   Renderer *renderer = renderer_.get();
+  if (native_) renderer->backend()->surface_detach(renderer->device());
+#if defined(CG_WINDOWS)
   SDL_Window *sdl_window = sdl_window_;
   if (sdl_window)
     run_on_window_thread([&] {
       renderer->backend()->surface_detach(renderer->device());
       SDL_DestroyWindow(sdl_window);
     });
+#endif
   renderer_.reset();
   sdl_window_ = nullptr;
+  native_ = false;
 }
 
 bool RenderWindow::submit(Batch batch) {
@@ -88,12 +121,38 @@ bool RenderWindow::capture(bool generated, CaptureReply reply) {
   return true;
 }
 
+bool RenderWindow::stream(CaptureReply reply, uint32_t ahead, float fps) {
+  std::lock_guard lock(mutex_);
+  if (!open_) return false;
+  renderer_->start_stream(std::move(reply), ahead, fps);
+  return true;
+}
+
+bool RenderWindow::stop_stream() {
+  std::lock_guard lock(mutex_);
+  if (!open_) return false;
+  renderer_->stop_stream();
+  return true;
+}
+
+bool RenderWindow::frame_shown() {
+  std::lock_guard lock(mutex_);
+  if (!open_) return false;
+  renderer_->frame_shown();
+  return true;
+}
+
 bool RenderWindow::relative_mouse(bool enabled) {
   std::lock_guard lock(mutex_);
   if (!open_) return false;
+#if defined(CG_WINDOWS)
   SDL_Window *sdl_window = sdl_window_;
   run_on_window_thread([&] { SDL_SetWindowRelativeMouseMode(sdl_window, enabled); });
   return true;
+#else
+  (void)enabled;
+  return false;
+#endif
 }
 
 bool RenderWindow::resize(uint32_t width, uint32_t height, std::string &error) {
@@ -124,6 +183,8 @@ cg_device_info RenderWindow::info() {
   std::lock_guard lock(mutex_);
   return renderer_ ? renderer_->info() : cg_device_info{};
 }
+
+#if defined(CG_WINDOWS)
 
 bool RenderWindow::open_sdl_window(const std::string &title, int width, int height, std::string &error) {
   Renderer *renderer = renderer_.get();
@@ -159,6 +220,17 @@ void RenderWindow::deliver(const SDL_Event &event) {
   if (forwarded_event(event)) events_(event);
 }
 
+#else
+
+bool RenderWindow::open_sdl_window(const std::string &, int, int, std::string &error) {
+  error = "no windows on this platform: open a surface";
+  return false;
+}
+
+void RenderWindow::deliver(const SDL_Event &) {}
+
+#endif
+
 const cg_backend *backend_named(const std::string &name) {
 #if defined(CG_HAVE_METAL)
   if (name == "metal") return cg_metal_backend();
@@ -168,6 +240,8 @@ const cg_backend *backend_named(const std::string &name) {
 #endif
   return nullptr;
 }
+
+#if defined(CG_WINDOWS)
 
 std::string key_name(SDL_Scancode scancode) {
   std::string name = SDL_GetScancodeName(scancode);
@@ -192,5 +266,7 @@ bool forwarded_event(const SDL_Event &event) {
       return false;
   }
 }
+
+#endif
 
 }

@@ -16,6 +16,6 @@ Varyings vertex_main(uint vertex_id : SV_VertexID) {
 
 [shader("fragment")]
 float4 fragment_main(Varyings input) : SV_Target {
-  Frame frame = *push.frame;
-  return frame.lit.SampleLevel(frame.point_clamp, input.uv, 0);
+  Frame *frame = push.frame;
+  return frame->lit.SampleLevel(frame->point_clamp, input.uv, 0);
 }

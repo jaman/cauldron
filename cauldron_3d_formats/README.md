@@ -2,7 +2,8 @@
 
 Cauldron3D.Formats reads the Quake family of game files into
 [`cauldron_3d`](https://hexdocs.pm/cauldron_3d) structures. It reads archives, maps,
-models, sprites, picture collections, pictures and sounds.
+models, sprites, picture collections, pictures and sounds. It also reads glTF 2.0
+documents and VRM avatars.
 
 ## Where it fits
 
@@ -38,8 +39,14 @@ end
 | `Cauldron3D.Formats.Wav` | Reads WAVE sounds to 16-bit PCM. |
 | `Cauldron3D.Formats.Entities` | Reads a map's entity text into one map of keys and values per entity. |
 | `Cauldron3D.Formats.Normals` | Holds the 162 vertex normals that Quake models index into. |
+| `Cauldron3D.Formats.Gltf` | Reads glTF 2.0 documents, `.gltf` (with buffers and images beside it or inline) and `.glb`: meshes as packed triangle lists, metallic-roughness materials, images, the scene's placed meshes with their world matrices, the node tree and skins. Coordinates stay glTF's: metres, +Y up. |
+| `Cauldron3D.Formats.Gltf.Rig` | Turns a document's nodes into one `Cauldron3D.Skeleton`, parents before children, for posing skinned meshes with `Cauldron3D.Skeleton.pose/3` and `Cauldron3D.SpringBones`. |
+| `Cauldron3D.Formats.Gltf.Animations`, `Cauldron3D.Formats.Gltf.Clip` | Read a document's animation clips, and sample and blend them: the translations, rotations, scales and morph target weights a clip sets at a time, looped or not. `Gltf.Rig.pose_sample/3` poses a rig from a sample. Meshes carry their morph targets. |
+| `Cauldron3D.Formats.Vrm` | Reads the VRM 0.x avatar extension of a `.vrm` file: the humanoid bone names to their nodes, and the swinging bone chains as `Cauldron3D.SpringBones` chains. |
 
 ## Usage
+
+A Quake map and model:
 
 ```elixir
 alias Cauldron3D.Formats.{Bsp, Files, Mdl}
@@ -54,6 +61,20 @@ alias Cauldron3D.Formats.{Bsp, Files, Mdl}
 
 {:ok, player} = Mdl.parse(Files.read!(files, "progs/player.mdl"))
 Cauldron3D.Mesh.polygons(player.mesh, frame: Mdl.pose(player, 0, 0.0))
+```
+
+A glTF model and a VRM avatar:
+
+```elixir
+alias Cauldron3D.Formats.{Gltf, Vrm}
+
+{:ok, sponza} = Gltf.read("Sponza/glTF/Sponza.gltf")
+length(sponza.meshes)
+
+{:ok, avatar} = Gltf.read("avatar.vrm")
+{:ok, vrm} = Vrm.read(avatar)
+rig = Gltf.Rig.new(avatar)
+Vrm.node(vrm, "hips")
 ```
 
 Each game names its own conventions through `Bsp.parse/2`'s options. `:hulls` gives the

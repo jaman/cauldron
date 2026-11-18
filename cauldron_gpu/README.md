@@ -59,7 +59,7 @@ Metal is used first on a Mac; Vulkan there runs the same path as Linux and Windo
 ## A first scene
 
 ```elixir
-alias CauldronGPU.{Camera, Instance, Light, Material, Mesh, Transform}
+alias Cauldron3D.Scene.{Camera, Instance, Light, Material, Mesh, Transform}
 
 {:ok, gpu} = CauldronGPU.open(title: "Hello", width: 1280, height: 720)
 
@@ -81,7 +81,7 @@ Then, once a tick (say 30 times a second), send what moved:
 ```elixir
 CauldronGPU.submit(gpu, [
   {:move, 2, Transform.new(position: {x, 0.5, 0.0})},
-  %Camera{position: eye, rotation: CauldronGPU.Quat.yaw_pitch(yaw, pitch)}
+  %Camera{position: eye, rotation: Cauldron3D.Scene.Quat.yaw_pitch(yaw, pitch)}
 ])
 ```
 
@@ -92,13 +92,18 @@ motion, buttons and wheel, resizes, focus and `:close_requested`.
 
 ## How a scene works
 
+The structs, the change stream, `Cauldron3D.Scene.Target` and the game converters are in the
+`cauldron_3d_scene` package, which this package depends on. Code that only describes
+scenes, such as a browser or Livebook client, can depend on `cauldron_3d_scene` alone
+and never builds the renderer.
+
 * **Resources** — meshes, textures and materials are uploaded once and answered with a
-  `CauldronGPU.Handle`. Upload through `CauldronGPU.mesh/2`, `texture/2` and `material/2`
-  (or `CauldronGPU.Target` for code that should work with every kind of renderer).
+  `Cauldron3D.Scene.Handle`. Upload through `CauldronGPU.mesh/2`, `texture/2` and `material/2`
+  (or `Cauldron3D.Scene.Target` for code that should work with every kind of renderer).
   Putting a mesh or texture again under a handle's id replaces it
   (`{:mesh, handle.id, mesh}` in a submit), which is how per-tick meshes such as
   particles or a HUD texture are updated.
-* **Changes** — everything else is a list of changes, `CauldronGPU.Stream` lists them all:
+* **Changes** — everything else is a list of changes, `Cauldron3D.Scene.Stream` lists them all:
   instances, moves, poses for animated models, lights, the camera, the environment, light
   styles, the overlay picture, the screen tint and effects. Ids are yours; an id put again
   replaces what it named.
@@ -114,31 +119,33 @@ motion, buttons and wheel, resizes, focus and `:close_requested`.
 | Use | How |
 |---|---|
 | A window | `CauldronGPU.open(title: ..., width: ..., height: ...)` |
-| Pictures read back | `CauldronGPU.open(window: false, width: w, height: h)` then `CauldronGPU.capture/3` for RGBA bytes (`CauldronGPU.PNG.encode/1` saves one) or, with `shared_memory: name`, into a POSIX shared-memory object a terminal can read |
-| A terminal | Draw offscreen and send the pictures with the kitty graphics protocol. See `examples/terminal.exs`, or a `cauldron_2d` game's `gpu` picture option below |
+| Pictures read back | `CauldronGPU.open(window: false, width: w, height: h)` then `CauldronGPU.capture/3` for RGBA bytes (`Cauldron3D.Scene.PNG.encode/1` saves one) or, with `shared_memory: name`, into a POSIX shared-memory object a terminal can read |
+| Every frame, as drawn | `CauldronGPU.stream/2` sends each frame to a process (pixels, or a shared-memory name) until `stop_stream/1`; the receiver calls `frame_shown/1` for each, and at most `:ahead` frames wait at once. `CauldronGPU.Host` has the same calls |
+| A terminal | A Cauldron game whose scene has a `:gpu`, run by `cauldron_2d_drafter`'s client: see `cauldron_examples/3d/courtyard` (`mix courtyard`), or a `cauldron_2d` game's `gpu` picture option below |
 | Its own OS process | `CauldronGPU.Host` takes the same calls. A renderer crash leaves the VM running. `CauldronGPU.Host.restart/1` brings the renderer back with the scene it had |
 | Browsers | `Cauldron3D.Net.Scene` in the `cauldron_3d_net` package |
+| Livebook | `Cauldron3D.Kino` in the `cauldron_3d_kino` package |
 
-Code that uploads should take any of these through the `CauldronGPU.Target` protocol
+Code that uploads should take any of these through the `Cauldron3D.Scene.Target` protocol
 (`submit/2`, `mesh/2`, `texture/2`, `material/2`, `release/2`).
 
 ## Looks
 
-* **Materials** (`CauldronGPU.Material`) are glTF-style metallic-roughness with base,
+* **Materials** (`Cauldron3D.Scene.Material`) are glTF-style metallic-roughness with base,
   emissive, normal and occlusion textures and baked lightmaps (with light styles), and
   game-style switches: `unlit`, `alpha_cutoff`, `alpha_mode` (`:blend`, `:add`,
   `:multiply`), `double_sided`, `sky`, `warp` (rippling liquids), `uv_scroll`,
   `uv_from: :reflection` and `smear` (the picture behind, shifted, for shimmering things).
-* **Instances** (`CauldronGPU.Instance`) can be drawn `in_front` of the world (held
+* **Instances** (`Cauldron3D.Scene.Instance`) can be drawn `in_front` of the world (held
   weapons), with fixed `shading` instead of scene lights, without `depth_test`, `swell`ing
   along their normals, or `standing` in a room (not hidden by their own floor and
   ceiling, as sprites in sector games are not).
-* **Environment** (`CauldronGPU.Environment`) sets the sky, ambient light, fog, exposure,
+* **Environment** (`Cauldron3D.Scene.Environment`) sets the sky, ambient light, fog, exposure,
   tone mapping and bloom. The sky is shaded, or a picture: two scrolling layers or a
   six-sided box. Palette games can set `light_space: :display`, where light multiplies
   the display colour as colormaps do. They can also set `gamma`, `contrast`,
   `brightness`, and a `light_table` for light that falls off with distance.
-* **Camera** (`CauldronGPU.Camera`) sets the field of view, near and far. Set `viewport`
+* **Camera** (`Cauldron3D.Scene.Camera`) sets the field of view, near and far. Set `viewport`
   for a view that does not fill the frame, such as one above a status bar. Set `aspect`
   for non-square pixels and `resolution` for blocky low-detail views.
 * **Effects** — `{:effects, [...]}` asks for `:ray_traced_shadows`,
@@ -155,31 +162,31 @@ Code that uploads should take any of these through the `CauldronGPU.Target` prot
 With `cauldron_3d` and `cauldron_3d_formats` (and `cauldron_2d` for sector maps) in your
 deps, these converters upload a whole asset and give the changes that place it:
 
-* `CauldronGPU.Bsp` uploads Quake and Half-Life maps. It brings their brush models,
+* `Cauldron3D.Scene.Bsp` uploads Quake and Half-Life maps. It brings their brush models,
   lightmaps with light styles, sky (`sky_layers/3`) and liquids.
-* `CauldronGPU.AliasModel` uploads Quake `.mdl` models and animates them by blending
+* `Cauldron3D.Scene.AliasModel` uploads Quake `.mdl` models and animates them by blending
   keyframes.
-* `CauldronGPU.StudioModel` uploads Half-Life studio models and skins them by bones.
-* `CauldronGPU.Sectors` uploads Doom-style sector maps. `CauldronGPU.Sectors.Live`
+* `Cauldron3D.Scene.StudioModel` uploads Half-Life studio models and skins them by bones.
+* `Cauldron3D.Scene.Sectors` uploads Doom-style sector maps. `Cauldron3D.Scene.Sectors.Live`
   rebuilds sectors as doors and lifts move.
-* `CauldronGPU.Placement` stands a model at a map point and angle.
-* `CauldronGPU.Billboards` draws camera-facing pictures, such as sprites and particles,
+* `Cauldron3D.Scene.Placement` stands a model at a map point and angle.
+* `Cauldron3D.Scene.Billboards` draws camera-facing pictures, such as sprites and particles,
   as one mesh.
 
 ## 2D layers
 
 A tick can carry `{:layers, [layer]}`: 2D layers drawn every frame, in order, until the
-next `:layers` change. A `CauldronGPU.SpriteLayer` draws `CauldronGPU.Sprite`s, each a
+next `:layers` change. A `Cauldron3D.Scene.SpriteLayer` draws `Cauldron3D.Scene.Sprite`s, each a
 rectangle of a texture placed, scaled, turned, tinted and blended (`:over`, `:add` or
-`:subtract`). A `CauldronGPU.ColumnLayer` redraws a texture column by column through a
+`:subtract`). A `Cauldron3D.Scene.ColumnLayer` redraws a texture column by column through a
 table of positions, stretches and shades, for warps such as a curved view.
 
 A layer draws into the frame or into a canvas. A canvas (`CauldronGPU.canvas/2`, a
-`CauldronGPU.Canvas`) is a texture on the card, so a later layer can draw it as a sprite,
+`Cauldron3D.Scene.Canvas`) is a texture on the card, so a later layer can draw it as a sprite,
 warp it, or a material can use it.
 
 ```elixir
-alias CauldronGPU.{Canvas, Sprite, SpriteLayer, Texture}
+alias Cauldron3D.Scene.{Canvas, Sprite, SpriteLayer, Texture}
 
 {:ok, gpu} = CauldronGPU.open(title: "Sprites", width: 960, height: 600)
 ship = CauldronGPU.texture(gpu, %Texture{width: 16, height: 16, pixels: pixels,
@@ -206,10 +213,10 @@ has never been sent a camera draws its layers alone and skips the 3D passes.
 
 ## Drawing a cauldron_2d game on the graphics card
 
-A `Cauldron2D.Client.Game` whose scene has a `:picture` (its own software renderer) can add
+A `Cauldron.Client.Game` whose scene has a `:picture` (its own software renderer) can add
 a `:gpu` function describing the same picture for the card. The client in
-`cauldron_2d_drafter` then draws it on the graphics card when the player asks for it, and
-falls back to the software picture when the card is not there.
+`cauldron_2d_drafter` then draws it on the graphics card by default, and falls back to the
+software picture when the card is not there.
 
 ```elixir
 def scene(view, look) do
@@ -226,10 +233,10 @@ end
 
 `MyGame.Gpu.draw/5` answers `{changes, cache}`:
 
-* `target` is a `CauldronGPU.Target`; upload through it.
+* `target` is a `Cauldron3D.Scene.Target`; upload through it.
 * `cache` is what you answered last tick (`nil` the first time). Keep your handles in it
   (the level's meshes and materials, models seen so far, the overlay texture), keyed by
-  level so a new level releases the old one's handles with `CauldronGPU.Target.release/2`.
+  level so a new level releases the old one's handles with `Cauldron3D.Scene.Target.release/2`.
 * `size` is the picture's size in pixels and `aspect` how wide a pixel shows against its
   height; set the camera's `aspect` from it.
 * `changes` is the tick: instances, camera, lights, light styles, and the game's 2D layer
@@ -238,10 +245,12 @@ end
   `Cauldron2D.Drafter.Client.Sprites` turns `Cauldron2D.DrawList` items into sprites and
   uploads each picture once.
 
-The player picks where it is drawn with the client's picture options
-(`Cauldron2D.Drafter.Client.Picture`): `gpu` draws it offscreen and shows it in the
-terminal pane, `window` opens a window of its own whose keys drive the game. A game's mix
-task usually offers them as `--gpu` and `--window`. With no `:gpu` in the scene, no
+By default the card draws it offscreen and the client shows it in the terminal pane.
+Each player can change that in the client's settings screen (the Drawing row: automatic,
+software only, the card in the terminal, the card in a window of its own), and a run can
+override it with the picture options `software`, `gpu` or `window`
+(`Cauldron2D.Drafter.Client.Picture`), given as the `:picture` prop or `CAULDRON_PICTURE`.
+In a window, keys pressed in the window drive the game. With no `:gpu` in the scene, no
 renderer in the build, or a renderer that fails to open, the game's own picture is drawn
 and the player sees a short note saying why. The renderer runs as a `CauldronGPU.Host`, so
 a renderer crash does not take the game down.
@@ -251,24 +260,30 @@ and `nidhox` (`Nidhox.Gpu`) in 2D.
 
 ## Examples
 
-Run from this directory:
+The examples are their own project, `cauldron_examples/3d/gpu_showcase` in the Cauldron
+repository. Run from there:
 
-* `mix run examples/showcase.exs` shows a courtyard with spheres, cubes and lamps. Fly
+* `mix showcase` shows a courtyard with spheres, cubes and lamps. Fly
   with W A S D and the mouse. `EFFECTS=rt,gi,upscale` turns on ray tracing and upscaling.
-* `mix run examples/spheres.exs` is a load test with 2000 metal and plastic spheres
+* `mix spheres` is a load test with 2000 metal and plastic spheres
   (`COUNT=n`). Press `=` and `-` to add or take away 500. Once a second it prints the
   frames drawn and the graphics card's and renderer's time a frame. Frames are paced to
   the display, so frames a second stop at its refresh rate; the frame times show the
   room left.
-* `mix run examples/quake_map.exs ~/quake e1m1` shows a Quake map. Set `MONSTERS=1` to
-  add its monsters.
-* `mix run examples/doom_map.exs path/to/DOOM1.WAD E1M1` shows a Doom level.
-* `mix run examples/studio_model.exs path/to/valve/models/barney.mdl walk` plays a
-  sequence of a Half-Life model.
-* `mix run examples/terminal.exs ~/quake e1m1` draws a map offscreen and shows it in a
-  kitty-protocol terminal at the terminal's size.
+
+`MIX_ENV=prod mix release` there builds the showcase as a program of its own, with the
+runtime inside: `bin/gpu_showcase start` opens it (`SHOWCASE_ARGS` takes `mix showcase`'s
+arguments), and a `.tar.gz` of it is written beside the release to hand to someone else.
+
+The showcase builds its scene with `GpuShowcase.Courtyard`. The same courtyard in a
+terminal, walked through with the keys and the mouse, is the Cauldron game in
+`cauldron_examples/3d/courtyard` (`mix courtyard` there).
 
 ## Tests and status
 
 `STATE.md` records what has been built, how it was checked, and what is open (DLSS and FSR,
 Vulkan ray tracing on real hardware, first runs on Linux and Windows).
+
+## License
+
+MIT

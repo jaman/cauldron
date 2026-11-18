@@ -12,7 +12,7 @@ defmodule Cauldron2D.Projection.Canvas do
       canvas |> Canvas.paint(stamp, {10, 4}) |> Canvas.to_raster()
   """
 
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @type image :: %{width: pos_integer(), height: pos_integer(), rgba: binary()}
   @type stamp :: %{

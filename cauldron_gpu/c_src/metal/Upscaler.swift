@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+#if canImport(MetalFX)
 import MetalFX
 
 final class Upscaler {
@@ -69,15 +70,16 @@ private func texture(_ pointer: OpaquePointer?) -> MTLTexture? {
 }
 
 final class Interpolator {
-  let interpolator: MTLFXFrameInterpolator
+  let interpolator: AnyObject
 
-  init(interpolator: MTLFXFrameInterpolator) {
+  init(interpolator: AnyObject) {
     self.interpolator = interpolator
   }
 }
 
 func frameGenerationSupported(_ device: MTLDevice) -> Bool {
-  MTLFXFrameInterpolatorDescriptor.supportsDevice(device)
+  guard #available(iOS 26.0, *) else { return false }
+  return MTLFXFrameInterpolatorDescriptor.supportsDevice(device)
 }
 
 @_cdecl("cg_metal_interpolator_create")
@@ -85,6 +87,7 @@ public func interpolatorCreate(_ pointer: OpaquePointer, _ desc: UnsafePointer<c
   let device: Device = borrowed(pointer)
   let spec = desc.pointee
   guard frameGenerationSupported(device.device) else { return nil }
+  guard #available(iOS 26.0, *) else { return nil }
   let descriptor = MTLFXFrameInterpolatorDescriptor()
   descriptor.inputWidth = Int(spec.input_width)
   descriptor.inputHeight = Int(spec.input_height)
@@ -95,7 +98,7 @@ public func interpolatorCreate(_ pointer: OpaquePointer, _ desc: UnsafePointer<c
   descriptor.depthTextureFormat = pixelFormat(spec.depth_format)
   descriptor.motionTextureFormat = pixelFormat(spec.motion_format)
   descriptor.uiTextureFormat = pixelFormat(spec.color_format)
-  if #available(macOS 27.0, *) { descriptor.requiresPrevColorTexture = true }
+  if #available(macOS 27.0, iOS 27.0, *) { descriptor.requiresPrevColorTexture = true }
   guard let interpolator = descriptor.makeFrameInterpolator(device: device.device) else { return nil }
   interpolator.fence = device.fence
   return retained(Interpolator(interpolator: interpolator))
@@ -110,13 +113,14 @@ public func interpolatorDestroy(_ pointer: OpaquePointer, _ interpolatorPointer:
 
 @_cdecl("cg_metal_cmd_interpolate")
 public func cmdInterpolate(_ pointer: OpaquePointer, _ interpolatorPointer: OpaquePointer, _ frame: UnsafePointer<cg_interpolate>) {
+  guard #available(iOS 26.0, *) else { return }
   let commands: Commands = borrowed(pointer)
   let wrapped: Interpolator = borrowed(interpolatorPointer)
   let spec = frame.pointee
   guard let color = texture(spec.color), let previous = texture(spec.previous_color), let depth = texture(spec.depth),
         let motion = texture(spec.motion), let output = texture(spec.output) else { return }
   commands.finish()
-  let interpolator = wrapped.interpolator
+  let interpolator = wrapped.interpolator as! MTLFXFrameInterpolator
   interpolator.colorTexture = color
   interpolator.prevColorTexture = previous
   interpolator.depthTexture = depth
@@ -135,3 +139,26 @@ public func cmdInterpolate(_ pointer: OpaquePointer, _ interpolatorPointer: Opaq
   interpolator.isDepthReversed = spec.reversed_depth
   interpolator.encode(commandBuffer: commands.buffer)
 }
+#else
+func upscalingSupported(_ device: MTLDevice) -> Bool { false }
+
+func frameGenerationSupported(_ device: MTLDevice) -> Bool { false }
+
+@_cdecl("cg_metal_upscaler_create")
+public func upscalerCreate(_ pointer: OpaquePointer, _ desc: UnsafePointer<cg_upscaler_desc>) -> OpaquePointer? { nil }
+
+@_cdecl("cg_metal_upscaler_destroy")
+public func upscalerDestroy(_ pointer: OpaquePointer, _ upscalerPointer: OpaquePointer) {}
+
+@_cdecl("cg_metal_cmd_upscale")
+public func cmdUpscale(_ pointer: OpaquePointer, _ upscalerPointer: OpaquePointer, _ frame: UnsafePointer<cg_upscale>) {}
+
+@_cdecl("cg_metal_interpolator_create")
+public func interpolatorCreate(_ pointer: OpaquePointer, _ desc: UnsafePointer<cg_upscaler_desc>) -> OpaquePointer? { nil }
+
+@_cdecl("cg_metal_interpolator_destroy")
+public func interpolatorDestroy(_ pointer: OpaquePointer, _ interpolatorPointer: OpaquePointer) {}
+
+@_cdecl("cg_metal_cmd_interpolate")
+public func cmdInterpolate(_ pointer: OpaquePointer, _ interpolatorPointer: OpaquePointer, _ frame: UnsafePointer<cg_interpolate>) {}
+#endif

@@ -1,4 +1,6 @@
+#if defined(CG_WINDOWS)
 #include <SDL3/SDL.h>
+#endif
 
 #include "../gpu.h"
 
@@ -51,12 +53,27 @@ cg_interpolator *cg_metal_interpolator_create(cg_device *device, const cg_upscal
 void cg_metal_interpolator_destroy(cg_device *device, cg_interpolator *interpolator);
 void cg_metal_cmd_interpolate(cg_cmd *cmd, cg_interpolator *interpolator, const cg_interpolate *frame);
 float cg_metal_frame_gpu_seconds(cg_device *device);
+uint64_t cg_metal_frames_completed(cg_device *device);
 void cg_metal_frame_end_pair(cg_device *device, cg_cmd *cmd, cg_texture *first, cg_texture *second, float spacing);
 
+#if defined(CG_WINDOWS)
 static bool metal_surface_attach(cg_device *device, void *sdl_window) {
   SDL_MetalView view = SDL_Metal_CreateView((SDL_Window *)sdl_window);
   if (view == NULL) return false;
   cg_metal_surface_set(device, SDL_Metal_GetLayer(view), view);
+  return true;
+}
+#else
+static bool metal_surface_attach(cg_device *device, void *sdl_window) {
+  (void)device;
+  (void)sdl_window;
+  return false;
+}
+#endif
+
+static bool metal_surface_attach_native(cg_device *device, void *layer) {
+  if (layer == NULL) return false;
+  cg_metal_surface_set(device, layer, NULL);
   return true;
 }
 
@@ -90,19 +107,26 @@ static void metal_frame_end_pair(cg_device *device, cg_cmd *cmd, cg_texture *fir
 }
 
 static void metal_surface_detach(cg_device *device) {
-  SDL_MetalView view = cg_metal_surface_view(device);
+  void *view = cg_metal_surface_view(device);
   cg_metal_surface_set(device, NULL, NULL);
-  if (view != NULL) SDL_Metal_DestroyView(view);
+#if defined(CG_WINDOWS)
+  if (view != NULL) SDL_Metal_DestroyView((SDL_MetalView)view);
+#else
+  (void)view;
+#endif
 }
 
 static const cg_backend metal_backend = {
   .name = "metal",
   .shader_extension = "metallib",
+#if defined(CG_WINDOWS)
   .window_flags = SDL_WINDOW_METAL,
+#endif
   .device_create = cg_metal_device_create,
   .device_destroy = cg_metal_device_destroy,
   .device_info = cg_metal_device_info,
   .surface_attach = metal_surface_attach,
+  .surface_attach_native = metal_surface_attach_native,
   .surface_detach = metal_surface_detach,
   .surface_resize = cg_metal_surface_resize,
   .surface_format = cg_metal_surface_format,
@@ -148,6 +172,7 @@ static const cg_backend metal_backend = {
   .cmd_interpolate = cg_metal_cmd_interpolate,
   .frame_end_pair = metal_frame_end_pair,
   .frame_gpu_seconds = cg_metal_frame_gpu_seconds,
+  .frames_completed = cg_metal_frames_completed,
 };
 
 const cg_backend *cg_metal_backend(void) {

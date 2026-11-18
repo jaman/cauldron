@@ -1,15 +1,15 @@
-if Code.ensure_loaded?(CauldronGPU.Target) do
+if Code.ensure_loaded?(Cauldron3D.Scene.Target) do
   defmodule Cauldron2D.Drafter.Client.Sprites do
     @moduledoc """
     Draw lists (`Cauldron2D.DrawList`) drawn by the graphics card, for a scene's `:gpu`
-    function: each item becomes a `CauldronGPU.Sprite`, each picture a texture uploaded
+    function: each item becomes a `Cauldron3D.Scene.Sprite`, each picture a texture uploaded
     the first time it is drawn, and canvases are kept by name at the size last asked.
 
         {sprites, cache} = Sprites.sprites(cache, target, items, &MyGame.source/1)
 
         changes = [
           {:layers,
-           [%CauldronGPU.SpriteLayer{clear: {0.0, 0.0, 0.0, 1.0}, view: {0, 0, 320, 200}, sprites: sprites}]}
+           [%Cauldron3D.Scene.SpriteLayer{clear: {0.0, 0.0, 0.0, 1.0}, view: {0, 0, 320, 200}, sprites: sprites}]}
         ]
 
     `source` is a function from an item's `:picture` to `{key, raster}` or `{key,
@@ -25,8 +25,8 @@ if Code.ensure_loaded?(CauldronGPU.Target) do
     """
 
     alias Cauldron2D.DrawList
-    alias CauldronGPU.{Canvas, Handle, Sprite, Target, Texture}
-    alias FrenchCurve.Raster
+    alias Cauldron2D.Raster
+    alias Cauldron3D.Scene.{Canvas, Handle, Sprite, Target, Texture}
 
     @type key :: term()
     @type source ::
@@ -116,7 +116,7 @@ if Code.ensure_loaded?(CauldronGPU.Target) do
       end
     end
 
-    defp uploaded(%Raster{width: width, height: height} = raster) do
+    defp uploaded(%FrenchCurve.Raster{width: width, height: height} = raster) do
       %Texture{
         width: width,
         height: height,

@@ -9,14 +9,22 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
   pane. The stage starts the first time a scene with a `:gpu` arrives, so a game that
   never describes one never starts a renderer.
 
+  Where the card is not drawn on — the options or the setting say `software`, or the card
+  did not open — a scene with a `:gpu` and no `:picture` of the game's own is drawn on
+  the CPU by `Cauldron3D.Scene.Software` (`Cauldron2D.Drafter.Client.SoftwareStage`),
+  where the build has it; a game's own `:picture` is drawn as it is.
+
   The client keeps it under `:gpu` in its state:
 
     * `new/1` and `configure/1` work out where to draw; `configure/1` again after the
       drawing setting changes stops a stage that no longer fits
     * `tick/2`, with each scene, starts the stage when it is wanted and sends the scene
-      to a window
+      to a window, telling the stage whether the player's bindings steer with the
+      pointer (`Stage.pointer/2`), so a window captures the pointer only then
     * `scene/2` gives the scene the client draws: in the pane, a scene with a `:gpu` has
-      its `:picture` drawn by the stage once it is ready; in a window, the pane's picture
+      its `:picture` drawn by the stage once it is ready, as frames in shared memory when
+      the terminal is on this machine and its surface stores pictures
+      (`Cauldron2D.Drafter.Surface.stores_pictures?/1`), else as pixels; in a window, the pane's picture
       is empty from the moment the window starts opening; otherwise, and for scenes with
       no `:gpu`, the game's own `:picture` with the `:gpu` key taken out
     * `message/2` takes the stage's messages: window keys go to the app as terminal
@@ -25,29 +33,38 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
     * `note/1` is a note about the card for the few seconds after it is made; notes are
       made when the card was asked for by name (`gpu`, `window`, or the setting `:pane`
       or `:window`), not for `:auto`
+    * `drawn/1` is how many pictures the card gave the pane, or frames it drew in the
+      window, in the last second; `nil` while no stage is drawing
+    * `rate/2` tells the stage the client's new frame rate
     * `stop/1` stops the stage
 
   While a window is open the client is told keys are released (`{:key_release_support,
   true}`); when it closes the terminal's own answer is restored.
   """
 
-  alias Cauldron2D.Drafter.Client.{Picture, Stage}
+  alias Cauldron.Input
+  alias Cauldron2D.Drafter.Client
+  alias Cauldron2D.Drafter.Client.{Picture, Settings, SoftwareStage, Stage}
+  alias Cauldron2D.Drafter.Surface
   alias Drafter.Event.Manager
   alias Drafter.Session.Context
 
-  @type mode :: :pane | :window | nil
+  @type mode :: :pane | :window | :software | nil
   @type t :: %{
           asked: :pane | :window | :software | nil,
           mode: mode(),
           named?: boolean(),
           tried?: boolean(),
-          stage: Stage.t() | nil,
+          stage: Stage.t() | SoftwareStage.t() | nil,
           ready?: boolean(),
           note: {String.t(), integer()} | nil,
-          key_release: boolean() | nil
+          key_release: boolean() | nil,
+          pointer?: boolean(),
+          drawn: non_neg_integer() | nil
         }
 
   @note_ms 6_000
+  @pointer_moves [:move_left, :move_right, :move_up, :move_down]
 
   @doc "The state of a client whose picture options are `options`, before `configure/1`."
   @spec new([Picture.option()]) :: t()
@@ -60,7 +77,9 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
       stage: nil,
       ready?: false,
       note: nil,
-      key_release: nil
+      key_release: nil,
+      pointer?: false,
+      drawn: nil
     }
   end
 
@@ -82,30 +101,54 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
 
       state
       |> restore_key_release()
-      |> put(%{mode: mode, named?: named?, tried?: false, stage: nil, ready?: false})
+      |> put(%{
+        mode: mode,
+        named?: named?,
+        tried?: false,
+        stage: nil,
+        ready?: false,
+        pointer?: false,
+        drawn: nil
+      })
     end
   end
 
   @doc "Starts the stage when the scene wants one, and sends the scene to an open window."
   @spec tick(map(), map()) :: map()
+  def tick(%{gpu: %{mode: :software}} = state, %{picture: _own}), do: state
+
   def tick(%{gpu: %{mode: mode, tried?: false}} = state, %{gpu: _gpu}) when mode != nil,
     do: start(state)
 
   def tick(%{gpu: %{mode: :window, ready?: true, stage: stage}} = state, %{gpu: gpu}) do
     Stage.draw(stage, gpu)
-    state
+    pointer(state, stage, steers?(state))
   end
 
   def tick(state, _scene), do: state
 
+  defp pointer(%{gpu: %{pointer?: steers?}} = state, _stage, steers?), do: state
+
+  defp pointer(state, stage, steers?) do
+    Stage.pointer(stage, steers?)
+    put(state, %{pointer?: steers?})
+  end
+
+  defp steers?(%{joined: joined, party: %{controls: %{input: %Input{} = input}}})
+       when joined != nil,
+       do: Enum.any?(@pointer_moves, &Input.binds?(input, {:mouse, &1}))
+
+  defp steers?(_state), do: false
+
   @doc "The scene the client draws for the game's `scene`."
   @spec scene(map(), map()) :: map()
-  def scene(%{gpu: %{mode: :pane, ready?: true, stage: stage}}, %{gpu: gpu} = scene) do
+  def scene(%{gpu: %{mode: :pane, ready?: true, stage: stage}} = state, %{gpu: gpu} = scene) do
     own = Map.get(scene, :picture)
+    shared? = shared_frames?(state)
 
     Map.put(scene, :picture, fn size, aspect ->
-      case Stage.picture(stage, gpu, size, aspect) do
-        {:ok, raster} -> raster
+      case Stage.picture(stage, gpu, size, aspect, shared?) do
+        {:ok, picture} -> picture
         {:error, _reason} -> own.(size, aspect)
       end
     end)
@@ -114,11 +157,25 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
   def scene(%{gpu: %{mode: :window, stage: stage}}, %{gpu: _gpu} = scene) when stage != nil,
     do: scene |> Map.delete(:gpu) |> Map.put(:picture, nil)
 
+  def scene(%{gpu: %{mode: :software, ready?: true, stage: stage}}, %{gpu: gpu} = scene) do
+    scene
+    |> Map.delete(:gpu)
+    |> Map.put_new(:picture, fn size, aspect ->
+      case SoftwareStage.picture(stage, gpu, size, aspect) do
+        {:ok, picture} -> picture
+        {:error, _reason} -> FrenchCurve.Raster.new(elem(size, 0), elem(size, 1))
+      end
+    end)
+  end
+
   def scene(_state, scene), do: Map.delete(scene, :gpu)
 
   @doc "The client state after a message from its stage."
   @spec message({module(), pid(), term()}, map()) :: map()
   def message({Stage, stage, message}, %{gpu: %{stage: stage}} = state),
+    do: staged(message, state)
+
+  def message({SoftwareStage, stage, message}, %{gpu: %{stage: stage}} = state),
     do: staged(message, state)
 
   def message(_message, state), do: state
@@ -131,20 +188,71 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
 
   def note(_state), do: nil
 
+  @doc """
+  Whether the card's frames reach the pane through shared memory: the pane is drawn on the
+  card, the terminal is on this machine, and its surface stores pictures
+  (`Cauldron2D.Drafter.Surface.stores_pictures?/1`).
+  """
+  @spec shared_frames?(map()) :: boolean()
+  def shared_frames?(%{gpu: %{mode: :pane}} = state),
+    do: local?(state) and Surface.stores_pictures?(surface_props(state, %{gpu: nil}))
+
+  def shared_frames?(_state), do: false
+
+  @doc "The pictures the card drew in the last second, or `nil` while it draws nothing."
+  @spec drawn(map()) :: non_neg_integer() | nil
+  def drawn(%{gpu: %{stage: stage, drawn: drawn}}) when stage != nil, do: drawn
+  def drawn(_state), do: nil
+
+  @doc "Tells the client's stage, if it has one, to draw at `fps` frames a second."
+  @spec rate(map(), pos_integer()) :: :ok
+  def rate(%{gpu: %{mode: :software}}, _fps), do: :ok
+  def rate(%{gpu: %{stage: stage}}, fps) when stage != nil, do: Stage.rate(stage, fps)
+  def rate(_state, _fps), do: :ok
+
   @doc "Stops the client's stage, if it has one."
   @spec stop(map()) :: :ok
   def stop(%{gpu: %{stage: nil}}), do: :ok
+  def stop(%{gpu: %{mode: :software, stage: stage}}), do: SoftwareStage.stop(stage)
   def stop(%{gpu: %{stage: stage}}), do: Stage.stop(stage)
   def stop(_state), do: :ok
 
-  defp mode(:software, _drawing), do: nil
+  defp mode(:software, _drawing), do: software_mode()
   defp mode(asked, _drawing) when asked in [:pane, :window], do: asked
-  defp mode(nil, :software), do: nil
+  defp mode(nil, :software), do: software_mode()
   defp mode(nil, :auto), do: :pane
   defp mode(nil, drawing) when drawing in [:pane, :window], do: drawing
 
+  defp surface_props(state, scene) do
+    [mode: Settings.surface_mode(state.settings)] ++
+      Picture.surface_props(state.picture, scene, Client.look(state))
+  end
+
+  defp local?(%{props: %{served_by: _server}}), do: false
+
+  defp local?(_state) do
+    env = Context.terminal_env()
+    not Map.has_key?(env, "SSH_CONNECTION") and not Map.has_key?(env, "SSH_TTY")
+  end
+
+  defp software_mode, do: if(SoftwareStage.available?(), do: :software)
+
+  defp start(%{gpu: %{mode: :software} = gpu} = state) do
+    case SoftwareStage.start() do
+      {:ok, stage} ->
+        put(state, %{
+          tried?: true,
+          stage: stage,
+          note: named(gpu, "starting the software renderer")
+        })
+
+      {:error, reason} ->
+        fall_back(put(state, %{tried?: true}), reason)
+    end
+  end
+
   defp start(%{gpu: gpu, game: game} = state) do
-    case Stage.start(gpu.mode, title: game.title().name) do
+    case Stage.start(gpu.mode, title: game.title().name, fps: Client.frame_rate(state)) do
       {:ok, stage} ->
         put(state, %{tried?: true, stage: stage, note: named(gpu, opening(gpu.mode))})
 
@@ -164,8 +272,13 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
     })
   end
 
+  defp staged(:ready, %{gpu: %{mode: :software} = gpu} = state),
+    do: put(state, %{ready?: true, note: named(gpu, "drawn on the CPU")})
+
   defp staged(:ready, %{gpu: gpu} = state),
     do: put(state, %{ready?: true, note: named(gpu, "drawn by the graphics card")})
+
+  defp staged({:drawn, count}, state), do: put(state, %{drawn: count})
 
   defp staged({:input, event}, state) do
     Manager.send_event(event)
@@ -178,6 +291,7 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
     |> put(%{
       stage: nil,
       ready?: false,
+      drawn: nil,
       mode: nil,
       note: noted("window closed: drawn in the terminal")
     })
@@ -185,11 +299,25 @@ defmodule Cauldron2D.Drafter.Client.Gpu do
 
   defp staged({:failed, reason}, state), do: state |> restore_key_release() |> fall_back(reason)
 
-  defp fall_back(%{gpu: gpu} = state, reason) do
+  defp fall_back(%{gpu: %{mode: :software} = gpu} = state, reason) do
     put(state, %{
       stage: nil,
       ready?: false,
+      drawn: nil,
       mode: nil,
+      note: named(gpu, "no software renderer (#{describe(reason)}): the game's own picture")
+    })
+  end
+
+  defp fall_back(%{gpu: gpu} = state, reason) do
+    mode = software_mode()
+
+    put(state, %{
+      stage: nil,
+      ready?: false,
+      drawn: nil,
+      mode: mode,
+      tried?: false,
       note: named(gpu, "no graphics card (#{describe(reason)}): drawn in software")
     })
   end

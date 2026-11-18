@@ -27,7 +27,7 @@ defmodule Cauldron2D.Parallax do
   alias Cauldron2D.{Atlas, Camera, Render, Surface}
   alias Cauldron2D.Atlas.Tables
   alias Cauldron2D.Parallax.{Bands, Layer, Panorama, Scatter, Strip}
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @table :cauldron_parallax
 

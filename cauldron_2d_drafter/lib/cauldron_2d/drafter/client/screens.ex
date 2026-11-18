@@ -12,10 +12,17 @@ defmodule Cauldron2D.Drafter.Client.Screens do
 
   import Drafter.App
 
-  alias Cauldron2D.Client.{Game, Hud}
+  alias Cauldron.Client.{Fronts, Game, Hud}
   alias Cauldron2D.Drafter.Client
   alias Cauldron2D.Drafter.Client.{Gpu, Picture, Settings}
   alias Cauldron2D.Drafter.Surface
+  alias Cauldron2D.Draw
+
+  @bar %{fg: {25, 25, 25}, bg: {225, 225, 225}}
+
+  @doc "Nothing: what a client whose game runs a flow of its own shows until that flow begins."
+  @spec starting(map()) :: term()
+  def starting(_state), do: vertical([label("", flex: 1)])
 
   @doc "The title screen: the game's name, its tagline and the menu."
   @spec title(map()) :: term()
@@ -28,14 +35,22 @@ defmodule Cauldron2D.Drafter.Client.Screens do
         digits(info.name, align: :center),
         label(Map.get(info, :tagline, ""), align: :center),
         label(""),
-        label("Enter  play", align: :center),
-        label("#{key_text(state, :settings_menu)}  settings", align: :center),
-        label("#{key_text(state, :guide)}  guide", align: :center),
-        label("#{key_text(state, :title)}  quit", align: :center),
+        title_button("Enter  play", :play),
+        title_button("#{key_text(state, :settings_menu)}  settings", :settings),
+        title_button("#{key_text(state, :guide)}  guide", :guide),
+        title_button("#{key_text(state, :title)}  quit", :quit),
         label("", flex: 1)
       ] ++ page_hints(state),
       gap: 1
     )
+  end
+
+  defp title_button(text, choice) do
+    horizontal([
+      label("", flex: 1),
+      button(text, id: :"title_#{choice}", on_click: {:title, choice}, compact: true, width: String.length(text) + 4),
+      label("", flex: 1)
+    ])
   end
 
   defp page_hints(%{pages: [_ | _] = pages}) do
@@ -308,17 +323,9 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     end
   end
 
-  @doc "How the game writes the player `id`: its `player_label/1`, else the id as text."
+  @doc "How the game writes the player `id` (`Cauldron.Client.Game.player_label/2`)."
   @spec player_label(module(), term()) :: String.t()
-  def player_label(game, id) do
-    if Code.ensure_loaded?(game) and function_exported?(game, :player_label, 1),
-      do: game.player_label(id),
-      else: plain_label(id)
-  end
-
-  defp plain_label(id) when is_binary(id), do: id
-  defp plain_label(id) when is_atom(id), do: Atom.to_string(id)
-  defp plain_label(id), do: inspect(id)
+  defdelegate player_label(game, id), to: Game
 
   defp chat_rows(messages) do
     Enum.map(messages, fn %{from: from, text: text} -> label("#{from}: #{text}") end)
@@ -498,37 +505,9 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     )
   end
 
-  def play(%{game: game, view: view, settings: settings} = state) do
+  def play(%{game: game, view: view} = state) do
     scene = Client.scene(state)
-    look = Client.look(state)
-
-    surface =
-      {:cauldron_surface,
-       [
-         id: :play,
-         atlas: game.atlas(),
-         focus: Client.focus(state, scene),
-         zoom: Map.get(state, :zoom, 1),
-         cell: scene.cell,
-         movers: scene.movers,
-         labels: Map.get(scene, :labels, []),
-         volumes: Map.get(scene, :volumes, []),
-         layers: Map.get(scene, :layers, []),
-         mode: Settings.surface_mode(settings),
-         projection: look.projection,
-         facing: look.facing,
-         facings: Map.get(look, :facings, 4),
-         tilt: look.tilt,
-         heading: Map.get(scene, :heading) || look.heading,
-         pitch: look.pitch,
-         density: Map.get(look, :density),
-         eye: Client.eye_height(game, scene),
-         picture: Map.get(scene, :picture),
-         on_geometry: :play_geometry,
-         image_throttle: {1, :tick},
-         image_priority: :normal,
-         flex: 1
-       ] ++ Picture.surface_props(state.picture, scene, look)}
+    surface = surface(state, scene, Client.focus(state, scene), :play_geometry)
 
     vertical(
       hud_layout(Hud.layout(game.hud(view)), surface) ++
@@ -537,6 +516,28 @@ defmodule Cauldron2D.Drafter.Client.Screens do
         fps_row(state) ++
         gpu_row(state) ++ zoom_row(state) ++ help(state, play_hints(game, state))
     )
+  end
+
+  @doc "A screen the game draws itself (`Cauldron.Front`): its scene filling the pane."
+  @spec front(map()) :: term()
+  def front(state) do
+    scene = Fronts.scene(state)
+    vertical([surface(state, scene, scene.focus, nil)])
+  end
+
+  defp surface(%{game: game, settings: settings} = state, scene, focus, on_geometry) do
+    look = Client.look(state)
+
+    {:cauldron_surface,
+     Keyword.put(Draw.props(game, scene, look, Map.get(state, :zoom, 1)), :focus, focus) ++
+       [
+         id: :play,
+         mode: Settings.surface_mode(settings),
+         on_geometry: on_geometry,
+         image_throttle: {1, :tick},
+         image_priority: :normal,
+         flex: 1
+       ] ++ Picture.surface_props(state.picture, scene, look)}
   end
 
   defp paused_row(state) do
@@ -559,8 +560,17 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     end
   end
 
-  defp fps_row(%{fps?: true, fps: %{shown: shown}}),
-    do: [label("#{shown || "…"} frames/s from the world", style: %{fg: :bright_black})]
+  defp fps_row(%{fps?: true, fps: %{shown: shown}} = state) do
+    world = "#{shown || "…"} frames/s from the world"
+
+    text =
+      case Gpu.drawn(state) do
+        nil -> world
+        drawn -> "#{drawn} frames/s drawn  ·  " <> world
+      end
+
+    [label(" " <> text, style: @bar)]
+  end
 
   defp fps_row(_state), do: []
 
@@ -649,7 +659,10 @@ defmodule Cauldron2D.Drafter.Client.Screens do
     ]
   end
 
-  defp hud_rows(rows), do: Enum.map(rows, &run_label/1)
+  defp hud_rows(rows), do: Enum.map(rows, &hud_row/1)
+
+  defp hud_row({:status, _runs} = row), do: run_label(row, style: @bar)
+  defp hud_row(row), do: run_label(row)
 
   defp talk_rows(%{talking?: true} = state) do
     said_rows(state) ++
@@ -688,7 +701,7 @@ defmodule Cauldron2D.Drafter.Client.Screens do
       hint(state, :settings, "settings"),
       hint(state, :back, "lobby"),
       hint(state, :title, "lobby"),
-      "^Q  quit"
+      "^Q  back   ^C  quit"
     ]
 
     view = [

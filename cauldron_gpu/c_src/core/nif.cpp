@@ -5,19 +5,22 @@
 #include <string>
 
 #include "render_window.h"
+#include "image.h"
 #include "shared_memory.h"
 #include "terminal.h"
 #include "window.h"
 
-#if defined(__APPLE__)
+#if defined(CG_WINDOWS) && defined(__APPLE__)
 extern "C" int erl_drv_steal_main_thread(char *name, void **tid, void *(*func)(void *), void *arg, void *opts);
-#else
+#elif defined(CG_WINDOWS)
 #include <thread>
 #endif
 
 #if defined(_WIN32)
 #include <windows.h>
 #endif
+
+#if defined(CG_WINDOWS)
 
 namespace cg {
 
@@ -33,6 +36,8 @@ bool launch_window_thread(void *(*loop)(void *)) {
 }
 
 }
+
+#endif
 
 namespace {
 
@@ -79,6 +84,8 @@ void send_to_owner(Window *window, const std::function<ERL_NIF_TERM(ErlNifEnv *)
   enif_free_env(env);
 }
 
+#if defined(CG_WINDOWS)
+
 ERL_NIF_TERM key_name(ErlNifEnv *env, SDL_Scancode scancode) {
   std::string name = cg::key_name(scancode);
   if (name.empty()) return enif_make_int(env, scancode);
@@ -117,6 +124,8 @@ ERL_NIF_TERM event_term(ErlNifEnv *env, const SDL_Event &event) {
   }
 }
 
+#endif
+
 ERL_NIF_TERM info_map(ErlNifEnv *env, const cg_device_info &info) {
   ERL_NIF_TERM keys[] = {atom(env, "backend"), atom(env, "device"), atom(env, "ray_tracing"), atom(env, "mesh_shaders"),
                          atom(env, "unified_memory"), atom(env, "upscaling"), atom(env, "frame_generation")};
@@ -151,7 +160,11 @@ ERL_NIF_TERM nif_open(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
   enif_release_resource(ref);
 
   cg::OpenRequest request{backend, binary_string(env, argv[4]), binary_string(env, argv[1]), width, height, windowed};
+#if defined(CG_WINDOWS)
   auto events = [window](const SDL_Event &event) { send_to_owner(window, [&](ErlNifEnv *message_env) { return event_term(message_env, event); }); };
+#else
+  cg::RenderWindow::EventSink events;
+#endif
   auto errors = [window](const std::string &message) {
     send_to_owner(window, [&](ErlNifEnv *message_env) {
       ERL_NIF_TERM text;
@@ -161,6 +174,39 @@ ERL_NIF_TERM nif_open(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
   };
   std::string error;
   if (!window->view.open(request, events, errors, error)) return error_tuple(env, error);
+  return enif_make_tuple4(env, atom(env, "ok"), term, enif_make_uint(env, window->view.id()), info_map(env, window->view.info()));
+}
+
+ERL_NIF_TERM nif_open_surface(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
+  char backend_name[32];
+  ErlNifUInt64 handle;
+  int width, height;
+  ErlNifPid owner;
+  if (!enif_get_atom(env, argv[0], backend_name, sizeof(backend_name), ERL_NIF_UTF8) ||
+      !enif_get_uint64(env, argv[1], &handle) || handle == 0 || !enif_get_int(env, argv[2], &width) ||
+      !enif_get_int(env, argv[3], &height) || !enif_get_local_pid(env, argv[5], &owner) || width <= 0 || height <= 0)
+    return enif_make_badarg(env);
+  const cg_backend *backend = cg::backend_named(backend_name);
+  if (!backend) return error_tuple(env, std::string("backend not built: ") + backend_name);
+
+  auto *ref = static_cast<WindowRef *>(enif_alloc_resource(window_type, sizeof(WindowRef)));
+  ref->window = new Window();
+  Window *window = ref->window;
+  window->owner = owner;
+  ERL_NIF_TERM term = enif_make_resource(env, ref);
+  enif_release_resource(ref);
+
+  cg::OpenRequest request{backend, binary_string(env, argv[4]), std::string(), width, height, false};
+  auto errors = [window](const std::string &message) {
+    send_to_owner(window, [&](ErlNifEnv *message_env) {
+      ERL_NIF_TERM text;
+      std::memcpy(enif_make_new_binary(message_env, message.size(), &text), message.data(), message.size());
+      return enif_make_tuple2(message_env, atom(message_env, "error"), text);
+    });
+  };
+  std::string error;
+  void *surface = reinterpret_cast<void *>(static_cast<uintptr_t>(handle));
+  if (!window->view.open_surface(request, surface, errors, error)) return error_tuple(env, error);
   return enif_make_tuple4(env, atom(env, "ok"), term, enif_make_uint(env, window->view.id()), info_map(env, window->view.info()));
 }
 
@@ -232,19 +278,19 @@ ERL_NIF_TERM binary_term(ErlNifEnv *env, const std::string &text) {
   return term;
 }
 
-ERL_NIF_TERM capture_term(ErlNifEnv *env, const cg::Capture *capture, const std::string &shared_memory) {
-  if (!capture || !capture->pixels) return enif_make_tuple2(env, atom(env, "capture"), atom(env, "error"));
+ERL_NIF_TERM capture_term(ErlNifEnv *env, const char *tag, const cg::Capture *capture, const std::string &shared_memory) {
+  if (!capture || !capture->pixels) return enif_make_tuple2(env, atom(env, tag), atom(env, "error"));
   size_t size = size_t(capture->width) * capture->height * 4;
   ERL_NIF_TERM width = enif_make_uint(env, capture->width), height = enif_make_uint(env, capture->height);
   if (shared_memory.empty()) {
     ERL_NIF_TERM pixels;
     std::memcpy(enif_make_new_binary(env, size, &pixels), capture->pixels, size);
-    return enif_make_tuple4(env, atom(env, "capture"), width, height, pixels);
+    return enif_make_tuple4(env, atom(env, tag), width, height, pixels);
   }
   std::string error;
   if (!cg::write_shared_memory(shared_memory, capture->pixels, size, error))
-    return enif_make_tuple2(env, atom(env, "capture"), enif_make_tuple2(env, atom(env, "error"), binary_term(env, error)));
-  return enif_make_tuple4(env, atom(env, "capture"), width, height,
+    return enif_make_tuple2(env, atom(env, tag), enif_make_tuple2(env, atom(env, "error"), binary_term(env, error)));
+  return enif_make_tuple4(env, atom(env, tag), width, height,
                           enif_make_tuple2(env, atom(env, "shared_memory"), binary_term(env, shared_memory)));
 }
 
@@ -252,20 +298,92 @@ ERL_NIF_TERM nif_capture(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
   WindowRef *ref = window_ref(env, argv[0]);
   ErlNifPid caller;
   if (!ref || !enif_self(env, &caller)) return enif_make_badarg(env);
-  SDL_WindowID id = ref->window->view.id();
+  cg::ViewId id = ref->window->view.id();
   bool generated = enif_is_identical(argv[1], atom(env, "true"));
   std::string shared_memory = binary_string(env, argv[2]);
   bool requested = ref->window->view.capture(generated, [caller, id, shared_memory](const cg::Capture *capture) {
     ErlNifEnv *message_env = enif_alloc_env();
     ERL_NIF_TERM message = enif_make_tuple3(message_env, atom(message_env, "cauldron_gpu"), enif_make_uint(message_env, id),
-                                            capture_term(message_env, capture, shared_memory));
+                                            capture_term(message_env, "capture", capture, shared_memory));
     enif_send(nullptr, &caller, message_env, message);
     enif_free_env(message_env);
   });
   return requested ? atom(env, "ok") : error_tuple(env, "closed");
 }
 
+struct StreamTarget {
+  ErlNifPid receiver;
+  cg::ViewId id;
+  std::vector<std::string> names;
+  size_t next = 0;
+};
+
+ERL_NIF_TERM nif_stream_frames(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
+  WindowRef *ref = window_ref(env, argv[0]);
+  auto target = std::make_shared<StreamTarget>();
+  unsigned int ahead, fps;
+  if (!ref || !enif_self(env, &target->receiver) || !enif_get_uint(env, argv[2], &ahead) || !enif_get_uint(env, argv[3], &fps) || fps == 0)
+    return enif_make_badarg(env);
+  ERL_NIF_TERM list = argv[1], head;
+  while (enif_get_list_cell(env, list, &head, &list)) {
+    if (!enif_is_binary(env, head)) return enif_make_badarg(env);
+    target->names.push_back(binary_string(env, head));
+  }
+  if (!enif_is_empty_list(env, list)) return enif_make_badarg(env);
+  target->id = ref->window->view.id();
+  bool started = ref->window->view.stream([target](const cg::Capture *capture) {
+    std::string name = target->names.empty() ? std::string() : target->names[target->next++ % target->names.size()];
+    ErlNifEnv *message_env = enif_alloc_env();
+    ERL_NIF_TERM message = enif_make_tuple3(message_env, atom(message_env, "cauldron_gpu"), enif_make_uint(message_env, target->id),
+                                            capture_term(message_env, "frame", capture, name));
+    enif_send(nullptr, &target->receiver, message_env, message);
+    enif_free_env(message_env);
+  }, ahead, static_cast<float>(fps));
+  return started ? atom(env, "ok") : error_tuple(env, "closed");
+}
+
+ERL_NIF_TERM nif_stop_frames(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
+  WindowRef *ref = window_ref(env, argv[0]);
+  if (!ref) return enif_make_badarg(env);
+  return ref->window->view.stop_stream() ? atom(env, "ok") : error_tuple(env, "closed");
+}
+
+ERL_NIF_TERM nif_frame_shown(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
+  WindowRef *ref = window_ref(env, argv[0]);
+  if (!ref) return enif_make_badarg(env);
+  return ref->window->view.frame_shown() ? atom(env, "ok") : error_tuple(env, "closed");
+}
+
+ERL_NIF_TERM nif_decode_image(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
+  ErlNifBinary file;
+  if (!enif_inspect_binary(env, argv[0], &file)) return enif_make_badarg(env);
+  cg::DecodedImage image;
+  std::string error;
+  if (!cg::decode_image(file.data, file.size, image, error)) return error_tuple(env, error);
+  ERL_NIF_TERM pixels;
+  std::memcpy(enif_make_new_binary(env, image.pixels.size(), &pixels), image.pixels.data(), image.pixels.size());
+  return enif_make_tuple4(env, atom(env, "ok"), enif_make_uint(env, image.width), enif_make_uint(env, image.height), pixels);
+}
+
+ERL_NIF_TERM nif_reduce_image(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
+  ErlNifBinary file;
+  unsigned int max_side, quality;
+  if (!enif_inspect_binary(env, argv[0], &file) || !enif_get_uint(env, argv[1], &max_side) || max_side == 0 ||
+      !enif_get_uint(env, argv[3], &quality) || quality == 0 || quality > 100)
+    return enif_make_badarg(env);
+  bool srgb = enif_is_identical(argv[2], atom(env, "srgb"));
+  cg::ReducedImage image;
+  std::string error;
+  if (!cg::reduce_image(file.data, file.size, max_side, srgb, static_cast<int>(quality), image, error)) return error_tuple(env, error);
+  ERL_NIF_TERM bytes;
+  std::memcpy(enif_make_new_binary(env, image.bytes.size(), &bytes), image.bytes.data(), image.bytes.size());
+  return enif_make_tuple5(env, atom(env, "ok"), atom(env, image.png ? "png" : "jpeg"), enif_make_uint(env, image.width),
+                          enif_make_uint(env, image.height), bytes);
+}
+
 ERL_NIF_TERM nif_remove_shared_memory(ErlNifEnv *env, int, const ERL_NIF_TERM argv[]) {
+
+
   if (!enif_is_binary(env, argv[0])) return enif_make_badarg(env);
   cg::remove_shared_memory(binary_string(env, argv[0]));
   return atom(env, "ok");
@@ -356,6 +474,7 @@ int load(ErlNifEnv *env, void **, ERL_NIF_TERM) {
 
 ErlNifFunc functions[] = {
     {"open", 7, nif_open, ERL_NIF_DIRTY_JOB_IO_BOUND},
+    {"open_surface", 6, nif_open_surface, ERL_NIF_DIRTY_JOB_IO_BOUND},
     {"submit", 2, nif_submit, 0},
     {"handle", 3, nif_handle, 0},
     {"close", 1, nif_close, ERL_NIF_DIRTY_JOB_IO_BOUND},
@@ -363,7 +482,12 @@ ErlNifFunc functions[] = {
     {"frames", 1, nif_frames, 0},
     {"stats", 1, nif_stats, 0},
     {"capture", 3, nif_capture, 0},
+    {"stream_frames", 4, nif_stream_frames, 0},
+    {"stop_frames", 1, nif_stop_frames, 0},
+    {"frame_shown", 1, nif_frame_shown, 0},
     {"remove_shared_memory", 1, nif_remove_shared_memory, 0},
+    {"decode_image", 1, nif_decode_image, ERL_NIF_DIRTY_JOB_CPU_BOUND},
+    {"reduce_image", 4, nif_reduce_image, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     {"write_shared_memory", 2, nif_write_shared_memory, ERL_NIF_DIRTY_JOB_IO_BOUND},
     {"terminal_size", 0, nif_terminal_size, 0},
     {"resize", 3, nif_resize, 0},

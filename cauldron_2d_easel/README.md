@@ -13,7 +13,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:cauldron_2d_easel, "~> 0.3"}
+    {:cauldron_2d_easel, "~> 0.4"}
   ]
 end
 ```

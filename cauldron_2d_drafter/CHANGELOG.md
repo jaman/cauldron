@@ -1,5 +1,68 @@
 # Changelog
 
+## [Unreleased]
+
+- `Cauldron2D.Drafter.Test`: a game's terminal client run in a test, `start/2` registering the surface widget itself.
+- `Cauldron2D.Drafter.Server.start_telnet/2` serves a game over telnet with no accounts.
+- Where the graphics card is not drawn on (`software`, or the card did not open), a scene with a `:gpu` and no `:picture` of its own is drawn on the CPU by `Cauldron3D.Scene.Software` (`Cauldron2D.Drafter.Client.SoftwareStage`).
+
+### Changed
+
+- Depends on `cauldron_core` 0.4 and `cauldron_2d` 0.4: the engine modules that moved from `cauldron_2d` are named `Cauldron.*`, and test and example games write `use Cauldron2D.Client.Game`.
+
+### Breaking changes
+
+- `Cauldron2D.Drafter.Chat` is removed. Use `Cauldron.Chat` from `cauldron_2d`, which
+  the `:cauldron_2d` application starts; its rooms are `:lobby` and `{:world, id}`.
+- `Cauldron2D.Drafter.Client.Controllers` and `Cauldron2D.Drafter.Client.Seats` are
+  removed. Use `Cauldron.Client.Controllers` and `Cauldron.Client.Seats`.
+- `Cauldron2D.Drafter.Client.eye_height/2` is removed. Use `Cauldron2D.Draw.eye_height/2`.
+- `Cauldron2D.Drafter.Client.steered/2` is removed. Use `Cauldron2D.Client.Look.steered/2`.
+
+### Changed
+
+- The surface draws its pictures with `Cauldron2D.Draw`, the renderer the browser and the
+  desktop window use too; `Cauldron2D.Drafter.Surface.zoom_levels/2,3` call
+  `Cauldron2D.Draw.zoom_levels/2,3`.
+- The client reads the look, its own keys, the game's menu, its fronts and where it
+  starts through `Cauldron2D.Client.Look`, `Keys`, `Menus`, `Fronts` and `Start`, as
+  the browser and the desktop window do.
+- A label that goes from a scene is taken off a kitty terminal's placements; it stayed
+  on screen before.
+- A game drawn on the graphics card in the pane is streamed: the renderer draws at the
+  client's frame rate and each picture is the newest frame, not a capture waited for. On a
+  terminal on this machine that stores kitty images, frames reach it through shared memory
+  (`Cauldron2D.Drafter.Surface.stores_pictures?/1`), with no pixels compressed on the way.
+- The `auto` frame rate is 60 where the graphics card's frames reach a local kitty terminal
+  through shared memory; 30 elsewhere on a local terminal, as before.
+- The fps row, and a hud row a game tags `:status`, are drawn as a light bar with dark text.
+
+### Added
+
+- A scene's `:screen` (`Cauldron2D.Screen`) is drawn over the world in every way the surface
+  draws: composed frames, kitty placements (an image of its own above the sprites, sent
+  again only when it changes), block and braille cells, the projections, and plain
+  glyphs (its text as characters).
+- A game's own title and summary (`fronts/1`, `Cauldron.Front`): the client draws the
+  front's scene, ticks it, hands it every key, and makes the move it answers
+  (`Cauldron.Client.Fronts`).
+- A mover's `:tint` (`{art, {x, y}, heading, %{tint: name}}`), in composed frames, kitty
+  placements (tinted sprites stored the first time they are used) and glyphs.
+- `Cauldron2D.Drafter.Surface.snapshot/2`: the frame a pixel terminal is sent, as a
+  raster.
+
+- A scene's `:gpu_size` (`{width, height}`): the size the graphics card draws the pane's
+  picture at, the terminal scaling it to the pane. Without it the card draws at the pane's
+  own pixels, as before.
+- The fps row (the `fps` key) shows the frames the graphics card drew a second beside the
+  world's, and a game's look `fps?: true` starts with it shown.
+
+- A game drawn in a window of its own (`window`) gets the window's mouse: moves, drags,
+  buttons and the wheel reach the client as a terminal's pixel mouse events
+  (`Cauldron2D.Drafter.Client.WindowMouse`). When the player's bindings steer with the
+  pointer, a click in the window captures the pointer, so turning never meets the
+  window's edge; the window losing focus, or bindings without the pointer, let it go.
+
 ## [0.3.3]
 
 ### Changed

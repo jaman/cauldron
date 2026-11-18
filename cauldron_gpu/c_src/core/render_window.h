@@ -6,9 +6,8 @@
 #include <mutex>
 #include <string>
 
-#include <SDL3/SDL.h>
-
 #include "renderer.h"
+#include "window.h"
 
 namespace cg {
 
@@ -31,14 +30,18 @@ class RenderWindow {
   ~RenderWindow();
 
   bool open(const OpenRequest &request, EventSink events, Renderer::ErrorReporter errors, std::string &error);
+  bool open_surface(const OpenRequest &request, void *native, Renderer::ErrorReporter errors, std::string &error);
   void close();
   bool submit(Batch batch);
   bool capture(bool generated, CaptureReply reply);
+  bool stream(CaptureReply reply, uint32_t ahead, float fps);
+  bool stop_stream();
+  bool frame_shown();
   bool relative_mouse(bool enabled);
   bool resize(uint32_t width, uint32_t height, std::string &error);
   uint64_t frames();
   FrameStats stats();
-  SDL_WindowID id() const { return id_; }
+  ViewId id() const { return id_; }
   cg_device_info info();
 
  private:
@@ -49,13 +52,16 @@ class RenderWindow {
   std::mutex mutex_;
   std::unique_ptr<Renderer> renderer_;
   SDL_Window *sdl_window_ = nullptr;
-  SDL_WindowID id_ = 0;
+  ViewId id_ = 0;
+  bool native_ = false;
   EventSink events_;
   bool open_ = false;
 };
 
 const cg_backend *backend_named(const std::string &name);
+#if defined(CG_WINDOWS)
 std::string key_name(SDL_Scancode scancode);
 bool forwarded_event(const SDL_Event &event);
+#endif
 
 }

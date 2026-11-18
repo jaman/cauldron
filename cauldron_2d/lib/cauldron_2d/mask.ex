@@ -9,7 +9,7 @@ defmodule Cauldron2D.Mask do
       Cauldron2D.Mask.set?(mask, {3, 7})
   """
 
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @enforce_keys [:width, :height, :bits]
   defstruct [:width, :height, :bits]
@@ -23,7 +23,7 @@ defmodule Cauldron2D.Mask do
 
   @doc "The mask of `raster`'s pixels whose alpha is at least `threshold` (default 1)."
   @spec from_raster(Raster.t(), 1..255) :: t()
-  def from_raster(%Raster{} = raster, threshold \\ 1) do
+  def from_raster(%FrenchCurve.Raster{} = raster, threshold \\ 1) do
     {width, height} = Raster.dimensions(raster)
     rgba = Raster.to_rgba_binary(raster)
     padding = div(width + 7, 8) * 8 - width

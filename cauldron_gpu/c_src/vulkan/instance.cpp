@@ -1,9 +1,11 @@
 #include "internal.hpp"
 
-#include <SDL3/SDL_stdinc.h>
+#if defined(CG_WINDOWS)
 #include <SDL3/SDL_vulkan.h>
+#endif
 
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <stdexcept>
@@ -14,7 +16,7 @@ namespace {
 constexpr const char *validation_layer_name = "VK_LAYER_KHRONOS_validation";
 
 bool validation_requested() {
-  const char *setting = SDL_getenv("CAULDRON_GPU_VALIDATION");
+  const char *setting = std::getenv("CAULDRON_GPU_VALIDATION");
   return setting != nullptr && std::strcmp(setting, "1") == 0;
 }
 
@@ -47,11 +49,28 @@ vk::DebugUtilsMessengerCreateInfoEXT messenger_info() {
   };
 }
 
-std::vector<const char *> sdl_instance_extensions() {
+std::vector<const char *> surface_instance_extensions() {
+#if defined(CG_WINDOWS)
   Uint32 count = 0;
   const char *const *names = SDL_Vulkan_GetInstanceExtensions(&count);
   if (names == nullptr) throw std::runtime_error(SDL_GetError());
   return {names, names + count};
+#elif defined(__ANDROID__)
+  return {vk::KHRSurfaceExtensionName, vk::KHRAndroidSurfaceExtensionName};
+#else
+  return {};
+#endif
+}
+
+bool can_present(vk::Instance instance, vk::PhysicalDevice physical, uint32_t family) {
+#if defined(CG_WINDOWS)
+  return SDL_Vulkan_GetPresentationSupport(instance, physical, family);
+#else
+  (void)instance;
+  (void)physical;
+  (void)family;
+  return true;
+#endif
 }
 
 bool has_device_extension(vk::PhysicalDevice physical, const char *name) {
@@ -78,7 +97,7 @@ std::optional<uint32_t> presentable_graphics_family(vk::Instance instance, vk::P
   auto families = physical.getQueueFamilyProperties();
   for (uint32_t index = 0; index < families.size(); ++index) {
     bool graphics = static_cast<bool>(families[index].queueFlags & vk::QueueFlagBits::eGraphics);
-    if (graphics && SDL_Vulkan_GetPresentationSupport(instance, physical, index)) return index;
+    if (graphics && can_present(instance, physical, index)) return index;
   }
   return std::nullopt;
 }
@@ -103,7 +122,7 @@ void report_failure(const char *operation, const char *reason) {
 InstanceSetup create_instance() {
   bool validation = validation_requested() && layer_available(validation_layer_name);
   bool portability = instance_extension_available(vk::KHRPortabilityEnumerationExtensionName);
-  std::vector<const char *> extensions = sdl_instance_extensions();
+  std::vector<const char *> extensions = surface_instance_extensions();
   std::vector<const char *> layers;
   if (portability) extensions.push_back(vk::KHRPortabilityEnumerationExtensionName);
   if (validation) {

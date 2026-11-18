@@ -43,7 +43,8 @@ defmodule Cauldron2D.Atlas do
   """
 
   alias Cauldron2D.Atlas.{Manifest, Tables}
-  alias FrenchCurve.{Raster, Sprite}
+  alias Cauldron2D.Raster
+  alias FrenchCurve.Sprite
 
   @type name :: atom()
   @type art :: term()
@@ -73,11 +74,12 @@ defmodule Cauldron2D.Atlas do
           tile: pos_integer(),
           void: rgb(),
           entries: %{art() => entry()},
-          tints: %{tint() => (rgba() -> rgba())}
+          tints: %{tint() => (rgba() -> rgba())},
+          fonts: %{atom() => %{font: Cauldron2D.Font.t(), white: Cauldron2D.Font.t()}}
         }
 
   @enforce_keys [:name, :tile]
-  defstruct [:name, :tile, void: {0, 0, 0}, entries: %{}, tints: %{}]
+  defstruct [:name, :tile, void: {0, 0, 0}, entries: %{}, tints: %{}, fonts: %{}]
 
   @registry Cauldron2D.Atlas.Watch
   @default_fps 8
@@ -141,7 +143,7 @@ defmodule Cauldron2D.Atlas do
   @spec put(t(), art(), Raster.t() | [Raster.t()], keyword()) :: t()
   def put(atlas, art, raster, opts \\ [])
 
-  def put(%__MODULE__{} = atlas, art, %Raster{} = raster, opts),
+  def put(%__MODULE__{} = atlas, art, %FrenchCurve.Raster{} = raster, opts),
     do: put(atlas, art, [raster], opts)
 
   def put(%__MODULE__{}, art, [], _opts),
@@ -196,7 +198,7 @@ defmodule Cauldron2D.Atlas do
   defp poses(_atlas, art, poses),
     do: Map.new(poses, fn {pose, rasters} -> {pose, pose_frames(art, rasters)} end)
 
-  defp pose_frames(art, %Raster{} = raster), do: [frame(art, raster)]
+  defp pose_frames(art, %FrenchCurve.Raster{} = raster), do: [frame(art, raster)]
   defp pose_frames(art, rasters) when is_list(rasters), do: Enum.map(rasters, &frame(art, &1))
 
   defp same_size!(_art, %Sprite{width: width, height: height}, {width, height}), do: :ok
@@ -228,7 +230,7 @@ defmodule Cauldron2D.Atlas do
     Enum.at(frames, Integer.mod(Integer.floor_div(at_ms * entry.fps, 1000), length(frames)))
   end
 
-  defp frame(art, %Raster{} = raster) do
+  defp frame(art, %FrenchCurve.Raster{} = raster) do
     {width, height} = Raster.dimensions(raster)
 
     if width < 1 or height < 1,
@@ -237,7 +239,7 @@ defmodule Cauldron2D.Atlas do
     Sprite.new(raster)
   end
 
-  defp tile_frame(atlas, art, %Raster{} = raster) do
+  defp tile_frame(atlas, art, %FrenchCurve.Raster{} = raster) do
     {width, height} = Raster.dimensions(raster)
 
     unless width == atlas.tile and height == atlas.tile do
@@ -260,7 +262,7 @@ defmodule Cauldron2D.Atlas do
   An `atlas.txt` in the directory (`Cauldron2D.Atlas.Manifest`) gives arts their glyph,
   colour and rate; `:arts` lays over it. The glyph of an art named nowhere is the first
   two characters of its name in capitals, and its colour the mean of its first frame's
-  opaque pixels. An art the manifest derives from another (`Linocut.Derive`) is built
+  opaque pixels. An art the manifest derives from another (`Cauldron2D.Atlas.Manifest`) is built
   after the pictures, from a `.pic` in the directory or another derived art; one that
   cannot be made is `{:error, {:art, name, message}}`.
 
@@ -268,9 +270,14 @@ defmodule Cauldron2D.Atlas do
 
     * `:tile` — as `new/2`, required
     * `:void` — as `new/2`
-    * `:arts` — `[art: [glyph: "..", color: {r, g, b}, fps: n]]`, per-art options over
-      the defaults. Default `[]`
+    * `:arts` — `[art: [glyph: "..", color: {r, g, b}, fps: n, frame: {w, h}]]`, per-art
+      options over the defaults; `frame` cuts a picture into frames of that size, left to
+      right and top to bottom, whatever the tile. Default `[]`
     * `:fps` — the rate of every strip not given one in `:arts`. Default `#{@default_fps}`
+    * `:fonts` — `[name: [file: "font.png", cell: {width, height}, chars: "..."]]`, pixel
+      fonts cut from pictures in the directory as `Cauldron2D.Font.from_sheet/4` cuts
+      them, with any of its options beside these; a font's picture is not an art. A font
+      that will not read is `{:error, {:font, name, reason}}`. Default `[]`
   """
   @spec load(name(), Path.t(), keyword()) :: {:ok, t()} | {:error, term()}
   def load(name, dir, opts) when is_atom(name) do
@@ -278,12 +285,29 @@ defmodule Cauldron2D.Atlas do
     manifest = Manifest.read(dir)
     per_art = manifest |> Manifest.arts(Keyword.get(opts, :arts, [])) |> Map.new()
     fps = Keyword.get(opts, :fps, @default_fps)
+    fonts = Keyword.get(opts, :fonts, [])
+    font_files = for {_name, font} <- fonts, do: Keyword.fetch!(font, :file)
 
     with {:ok, files} <- File.ls(dir),
-         {:ok, loaded} <- load_files(atlas, dir, files, per_art, fps),
-         {:ok, derived} <- load_derived(loaded, dir, Manifest.derived(manifest), per_art, fps) do
-      load_solids(derived, per_art)
+         {:ok, loaded} <- load_files(atlas, dir, files -- font_files, per_art, fps),
+         {:ok, derived} <- load_derived(loaded, dir, Manifest.derived(manifest), per_art, fps),
+         {:ok, solid} <- load_solids(derived, per_art) do
+      load_fonts(solid, dir, fonts)
     end
+  end
+
+  defp load_fonts(atlas, dir, fonts) do
+    Enum.reduce_while(fonts, {:ok, atlas}, fn {name, font}, {:ok, acc} ->
+      case Linocut.load(Path.join(dir, Keyword.fetch!(font, :file))) do
+        {:ok, sheet} ->
+          options = Keyword.drop(font, [:file, :cell, :chars])
+          cut = Linocut.BitmapFont.from_sheet(sheet, font[:cell], font[:chars], options)
+          {:cont, {:ok, put_font(acc, name, cut)}}
+
+        {:error, reason} ->
+          {:halt, {:error, {:font, name, reason}}}
+      end
+    end)
   end
 
   defp load_solids(atlas, per_art) do
@@ -447,7 +471,7 @@ defmodule Cauldron2D.Atlas do
     art = path |> Path.basename() |> Path.rootname() |> String.to_atom()
     options = Map.get(per_art, art, [])
 
-    with {:ok, frames} <- picture_frames(path, atlas.tile) do
+    with {:ok, frames} <- picture_frames(path, atlas.tile, Keyword.get(options, :frame)) do
       colour = Keyword.get_lazy(options, :color, fn -> mean_colour(hd(frames)) end)
       glyph = Keyword.get_lazy(options, :glyph, fn -> default_glyph(art) end)
 
@@ -456,7 +480,11 @@ defmodule Cauldron2D.Atlas do
     end
   end
 
-  defp picture_frames(path, tile) do
+  defp picture_frames(path, _tile, {width, height}) do
+    with {:ok, raster} <- Linocut.load(path), do: {:ok, Linocut.frames(raster, {width, height})}
+  end
+
+  defp picture_frames(path, tile, nil) do
     case Path.extname(path) do
       ".pic" ->
         with {:ok, text} <- File.read(path),
@@ -476,7 +504,7 @@ defmodule Cauldron2D.Atlas do
     end
   end
 
-  defp fitted(%Raster{width: width, height: height} = raster, tile)
+  defp fitted(%FrenchCurve.Raster{width: width, height: height} = raster, tile)
        when width <= tile and height <= tile and {width, height} != {tile, tile} do
     left = div(tile - width, 2)
     top = div(tile - height, 2)
@@ -516,6 +544,24 @@ defmodule Cauldron2D.Atlas do
   def tint(%__MODULE__{} = atlas, name, fun) when is_atom(name) and is_function(fun, 1) do
     %{atlas | tints: Map.put(atlas.tints, name, fun)}
   end
+
+  @doc """
+  Add the pixel font `font` under `name`, for text a scene draws in it
+  (`Cauldron2D.Screen`), replacing any font already under that name.
+  """
+  @spec put_font(t(), atom(), Cauldron2D.Font.t()) :: t()
+  def put_font(%__MODULE__{} = atlas, name, %Linocut.BitmapFont{} = font) when is_atom(name) do
+    kept = %{font: font, white: Linocut.BitmapFont.silhouette(font)}
+    %{atlas | fonts: Map.put(atlas.fonts, name, kept)}
+  end
+
+  @doc "The font under `name`; raises `KeyError` when the atlas has none."
+  @spec font!(t() | name(), atom()) :: Cauldron2D.Font.t()
+  def font!(atlas, name), do: Map.fetch!(fetch(atlas).fonts, name).font
+
+  @doc "The font under `name` with every glyph white (`Cauldron2D.Font.silhouette/1`), for drawing it in a colour."
+  @spec white_font!(t() | name(), atom()) :: Cauldron2D.Font.t()
+  def white_font!(atlas, name), do: Map.fetch!(fetch(atlas).fonts, name).white
 
   @doc """
   Publish the atlas to `:persistent_term` and create its composited-tile cache table.

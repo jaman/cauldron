@@ -5,7 +5,7 @@ defmodule Cauldron2D.Renderer do
   Modes are `:text`, `:pixel`, `:kitty`, `:iterm2` and `:sixel`. `:pixel` means "whichever
   protocol this terminal has"; the other three name one outright.
 
-  A mode is resolved most specific first:
+  A mode is resolved in `Cauldron.Launch`'s order:
 
     1. an override passed by the caller, when it is one of the modes
     2. `CAULDRON_MODE` in the environment
@@ -83,13 +83,16 @@ defmodule Cauldron2D.Renderer do
   end
 
   defp resolve(override) do
-    valid(override) || parse(System.get_env("CAULDRON_MODE")) || configured() || :pixel
+    Cauldron.Launch.value(
+      given: valid(override),
+      env: {"CAULDRON_MODE", &parse/1},
+      config: {:cauldron_2d, :mode, &valid/1},
+      default: :pixel
+    )
   end
 
   defp valid(mode) when mode in @modes, do: mode
   defp valid(_other), do: nil
-
-  defp configured, do: valid(Application.get_env(:cauldron_2d, :mode))
 
   defp detect do
     case FrenchCurve.Capability.detect() do

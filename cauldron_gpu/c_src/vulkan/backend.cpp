@@ -1,17 +1,22 @@
 #include "internal.hpp"
 
+#if defined(CG_WINDOWS)
 #include <SDL3/SDL_video.h>
+#endif
 
 namespace {
 
 constexpr cg_backend vulkan_backend{
     .name = "vulkan",
     .shader_extension = "spv",
+#if defined(CG_WINDOWS)
     .window_flags = SDL_WINDOW_VULKAN,
+#endif
     .device_create = cgvk::device_create,
     .device_destroy = cgvk::device_destroy,
     .device_info = cgvk::device_info,
     .surface_attach = cgvk::surface_attach,
+    .surface_attach_native = cgvk::surface_attach_native,
     .surface_detach = cgvk::surface_detach,
     .surface_resize = cgvk::surface_resize,
     .surface_format = cgvk::surface_format,
@@ -40,6 +45,7 @@ constexpr cg_backend vulkan_backend{
     .frame_end = cgvk::frame_end,
     .frame_end_pair = cgvk::frame_end_pair,
     .frame_gpu_seconds = cgvk::frame_gpu_seconds,
+    .frames_completed = cgvk::frames_completed,
     .cmd_copy_buffer = cgvk::cmd_copy_buffer,
     .cmd_copy_to_texture = cgvk::cmd_copy_to_texture,
     .cmd_generate_mips = cgvk::cmd_generate_mips,

@@ -13,6 +13,8 @@ struct GpuInstance {
   float shading_direction[4];
   float swell[4];
   float standing[4];
+  float sway[4];
+  float fade[4];
 };
 
 struct GpuMaterial {
@@ -29,6 +31,11 @@ struct GpuMaterial {
   uint64_t lightmap_sampler;
   uint64_t normal_texture;
   uint64_t occlusion_texture;
+  uint64_t layers[4];
+  float liquid_shallow[4];
+  float liquid_deep[4];
+  float liquid_foam[4];
+  float liquid_waves[4];
 };
 
 struct GpuLight {
@@ -66,6 +73,11 @@ struct GpuFrame {
   float resolution[4];
   float curve[4];
   float layers[4];
+  float toon[4];
+  float shade[4];
+  float outline[4];
+  float wind[4];
+  float pushers[32];
   uint64_t gbuffer_albedo;
   uint64_t gbuffer_normal;
   uint64_t gbuffer_emissive;
@@ -112,6 +124,7 @@ struct DrawPush {
   uint64_t gi;
   uint64_t history;
   uint64_t colors;
+  uint64_t scatter;
 };
 
 struct DenoisePush {
@@ -130,11 +143,13 @@ struct DeformPush {
   uint64_t blend_source;
   uint64_t skin;
   uint64_t bones;
+  uint64_t morphs;
+  uint64_t morph_weights;
   uint64_t target;
   uint32_t count;
   float blend;
   uint32_t bone_count;
-  uint32_t pad;
+  uint32_t morph_count;
 };
 
 struct GpuSprite {
@@ -147,6 +162,12 @@ struct GpuSprite {
   uint64_t sampler;
 };
 
+struct GpuTile {
+  float placement[4];
+  float source[4];
+  uint32_t shape[4];
+};
+
 struct GpuLayer {
   float view[4];
   float port[4];
@@ -154,6 +175,9 @@ struct GpuLayer {
   uint32_t counts[4];
   uint64_t source;
   uint64_t sampler;
+  uint64_t palette;
+  uint64_t behind;
+  uint64_t coverage;
 };
 
 struct LayerPush {
@@ -189,20 +213,24 @@ enum GpuMaterialFlag : uint32_t {
   GpuMaterialWarp = 64,
   GpuMaterialAdd = 256,
   GpuMaterialMultiply = 512,
-  GpuMaterialReflection = 1024
+  GpuMaterialReflection = 1024,
+  GpuMaterialLayers = 2048,
+  GpuMaterialLiquid = 4096,
+  GpuMaterialNoOutline = 8192
 };
 
 enum Effect : uint32_t { EffectRayTracedShadows = 1, EffectRayTracedReflections = 2, EffectRayTracedGlobalIllumination = 4, EffectUpscaling = 8, EffectFrameGeneration = 16, EffectRayTracedAmbientOcclusion = 32 };
 
-static_assert(sizeof(GpuInstance) == 272);
-static_assert(sizeof(GpuMaterial) == 144);
+static_assert(sizeof(GpuInstance) == 304);
+static_assert(sizeof(GpuMaterial) == 240);
 static_assert(sizeof(GpuLight) == 64);
-static_assert(sizeof(GpuFrame) == 2128);
+static_assert(sizeof(GpuFrame) == 2320);
 static_assert(sizeof(GpuSprite) == 96);
-static_assert(sizeof(GpuLayer) == 80);
-static_assert(sizeof(DrawPush) == 112);
+static_assert(sizeof(GpuLayer) == 104);
+static_assert(sizeof(GpuTile) == 48);
+static_assert(sizeof(DrawPush) == 120);
 static_assert(sizeof(DenoisePush) == 56);
-static_assert(sizeof(DeformPush) == 56);
+static_assert(sizeof(DeformPush) == 72);
 static_assert(sizeof(TracedInstance) == 32);
 
 }

@@ -237,7 +237,7 @@ defmodule Cauldron2D.GameMaker.Bzip2 do
 
   defp bits(bin, pos, count) do
     case bin do
-      <<_::bitstring-size(pos), value::size(count), _::bitstring>> -> value
+      <<_::bitstring-size(^pos), value::size(^count), _::bitstring>> -> value
       _short -> throw({:bzip2, :truncated})
     end
   end

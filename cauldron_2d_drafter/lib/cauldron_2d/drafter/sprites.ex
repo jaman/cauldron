@@ -10,9 +10,8 @@ defmodule Cauldron2D.Drafter.Sprites do
   changes the atlas.
   """
 
-  alias Cauldron2D.Atlas
+  alias Cauldron2D.{Atlas, Raster}
   alias FrenchCurve.Backend.Kitty
-  alias FrenchCurve.Raster
 
   @span 4096
 
@@ -45,10 +44,10 @@ defmodule Cauldron2D.Drafter.Sprites do
   raster itself at its own size or with `nil`.
   """
   @spec resampled(Raster.t(), {pos_integer(), pos_integer()} | nil) :: Raster.t()
-  def resampled(%Raster{} = raster, nil), do: raster
-  def resampled(%Raster{width: w, height: h} = raster, {w, h}), do: raster
+  def resampled(%FrenchCurve.Raster{} = raster, nil), do: raster
+  def resampled(%FrenchCurve.Raster{width: w, height: h} = raster, {w, h}), do: raster
 
-  def resampled(%Raster{width: sw, height: sh} = raster, {width, height}) do
+  def resampled(%FrenchCurve.Raster{width: sw, height: sh} = raster, {width, height}) do
     source = Raster.to_rgba_binary(raster)
 
     rows =
@@ -105,6 +104,35 @@ defmodule Cauldron2D.Drafter.Sprites do
     Kitty.transmit(
       Linocut.Font.render(text, colour, scale: scale),
       label_id(atlas, text, colour, scale),
+      compress: Keyword.get(opts, :compress, true)
+    )
+  end
+
+  @tinted_base 1_900_000_000
+  @tinted_span 190_000_000
+
+  @doc "The kitty image id of the frame of `art` showing at `at_ms` shaded by the atlas's tint `tint`, the same on every call."
+  @spec tinted_id(Atlas.name() | Atlas.t(), Atlas.art(), Atlas.tint(), integer()) :: pos_integer()
+  def tinted_id(atlas, art, tint, at_ms) do
+    atlas = Atlas.fetch(atlas)
+    frame = Atlas.frame_index(atlas, art, at_ms)
+    @tinted_base + :erlang.phash2({atlas.name, art, frame, tint}, @tinted_span)
+  end
+
+  @doc """
+  The bytes that store the frame of `art` showing at `at_ms`, shaded by `tint`, under its
+  `tinted_id/4`, at `transmit/2`'s `:size` and with its `:compress`.
+  """
+  @spec tinted_transmit(Atlas.name() | Atlas.t(), Atlas.art(), Atlas.tint(), integer(), keyword()) ::
+          iodata()
+  def tinted_transmit(atlas, art, tint, at_ms, opts \\ []) do
+    atlas = Atlas.fetch(atlas)
+    {rgba, width, height} = Cauldron2D.Surface.sprite_rgba(atlas, art, 1, at_ms, tint)
+
+    width
+    |> Raster.from_rgba(height, rgba)
+    |> resampled(Keyword.get(opts, :size))
+    |> Kitty.transmit(tinted_id(atlas, art, tint, at_ms),
       compress: Keyword.get(opts, :compress, true)
     )
   end

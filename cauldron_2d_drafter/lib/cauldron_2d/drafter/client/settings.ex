@@ -2,29 +2,31 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   @moduledoc """
   A player's settings: which keys do what, whether the pointer steers, how loud things
   are, how the world is drawn (`display`, and `drawing`: on the graphics card or not), and
-  the game's own options (`Cauldron2D.Client.Game`'s
+  the game's own options (`Cauldron.Client.Game`'s
   `options/0`, its defaults under whatever was saved), and which player each game
   controller plays: `pads`, a map from a controller's name to a player number or `:none`
-  (`Cauldron2D.Drafter.Client.Controllers`). `controllers` lists the controllers
+  (`Cauldron.Client.Controllers`). `controllers` lists the controllers
   connected now, each `%{name, player}`; the client keeps it up to date for the game's
   menus to show, and it is not saved.
 
   Kept per kind of client — the terminal, a desktop, a browser, a phone: a kind is any
   atom, `:terminal` the default — on disk under
-  `$XDG_CONFIG_HOME/<game>/<player>.settings` for the terminal and
-  `<player>.<kind>.settings` for another kind, `<game>` being the game's title in lower
-  case with runs of other characters as `_` (or under `~/.config`), and, when the
-  player has an account, in its props as well: `settings` for the terminal,
-  `settings_<kind>` for another kind. `load/4` reads the file over any account props;
-  `save/5` writes both.
+  `$XDG_CONFIG_HOME/<home>/<player>.settings` for the terminal and
+  `<player>.<kind>.settings` for another kind, `<home>` being the game's
+  `Cauldron.Client.Game.home/1` (or under `~/.config`), and, when the player has an
+  account, in its props as well: `settings` for the terminal, `settings_<kind>` for
+  another kind. `load/4` reads the file over any account props, from the folder named
+  after the game's title (`title_folder/1`) when the home has none; `save/5` writes both,
+  the file under the home.
 
       settings = Cauldron2D.Drafter.Client.Settings.load(MyGame.Client, "alice", account_props)
       settings.bindings[:launch]
       Cauldron2D.Drafter.Client.Settings.load(MyGame.Client, "alice", account_props, kind: :desktop)
   """
 
-  alias Cauldron2D.Client.Game
-  alias Cauldron2D.Input
+  alias Cauldron.Client.Game
+  alias Cauldron.Input
+  alias Cauldron.Menu.Item
 
   @type t :: %__MODULE__{
           preset: atom(),
@@ -67,7 +69,6 @@ defmodule Cauldron2D.Drafter.Client.Settings do
 
   @cell_sets [:half, :quad, :sextant, :octant]
   @displays [:auto, :braille | @cell_sets] ++ [:glyphs]
-  @frame_rates [:auto, 15, 30, 50, 60]
   @drawings [:auto, :software, :pane, :window]
 
   @doc """
@@ -82,7 +83,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
     overrides = current(overrides, presets)
     preset = Map.get(overrides, :preset, List.first(presets))
     base = keymap(game, preset)
-    levels = Cauldron2D.Audio.default_levels()
+    levels = Cauldron.Audio.default_levels()
 
     %__MODULE__{
       preset: preset,
@@ -124,6 +125,45 @@ defmodule Cauldron2D.Drafter.Client.Settings do
       [:pointer, :sfx, :music, :display] ++ drawing_item() ++ [:fps]
   end
 
+  @doc """
+  Rows for a game's own options menu that change how the client draws, for a game that
+  keeps its players in its own menus rather than the settings screen: display, drawing
+  (when the build has the graphics card renderer) and frame rate, as
+  `Cauldron.Menu.Item` choices over these settings. The client saves and applies what
+  they change, as it does the settings screen's. `text` restyles every label and choice
+  (`&String.upcase/1` for a font with capitals only).
+
+      [Item.slider("Music", [:music], {0.0, 1.0})] ++
+        Cauldron2D.Drafter.Client.Settings.menu_items(MyGame.Client)
+  """
+  @spec menu_items(module(), (String.t() -> String.t())) :: [Cauldron.Menu.Item.t()]
+  def menu_items(game, text \\ & &1) do
+    [Item.choice(text.("Display"), [:display], labelled(@displays, &display_text/1, text))] ++
+      drawing_rows(text) ++
+      [Item.choice(text.("Frame rate"), [:fps], labelled(frame_rates(game), &fps_text/1, text))]
+  end
+
+  defp drawing_rows(text) do
+    if Code.ensure_loaded?(CauldronGPU.Host),
+      do: [Item.choice(text.("Drawing"), [:drawing], labelled(@drawings, &drawing_text/1, text))],
+      else: []
+  end
+
+  defp labelled(values, describe, text), do: Enum.map(values, &{&1, text.(describe.(&1))})
+
+  defp display_text(:auto), do: "pixels"
+  defp display_text(:half), do: "half blocks"
+  defp display_text(:quad), do: "quarter blocks"
+  defp display_text(display), do: Atom.to_string(display)
+
+  defp drawing_text(:auto), do: "card if there is one"
+  defp drawing_text(:software), do: "software"
+  defp drawing_text(:pane), do: "card, in the pane"
+  defp drawing_text(:window), do: "card, in a window"
+
+  defp fps_text(:auto), do: "auto"
+  defp fps_text(fps), do: "#{fps} fps"
+
   defp drawing_item, do: if(Code.ensure_loaded?(CauldronGPU.Host), do: [:drawing], else: [])
 
   defp drawing_option(drawing) when drawing in @drawings, do: drawing
@@ -157,19 +197,22 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   The frame rate to draw at: the setting, or for `:auto` the terminal's best — 12 where
   every frame is an inline image (iTerm2's own, sixel), 20 where every frame is a kitty
   picture sent whole (a terminal without placements) or the session is served over ssh
-  (`link` `:ssh`), 30 elsewhere.
+  (`link` `:ssh`), 60 where the graphics card's frames reach a local kitty terminal through
+  shared memory (`card_frames?`), 30 elsewhere.
   """
-  @spec frame_rate(t(), atom() | nil | :unprobed, boolean(), :local | :ssh) :: pos_integer()
-  def frame_rate(settings, protocol, placements? \\ true, link \\ :local)
+  @spec frame_rate(t(), atom() | nil | :unprobed, boolean(), :local | :ssh, boolean()) ::
+          pos_integer()
+  def frame_rate(settings, protocol, placements? \\ true, link \\ :local, card_frames? \\ false)
 
-  def frame_rate(%__MODULE__{fps: :auto}, protocol, _placements?, _link)
+  def frame_rate(%__MODULE__{fps: :auto}, protocol, _placements?, _link, _card_frames?)
       when protocol in [:iterm2, :sixel],
       do: 12
 
-  def frame_rate(%__MODULE__{fps: :auto}, :kitty, false, _link), do: 20
-  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?, :ssh), do: 20
-  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?, :local), do: 30
-  def frame_rate(%__MODULE__{fps: fps}, _protocol, _placements?, _link), do: fps
+  def frame_rate(%__MODULE__{fps: :auto}, :kitty, false, _link, _card_frames?), do: 20
+  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?, :ssh, _card_frames?), do: 20
+  def frame_rate(%__MODULE__{fps: :auto}, :kitty, true, :local, true), do: 60
+  def frame_rate(%__MODULE__{fps: :auto}, _protocol, _placements?, :local, _card_frames?), do: 30
+  def frame_rate(%__MODULE__{fps: fps}, _protocol, _placements?, _link, _card_frames?), do: fps
 
   @doc "The surface mode for the display setting: `nil` lets the terminal decide."
   @spec surface_mode(t()) :: nil | :braille | :half | :quad | :sextant | :octant | :text
@@ -201,12 +244,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
 
   @doc "The frame rates the settings screen offers: the game's `frame_rates/0`, else `:auto`, 15, 30, 50 and 60."
   @spec frame_rates(module()) :: [fps()]
-  def frame_rates(game),
-    do:
-      if(Code.ensure_loaded?(game) and function_exported?(game, :frame_rates, 0),
-        do: game.frame_rates(),
-        else: @frame_rates
-      )
+  def frame_rates(game), do: Game.frame_rates(game)
 
   @doc "Switch to `preset` of `game`, dropping individual rebindings."
   @spec choose_preset(t(), module(), atom()) :: t()
@@ -253,8 +291,10 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   def load(game, player, account_props \\ %{}, opts \\ []) do
     kind = Keyword.get(opts, :kind, :terminal)
 
+    file = Cauldron.Paths.existing(path(game, player, kind), title_path(game, player, kind))
+
     stored =
-      case File.read(path(game, player, kind)) do
+      case File.read(file) do
         {:ok, binary} -> :erlang.binary_to_term(binary)
         {:error, _} -> %{}
       end
@@ -281,18 +321,26 @@ defmodule Cauldron2D.Drafter.Client.Settings do
   def prop_key(:terminal), do: :settings
   def prop_key(kind), do: :"settings_#{kind}"
 
-  @doc "Where `player`'s settings for `game` live, for a kind of client (default `:terminal`)."
+  @doc "Where `player`'s settings for `game` are written, for a kind of client (default `:terminal`): under the game's home."
   @spec path(module(), String.t(), atom()) :: Path.t()
-  def path(game, player, kind \\ :terminal) do
-    base = System.get_env("XDG_CONFIG_HOME") || Path.join(System.user_home!(), ".config")
-    name = game.title().name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "_")
+  def path(game, player, kind \\ :terminal),
+    do: Cauldron.Paths.config(Game.home(game), file_name(player, kind))
 
-    Path.join([
-      base,
-      name,
-      if(kind == :terminal, do: "#{player}.settings", else: "#{player}.#{kind}.settings")
-    ])
+  @doc """
+  The folder under the configuration directory named after `game`'s title in lower case,
+  runs of other characters as `_`. `load/4` and `Cauldron2D.Drafter.Launcher.load/1` read
+  from it when the game's home has nothing.
+  """
+  @spec title_folder(module()) :: Path.t()
+  def title_folder(game) do
+    name = game.title().name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "_")
+    Cauldron.Paths.config(name)
   end
+
+  defp title_path(game, player, kind), do: Path.join(title_folder(game), file_name(player, kind))
+
+  defp file_name(player, :terminal), do: "#{player}.settings"
+  defp file_name(player, kind), do: "#{player}.#{kind}.settings"
 
   @doc "The keys bound to `action`, as text for a screen."
   @spec keys_text(t(), Input.action()) :: String.t()

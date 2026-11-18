@@ -105,7 +105,7 @@ defmodule Cauldron2D.GameMaker.Font do
 
   defp glyph(data, at, padding) do
     <<character::little-16, x::little-16, y::little-16, width::little-16, height::little-16,
-      advance::little-signed-16, offset::little-signed-16, _padding::binary-size(padding),
+      advance::little-signed-16, offset::little-signed-16, _padding::binary-size(^padding),
       pairs::little-16>> = binary_part(data, at, 16 + padding)
 
     kerning =

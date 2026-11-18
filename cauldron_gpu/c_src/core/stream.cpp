@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 #include "scene.h"
@@ -29,7 +30,17 @@ enum Op : uint8_t {
   OpOverlay = 19,
   OpScreenTint = 20,
   OpCanvas = 21,
-  OpLayers = 22
+  OpLayers = 22,
+  OpMeshMorphs = 24,
+  OpInstanceMorphs = 25,
+  OpScatterPut = 30,
+  OpScatterDrop = 31,
+  OpInstanceScatter = 32,
+  OpMaterialLayers = 33,
+  OpMaterialLiquid = 34,
+  OpLook = 35,
+  OpWind = 36,
+  OpPushers = 37
 };
 
 class Reader {
@@ -113,15 +124,53 @@ void read_mesh(Reader &in, Changes &changes, bool skinned) {
   changes.meshes.emplace_back(id, std::move(mesh));
 }
 
+constexpr uint32_t MaxMorphTargets = 64;
+
+void read_morphs(Reader &in, Changes &changes) {
+  uint32_t id = in.read<uint32_t>();
+  uint32_t target_count = in.read<uint32_t>();
+  auto found = std::find_if(changes.meshes.rbegin(), changes.meshes.rend(), [&](const auto &entry) { return entry.first == id; });
+  if (found == changes.meshes.rend() || target_count > MaxMorphTargets) return in.fail();
+  MeshData &mesh = found->second;
+  size_t vertex_count = mesh.vertices.size();
+  if (!in.fits(size_t(target_count) * vertex_count, 6 * sizeof(float))) return in.fail();
+  std::vector<float> positions(vertex_count * 3);
+  std::vector<float> normals(vertex_count * 3);
+  mesh.morphs.assign(size_t(target_count) * vertex_count * 8, 0.0f);
+  for (uint32_t target = 0; target < target_count; target++) {
+    in.bytes(positions.data(), positions.size() * sizeof(float));
+    in.bytes(normals.data(), normals.size() * sizeof(float));
+    float *out = mesh.morphs.data() + size_t(target) * vertex_count * 8;
+    for (size_t vertex = 0; vertex < vertex_count; vertex++) {
+      std::copy_n(positions.data() + vertex * 3, 3, out + vertex * 8);
+      std::copy_n(normals.data() + vertex * 3, 3, out + vertex * 8 + 4);
+    }
+  }
+  mesh.morph_count = target_count;
+}
+
+void read_instance_morphs(Reader &in, Scene &scene) {
+  uint32_t id = in.read<uint32_t>();
+  uint32_t count = in.read<uint32_t>();
+  if (count > MaxMorphTargets || !in.fits(count, sizeof(float))) return in.fail();
+  std::vector<float> weights(count);
+  in.bytes(weights.data(), count * sizeof(float));
+  if (in.failed()) return;
+  auto found = scene.instances.find(id);
+  if (found == scene.instances.end()) return;
+  found->second.morph_weights = std::move(weights);
+}
+
 size_t bytes_per_pixel(TextureFormat format) {
-  return format == TextureFormat::Rgba16Float ? 8 : 4;
+
+  return format == TextureFormat::Rgba16Float ? 8 : format == TextureFormat::R8 ? 1 : 4;
 }
 
 void read_texture(Reader &in, Changes &changes) {
   uint32_t id = in.read<uint32_t>();
   TextureData texture;
   uint8_t format = in.read<uint8_t>();
-  if (format > 2) return in.fail();
+  if (format > 3) return in.fail();
   texture.format = static_cast<TextureFormat>(format);
   texture.linear_filter = in.read<uint8_t>() != 0;
   texture.clamp = in.read<uint8_t>() != 0;
@@ -141,7 +190,9 @@ void read_canvas(Reader &in, Changes &changes) {
   uint32_t id = in.read<uint32_t>();
   TextureData texture;
   texture.format = TextureFormat::Rgba8Linear;
-  texture.linear_filter = in.read<uint8_t>() != 0;
+  uint8_t flags = in.read<uint8_t>();
+  texture.linear_filter = (flags & 1) != 0;
+  texture.srgb = (flags & 2) != 0;
   texture.clamp = true;
   texture.mips = false;
   texture.canvas = true;
@@ -151,9 +202,34 @@ void read_canvas(Reader &in, Changes &changes) {
   changes.textures.emplace_back(id, std::move(texture));
 }
 
+bool read_tiles(Reader &in, Layer &layer) {
+  in.bytes(layer.view, sizeof(layer.view));
+  layer.source = in.read<uint32_t>();
+  layer.palette = in.read<uint32_t>();
+  if (layer.kind == LayerKind::Shadows || layer.kind == LayerKind::Priority || layer.kind == LayerKind::PriorityShadows) layer.count = in.read<uint32_t>();
+  if (layer.kind == LayerKind::PriorityShadows) layer.coverage = in.read<uint32_t>();
+  layer.transparent = in.read<uint16_t>();
+  layer.pens = in.read<uint16_t>();
+  uint32_t count = in.read<uint32_t>();
+  if (count > 1000000 || !in.fits(count, 13)) return false;
+  layer.tiles.resize(count);
+  for (Tile &tile : layer.tiles) {
+    tile.source_x = in.read<uint16_t>();
+    tile.source_y = in.read<uint16_t>();
+    tile.width = in.read<uint8_t>();
+    tile.height = in.read<uint8_t>();
+    tile.x = in.read<int16_t>();
+    tile.y = in.read<int16_t>();
+    tile.flags = in.read<uint8_t>();
+    tile.base = in.read<uint16_t>();
+  }
+  return !in.failed();
+}
+
 bool read_layer(Reader &in, Layer &layer) {
+
   uint8_t kind = in.read<uint8_t>();
-  if (kind > 1) return false;
+  if (kind > 5) return false;
   layer.kind = static_cast<LayerKind>(kind);
   layer.target = in.read<uint32_t>();
   layer.clear = in.read<uint8_t>() != 0;
@@ -167,6 +243,7 @@ bool read_layer(Reader &in, Layer &layer) {
     in.bytes(layer.sprites.data(), size_t(count) * sizeof(Sprite));
     return std::all_of(layer.sprites.begin(), layer.sprites.end(), [](const Sprite &sprite) { return sprite.mode <= 2; });
   }
+  if (layer.kind == LayerKind::Tiles || layer.kind == LayerKind::Shadows || layer.kind == LayerKind::Priority || layer.kind == LayerKind::PriorityShadows) return read_tiles(in, layer);
   layer.source = in.read<uint32_t>();
   uint32_t count = in.read<uint32_t>();
   if (count > 16384 || !in.fits(count, 3 * sizeof(float))) return false;
@@ -234,6 +311,7 @@ void read_instance(Reader &in, Scene &scene) {
     instance.blend_mesh = existing->second.blend_mesh;
     instance.blend = existing->second.blend;
     instance.bones = existing->second.bones;
+    instance.morph_weights = existing->second.morph_weights;
   }
   scene.instances[id] = std::move(instance);
 }
@@ -263,6 +341,7 @@ void read_pose(Reader &in, Scene &scene) {
   found->second.blend_mesh = blend_mesh;
   found->second.blend = std::clamp(blend, 0.0f, 1.0f);
   found->second.bones = std::move(bones);
+  found->second.morph_weights.clear();
 }
 
 void read_light_styles(Reader &in, Scene &scene) {
@@ -351,6 +430,101 @@ void read_environment(Reader &in, Scene &scene) {
   scene.environment = environment;
 }
 
+constexpr uint32_t MaxPlacements = 4000000;
+constexpr uint32_t MaxPushers = 8;
+
+void read_scatter(Reader &in, Changes &changes) {
+  uint32_t id = in.read<uint32_t>();
+  ScatterData scatter;
+  scatter.count = in.read<uint32_t>();
+  in.bytes(scatter.centre, sizeof(scatter.centre));
+  scatter.radius = in.read<float>();
+  if (scatter.count > MaxPlacements || !in.fits(scatter.count, 32)) return in.fail();
+  scatter.placements.resize(size_t(scatter.count) * 32);
+  in.bytes(scatter.placements.data(), scatter.placements.size());
+  if (in.failed()) return;
+  scatter.largest = 0;
+  for (uint32_t index = 0; index < scatter.count; index++) {
+    float scale;
+    std::memcpy(&scale, scatter.placements.data() + size_t(index) * 32 + 12, sizeof(scale));
+    scatter.largest = std::max(scatter.largest, std::fabs(scale));
+  }
+  changes.scatters.emplace_back(id, std::move(scatter));
+}
+
+void read_instance_scatter(Reader &in, Scene &scene) {
+  uint32_t id = in.read<uint32_t>();
+  uint32_t scatter = in.read<uint32_t>();
+  float sway[4], fade[2];
+  in.bytes(sway, sizeof(sway));
+  in.bytes(fade, sizeof(fade));
+  if (in.failed()) return;
+  auto found = scene.instances.find(id);
+  if (found == scene.instances.end()) return;
+  found->second.scatter = scatter;
+  std::copy(std::begin(sway), std::end(sway), found->second.sway);
+  std::copy(std::begin(fade), std::end(fade), found->second.fade);
+}
+
+void read_material_layers(Reader &in, Scene &scene) {
+  uint32_t id = in.read<uint32_t>();
+  uint32_t layers[4];
+  in.bytes(layers, sizeof(layers));
+  float scale = in.read<float>();
+  if (in.failed()) return;
+  auto found = scene.materials.find(id);
+  if (found == scene.materials.end()) return;
+  std::copy(std::begin(layers), std::end(layers), found->second.layers);
+  found->second.layer_scale = scale;
+  scene.materials_changed = true;
+}
+
+void read_material_liquid(Reader &in, Scene &scene) {
+  uint32_t id = in.read<uint32_t>();
+  float shallow[4], deep[4], foam[4], waves[4];
+  in.bytes(shallow, sizeof(shallow));
+  in.bytes(deep, sizeof(deep));
+  in.bytes(foam, sizeof(foam));
+  in.bytes(waves, sizeof(waves));
+  if (in.failed()) return;
+  auto found = scene.materials.find(id);
+  if (found == scene.materials.end()) return;
+  MaterialData &material = found->second;
+  material.liquid = true;
+  std::copy(std::begin(shallow), std::end(shallow), material.liquid_shallow);
+  std::copy(std::begin(deep), std::end(deep), material.liquid_deep);
+  std::copy(std::begin(foam), std::end(foam), material.liquid_foam);
+  std::copy(std::begin(waves), std::end(waves), material.liquid_waves);
+  scene.materials_changed = true;
+}
+
+void read_look(Reader &in, Scene &scene) {
+  uint32_t shading = std::min(in.read<uint32_t>(), 1u);
+  float toon[3];
+  in.bytes(toon, sizeof(toon));
+  Vec3 shade = in.vec3();
+  Vec3 outline = in.vec3();
+  float width = in.read<float>();
+  float reach = in.read<float>();
+  if (in.failed()) return;
+  Environment &environment = scene.environment;
+  environment.shading = shading;
+  std::copy(std::begin(toon), std::end(toon), environment.toon);
+  environment.shade = shade;
+  environment.outline = outline;
+  environment.outline_width = std::max(width, 0.0f);
+  environment.outline_reach = std::max(reach, 1e-3f);
+}
+
+void read_pushers(Reader &in, Scene &scene) {
+  uint32_t count = in.read<uint32_t>();
+  if (count > MaxPushers || !in.fits(count, 4 * sizeof(float))) return in.fail();
+  std::vector<float> pushers(size_t(count) * 4);
+  in.bytes(pushers.data(), pushers.size() * sizeof(float));
+  if (in.failed()) return;
+  scene.pushers = std::move(pushers);
+}
+
 void settle_moves(Scene &scene) {
   for (auto &[id, instance] : scene.instances) instance.previous = instance.current;
   scene.camera.previous = scene.camera.current;
@@ -365,6 +539,8 @@ bool read_op(Reader &in, Scene &scene, Changes &changes, double now) {
     case OpMeshPut: read_mesh(in, changes, false); break;
     case OpMeshPutSkinned: read_mesh(in, changes, true); break;
     case OpInstancePose: read_pose(in, scene); break;
+    case OpMeshMorphs: read_morphs(in, changes); break;
+    case OpInstanceMorphs: read_instance_morphs(in, scene); break;
     case OpLightStyles: read_light_styles(in, scene); break;
     case OpOverlay:
       scene.overlay = in.read<uint32_t>();
@@ -386,6 +562,14 @@ bool read_op(Reader &in, Scene &scene, Changes &changes, double now) {
     case OpCamera: read_camera(in, scene); break;
     case OpEnvironment: read_environment(in, scene); break;
     case OpEffects: scene.requested_effects = in.read<uint32_t>(); break;
+    case OpScatterPut: read_scatter(in, changes); break;
+    case OpScatterDrop: scene.released_scatters.insert(in.read<uint32_t>()); break;
+    case OpInstanceScatter: read_instance_scatter(in, scene); break;
+    case OpMaterialLayers: read_material_layers(in, scene); break;
+    case OpMaterialLiquid: read_material_liquid(in, scene); break;
+    case OpLook: read_look(in, scene); break;
+    case OpWind: in.bytes(scene.environment.wind, sizeof(scene.environment.wind)); break;
+    case OpPushers: read_pushers(in, scene); break;
     default: in.fail(); break;
   }
   return !in.failed();
@@ -399,10 +583,11 @@ void Scene::begin_tick(double now) {
 }
 
 void Scene::collect_released(Changes &changes) {
-  if (released_meshes.empty() && released_textures.empty() && released_materials.empty()) return;
-  std::unordered_set<uint32_t> used_meshes, used_materials, used_textures;
+  if (released_meshes.empty() && released_textures.empty() && released_materials.empty() && released_scatters.empty()) return;
+  std::unordered_set<uint32_t> used_meshes, used_materials, used_textures, used_scatters;
   for (auto &[id, instance] : instances) {
     used_meshes.insert(instance.mesh);
+    if (instance.scatter) used_scatters.insert(instance.scatter);
     if (instance.blend_mesh) used_meshes.insert(instance.blend_mesh);
     used_materials.insert(instance.materials.begin(), instance.materials.end());
   }
@@ -425,7 +610,8 @@ void Scene::collect_released(Changes &changes) {
   }
   for (auto &[id, material] : materials)
     for (uint32_t texture : {material.base_texture, material.metallic_roughness_texture, material.emissive_texture, material.lightmap_texture,
-                             material.normal_texture, material.occlusion_texture})
+                             material.normal_texture, material.occlusion_texture, material.layers[0], material.layers[1], material.layers[2],
+                             material.layers[3]})
       used_textures.insert(texture);
   auto sweep = [](std::unordered_set<uint32_t> &released, const std::unordered_set<uint32_t> &used, std::vector<uint32_t> &dropped) {
     for (auto id = released.begin(); id != released.end();) {
@@ -439,6 +625,7 @@ void Scene::collect_released(Changes &changes) {
   };
   sweep(released_meshes, used_meshes, changes.dropped_meshes);
   sweep(released_textures, used_textures, changes.dropped_textures);
+  sweep(released_scatters, used_scatters, changes.dropped_scatters);
 }
 
 float Scene::tick_progress(double now) const {

@@ -3,7 +3,7 @@ defmodule Cauldron2D.Net.MixProject do
 
   @version "0.3.4"
   @source_url "https://github.com/jaman/cauldron"
-  @description "A Cauldron2D world over the network: served to browsers, desktops and terminals over a WebSocket or from node to node, and the links a client joins it by."
+  @description "A Cauldron2D world over the network: its scenes sent as pictures or scene data (a Cauldron.Net drawer), the browser pages that draw them, and a server for a game in one line."
 
   def project do
     [
@@ -13,6 +13,7 @@ defmodule Cauldron2D.Net.MixProject do
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       elixirc_options: [warnings_as_errors: true],
+      test_ignore_filters: [&String.starts_with?(&1, "test/js/")],
       deps: deps(),
       name: "Cauldron2D.Net",
       source_url: @source_url,
@@ -22,18 +23,21 @@ defmodule Cauldron2D.Net.MixProject do
   end
 
   def application do
-    [extra_applications: [:logger, :inets, :ssl], mod: {Cauldron2D.Net.Application, []}]
+    [extra_applications: [:logger, :inets, :ssl]]
   end
 
   defp deps do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_2d, "~> 0.3.4", "../cauldron_2d", []),
+      family(:cauldron_core, "~> 0.4.0", "../cauldron_core", []),
+      family(:cauldron_net, "~> 0.4.0", "../cauldron_net", []),
+      family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
       family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
       family(:gamepad, "~> 0.1.0", "../../gamepad", []),
       family(:tuning_fork, "~> 0.1.13", "../../tuning_fork/tuning_fork", []),
       {:phoenix, "~> 1.8"},
+      {:bandit, "~> 1.13"},
       {:mint, "~> 1.6"},
       {:mint_web_socket, "~> 1.0"},
       {:castore, "~> 1.0"},

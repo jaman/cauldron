@@ -1,6 +1,6 @@
 #include "shared_memory.h"
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__ANDROID__)
 
 namespace cg {
 

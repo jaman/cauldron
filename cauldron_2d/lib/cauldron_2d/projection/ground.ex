@@ -49,7 +49,7 @@ defmodule Cauldron2D.Projection.Ground do
   @doc false
   def load_nif do
     "plane_nif"
-    |> Cauldron2D.Native.path()
+    |> Cauldron2D.Nifs.path()
     |> :erlang.load_nif(0)
     |> then(&:persistent_term.put({__MODULE__, :native}, &1 == :ok))
   end

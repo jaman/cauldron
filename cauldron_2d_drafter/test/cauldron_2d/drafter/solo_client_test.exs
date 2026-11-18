@@ -9,7 +9,7 @@ defmodule Cauldron2D.Drafter.SoloClientTest do
 
   defmodule SoloClient do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "SOLO", tagline: "one player, own world"}
     def atlas, do: :solo_dots
@@ -74,7 +74,7 @@ defmodule Cauldron2D.Drafter.SoloClientTest do
 
     on_exit(fn ->
       DT.stop(ctx)
-      Cauldron2D.Trace.stop()
+      Cauldron.Trace.stop()
       System.delete_env("CAULDRON_TRACE")
       File.rm_rf!(dir)
 
@@ -95,14 +95,14 @@ defmodule Cauldron2D.Drafter.SoloClientTest do
     DT.send_key(ctx, :escape)
     assert :ok == DT.wait_for(ctx, fn c -> DT.screen_text(c) =~ "one player, own world" end)
     DT.stop(ctx)
-    Cauldron2D.Trace.stop()
+    Cauldron.Trace.stop()
 
-    kinds = trace |> Cauldron2D.Trace.read!() |> Enum.map(& &1["kind"])
+    kinds = trace |> Cauldron.Trace.read!() |> Enum.map(& &1["kind"])
     assert "frame" in kinds
     assert "input" in kinds
 
     assert Enum.any?(
-             Cauldron2D.Trace.read!(trace),
+             Cauldron.Trace.read!(trace),
              &(&1["kind"] == "key" and &1["key"] == "right")
            )
   end

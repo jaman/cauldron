@@ -5,25 +5,28 @@ through [drafter](https://hexdocs.pm/drafter). It also serves the game over ssh.
 you two things:
 
 * **A ready-made client.** `Cauldron2D.Drafter.Client` is a whole drafter application. It
-  runs any `Cauldron2D.Client.Game` module through a title, a lobby, settings, the world,
+  runs any `Cauldron.Client.Game` module through a title, a lobby, settings, the world,
   a summary and a guide.
 * **Parts for your own application.** Use these when your game has a different shape.
   * `Cauldron2D.Drafter.Surface` is the `cauldron_surface` widget. It draws a viewport onto
     a grid and its movers. It uses pixels where the terminal has them and glyphs elsewhere.
   * `Cauldron2D.Drafter.Sprites` sends an atlas to a kitty terminal once, so later frames
     only place the sprites.
-  * `Cauldron2D.Drafter.Chat` keeps rooms of messages and sends each to its members.
 
-The same `Cauldron2D.Client.Game` module also runs in a browser through
+The same `Cauldron.Client.Game` module also runs in a browser through
 [`cauldron_2d_net`](https://hexdocs.pm/cauldron_2d_net) and in a window through
-[`cauldron_2d_wx`](https://hexdocs.pm/cauldron_2d_wx).
+[`cauldron_2d_wx`](https://hexdocs.pm/cauldron_2d_wx). All three draw the scene with
+`Cauldron2D.Draw` and read the game through the client modules of `cauldron_2d`
+(`Cauldron2D.Client.Look`, `Keys`, `Menus`, `Start`, `Fronts`, `Seats`, `Controllers`),
+and their chats share the rooms of `Cauldron.Chat`. A game's title, menu, `:screen` and
+projections look and behave the same in each.
 
 ## Installation
 
 ```elixir
 def deps do
   [
-    {:cauldron_2d_drafter, "~> 0.3"},
+    {:cauldron_2d_drafter, "~> 0.4"},
     {:tuning_fork_speaker, "~> 0.1"}
   ]
 end
@@ -42,10 +45,9 @@ own, and starts straight in it:
 
 ```elixir
 defmodule Walk.Client do
-  @behaviour Cauldron2D.Client.Game
+  use Cauldron2D.Client.Game
 
-  alias Cauldron2D.Atlas
-  alias FrenchCurve.Raster
+  alias Cauldron2D.{Atlas, Raster}
 
   @impl true
   def title, do: %{name: "Walk", tagline: "left and right"}
@@ -101,27 +103,45 @@ defmodule Walk.Client do
 end
 ```
 
-Then load and register the surface widget, and run the client with your module in its
-props. A mix task is a good place for this:
+Then run the client with your module from a mix task:
 
 ```elixir
-Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
-Drafter.Widget.Registry.register(Cauldron2D.Drafter.Surface)
+defmodule Mix.Tasks.Walk do
+  use Mix.Task
 
-Drafter.run(Cauldron2D.Drafter.Client, props: %{game: Walk.Client, username: "alice"})
+  def run(argv), do: Cauldron2D.Drafter.Play.run(Walk.Client, argv, name: "alice")
+end
 ```
 
-Register the widget only after loading the module. Registration reads the module's
-`component_tag/0`. An unloaded module registers nothing, and its tag then draws an empty
-pane. The same holds for `Drafter.run/2`'s `:widget_libraries` option.
+`Cauldron2D.Drafter.Play.run/3` starts the application and runs
+the client; `mix walk --name bob --mute` passes flags through. The games in
+`cauldron_examples` each have a mix task written this way: `mix cistern`, `mix beast`,
+`mix town`, `mix parade`.
 
-The examples in the repository's `examples` directory each have a mix task written this
-way: `mix cistern`, `mix beast`, `mix town`, `mix parade`.
+## Testing a game in the terminal
+
+`Cauldron2D.Drafter.Test` runs the client on a terminal that exists only in memory, so a
+test can press keys and read the screen:
+
+```elixir
+alias Cauldron.Audio.Sink
+alias Cauldron2D.Drafter.Test
+
+test "the title opens the lobby" do
+  ctx = Test.start(%{game: Walk.Client, username: "alice", sink: Sink.silent()}, size: {120, 40})
+  on_exit(fn -> Test.stop(ctx) end)
+
+  Test.send_key(ctx, :enter)
+  assert :ok == Test.wait_for(ctx, &(Test.screen_text(&1) =~ "lobby"))
+end
+```
+
+Only one client runs at a time, so such a test is `async: false`.
 
 ## The ready-made client
 
-The client holds the player's `Cauldron2D.Input`, their `Cauldron2D.Audio` and their
-connection to the `Cauldron2D.World`. The game supplies every name and element the
+The client holds the player's `Cauldron.Input`, their `Cauldron.Audio` and their
+connection to the `Cauldron.World`. The game supplies every name and element the
 screens show. The client supplies the flow between screens and the keys that drive it.
 
 * **Flow.** The game's `start/0`, or the `:start` mount prop, chooses where the client
@@ -130,22 +150,44 @@ screens show. The client supplies the flow between screens and the keys that dri
   a flow of the game's own, using `enter/3`, `to_lobby/1`, `to_title/1` and `to_guide/1`.
 * **Lobby.** It lists the worlds from the game's `worlds/1` with their players, and
   redraws as players come and go. It offers teams where a world has them, and a chat
-  unless the game's `chat?/0` returns `false`.
+  unless the game's `chat?/0` returns `false`. The chat is `Cauldron.Chat`'s `:lobby`
+  room, and in a world `t` talks in the world's room, `{:world, id}`. Players in a
+  browser or a desktop window read and write the same rooms.
+* **The game's own screens.** A game's `fronts/1` title and summary and its menu
+  (`open_menu/1`) run here through `Cauldron.Client.Fronts` and
+  `Cauldron.Client.Menus`, as they do in the browser and the window.
 * **Keys.** `Esc` goes back, `q` leaves the world for the lobby, `?` shows the key hints and `^Q`
   quits. `=`, `-` and `0` zoom. `v` cycles the projections the game's `look/0` lists:
   top-down, oblique, isometric, mode 7 and first person. `[` and `]` turn the view. The
   game can replace or drop any of these with `client_keys/0`. `Cauldron2D.Drafter.Client`
   documents every key.
-* **Controllers.** Each connected controller plays one player. The d-pad and left stick
-  hold the game's directions. In a game's menu, the d-pad arrives as arrow keys, `A` as
+* **Controllers.** Each connected controller plays one player. A game without its own
+  `padmap/1` is played with the d-pad and left stick on its directions, the d-pad also
+  on any action its first keymap puts on an arrow key, and `A`, `X`, `B`, `Y` and the
+  bumpers on its other actions in the order `actions/0` lists them. `Start` opens the
+  game's menu when it has one. In a game's menu, the d-pad arrives as arrow keys, `A` as
   `Enter`, and `B` and `Start` as `Esc`, each sent as `{:key, key, [:pad]}`.
 * **Guide.** A game with `guide/0` gets a guide screen on `h` from the title and lobby.
 * **Settings.** The player sets the control preset and bindings, pointer steering,
-  effects and music levels, the display and the frame rate. The client saves them under
-  `$XDG_CONFIG_HOME/<game>/<player>.settings`, and in the player's account when there is
-  one.
-* **Sound.** Pass `mute: true` in the props, set `config :cauldron_2d_drafter, mute: true`,
-  or set `CAULDRON_MUTE=1` to play no sound.
+  effects and music levels, the display, the drawing and the frame rate. The client saves
+  them under `$XDG_CONFIG_HOME/<game>/<player>.settings`, and in the player's account when
+  there is one.
+* **Display.** On a terminal that shows pictures (kitty, Ghostty, WezTerm, iTerm2, or one
+  with sixel) the client draws pixels; elsewhere it draws characters. The player changes
+  this on the settings screen's Display row: pixels where the terminal has them, braille,
+  half, quarter, sextant or octant blocks, or glyphs. `CAULDRON_MODE` (`text`, `kitty`,
+  `iterm2`, `sixel`) forces a protocol or text for a run. A game that hides the settings
+  screen (`settings: nil` in `client_keys/0`) should offer these rows in its own options
+  menu: `Cauldron2D.Drafter.Client.Settings.menu_items/2` gives the display, drawing and
+  frame rate rows, and the client saves and applies what they change. Without them its
+  players cannot switch at all.
+* **Sound.** Pass `mute: true` in the props or `--mute` on the command line, or set
+  `CAULDRON_MUTE=1`, to play no sound.
+* **Launch settings.** `:picture`, `:mute` and `:trace` are each found in
+  `Cauldron.Launch`'s order: the mount prop (a `Cauldron2D.Drafter.Play` flag), then the
+  game's saved launcher values, then `CAULDRON_PICTURE`, `CAULDRON_MUTE` and
+  `CAULDRON_TRACE`, then `config :cauldron_2d_drafter`, then the default.
+  `mix cauldron.play MyGame.Client --name alice --mute` runs any game's client.
 
 A game with screens of its own can run the client inside its own `Drafter.App`. Start it
 with `start: {:lobby, title: false}` and hand it events through `handle_event/2`,
@@ -171,23 +213,13 @@ Cauldron2D.Drafter.Server.stop(server)
 
 New players register by logging in as `new@host`. Each player's sound goes as raw PCM
 through an `ssh -R <port>:127.0.0.1:4713` tunnel to a player program on their machine.
-Register the worlds with `Cauldron2D.Worlds` before or after the server starts.
+Register the worlds with `Cauldron.Worlds` before or after the server starts.
 
-To serve without accounts, call drafter's server directly. This serves the client over
-telnet. Pass `mute: true`, because a telnet session has no sound tunnel:
+To serve without accounts or sound, serve the client over telnet:
 
 ```elixir
-Code.ensure_loaded!(Cauldron2D.Drafter.Surface)
-Drafter.Widget.Registry.register(Cauldron2D.Drafter.Surface)
-
-Drafter.Server.start_telnet(Cauldron2D.Drafter.Client,
-  port: 2323,
-  mount_props: %{game: Walk.Client, mute: true}
-)
+{:ok, _listener} = Cauldron2D.Drafter.Server.start_telnet(Walk.Client, port: 2323)
 ```
-
-`Drafter.Server.start_ssh/2` takes the same `mount_props`. See drafter's remote TUI guide
-for its other options.
 
 ## The surface widget
 
@@ -205,14 +237,15 @@ for its other options.
 ```
 
 An art with frames is drawn at the frame showing on the clock. A label is text in
-`Linocut.Font` over the world, or characters over the glyphs in text mode. The widget also
+the built-in label font over the world, or characters over the glyphs in text mode. The widget also
 takes `:zoom`, `:mode`, `:projection`, `:layers`, `:volumes`, `:picture` and more.
 `Cauldron2D.Drafter.Surface` documents each option.
 
 The widget draws the same view two ways:
 
-* **Pixels.** `image/3` composites the viewport and hands drafter one image as a kitty,
-  iTerm2 or sixel escape sequence. `render/2` paints blank cells under it.
+* **Pixels.** `image/3` draws the viewport with `Cauldron2D.Draw`, the renderer every
+  front end uses, and hands drafter one image as a kitty, iTerm2 or sixel escape
+  sequence. `render/2` paints blank cells under it.
 * **Text.** `render/2` draws two-cell glyphs in truecolour, from the same cells. Set
   `:mode` to `:braille`, `:half`, `:quad`, `:sextant` or `:octant` to draw block or braille
   characters instead.
@@ -263,7 +296,7 @@ A mix task can take a `--picture` flag and pass it through
 ## The graphics card
 
 A scene can describe itself for the graphics card with a `:gpu` function as well as its
-`:picture` (see `Cauldron2D.Client.Game` and
+`:picture` (see `Cauldron.Client.Game` and
 [`cauldron_gpu`](https://hexdocs.pm/cauldron_gpu)). Such a game is drawn on the card by
 default. You do not need a flag.
 
@@ -288,7 +321,7 @@ CAULDRON_PICTURE=software mix my_game
 
 A 2D game whose picture is a `Cauldron2D.DrawList` can give the same draw list to the
 card with `Cauldron2D.Drafter.Client.Sprites`. It turns the items into
-`CauldronGPU.Sprite`s for a `CauldronGPU.SpriteLayer` and uploads each picture the first
+`Cauldron3D.Scene.Sprite`s for a `Cauldron3D.Scene.SpriteLayer` and uploads each picture the first
 time it is drawn. Sprites land on the same pixels as the software picture. NidhOX
 (`Nidhox.Gpu`) draws this way.
 
@@ -303,7 +336,7 @@ end
 def draw(view, target, cache, {width, height}) do
   cache = cache || Sprites.new()
   {sprites, cache} = Sprites.sprites(cache, target, view.items, &{&1, MyGame.raster(&1)})
-  layer = %CauldronGPU.SpriteLayer{clear: {0.0, 0.0, 0.0, 1.0}, view: {0, 0, 320, 200}, sprites: sprites}
+  layer = %Cauldron3D.Scene.SpriteLayer{clear: {0.0, 0.0, 0.0, 1.0}, view: {0, 0, 320, 200}, sprites: sprites}
   {[{:layers, [layer]}], cache}
 end
 ```

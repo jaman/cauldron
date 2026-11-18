@@ -58,25 +58,25 @@ float3 hemisphere(float3 normal, float u, float v) {
   return normalize(tangent * radius * cos(angle) + bitangent * radius * sin(angle) + normal * sqrt(max(1 - u, 0)));
 }
 
-int sun_index(Frame frame) {
-  for (uint index = 0; index < frame.counts.x; index++) {
+int sun_index(Frame *frame) {
+  for (uint index = 0; index < frame->counts.x; index++) {
     Light light = push.lights[index];
     if (uint(light.direction_kind.w) == LIGHT_DIRECTIONAL && light.cone.z > 0) return int(index);
   }
   return -1;
 }
 
-float sun_visibility(Frame frame, float3 origin) {
+float sun_visibility(Frame *frame, float3 origin) {
   int sun = sun_index(frame);
   return sun < 0 ? 1 : visible(origin, -push.lights[sun].direction_kind.xyz, 1e6);
 }
 
-float ambient_visibility(Frame frame, float3 origin, float3 normal, uint2 pixel) {
-  uint state = hash(pixel.x * 1973 + pixel.y * 9277 + frame.counts.z * 26699);
+float ambient_visibility(Frame *frame, float3 origin, float3 normal, uint2 pixel) {
+  uint state = hash(pixel.x * 1973 + pixel.y * 9277 + frame->counts.z * 26699);
   float open = 0;
   for (uint ray = 0; ray < AMBIENT_RAYS; ray++)
-    open += visible(origin, hemisphere(normal, random(state), random(state)), frame.ray_tracing.x);
-  return lerp(1.0, open / AMBIENT_RAYS, frame.ray_tracing.y);
+    open += visible(origin, hemisphere(normal, random(state), random(state)), frame->ray_tracing.x);
+  return lerp(1.0, open / AMBIENT_RAYS, frame->ray_tracing.y);
 }
 
 uint part_material(TracedInstance traced, uint first_index) {
@@ -97,7 +97,7 @@ float visible(float3 origin, float3 direction, float reach) {
   return !hit.found || sky_hit(hit) ? 1.0 : 0.0;
 }
 
-float3 shade_hit(Frame frame, Hit hit, float3 origin, float3 direction) {
+float3 shade_hit(Frame *frame, Hit hit, float3 origin, float3 direction) {
   TracedInstance traced = push.traced[hit.instance];
   uint first_index = hit.primitive * 3;
   Vertex a = traced.vertices[traced.indices[first_index]];
@@ -115,13 +115,13 @@ float3 shade_hit(Frame frame, Hit hit, float3 origin, float3 direction) {
   float3 emissive = material.emissive.rgb * material.emissive_texture.SampleLevel(material.sampler, uv, 0).rgb;
   if ((material.flags.x & MATERIAL_UNLIT) != 0) return base.rgb + emissive;
   bool has_lightmap = (material.flags.x & MATERIAL_HAS_LIGHTMAP) != 0;
-  float3 indirect = has_lightmap ? baked_light(frame, material, lightmap_uv) : frame.ambient.rgb * frame.ambient.w;
+  float3 indirect = has_lightmap ? baked_light(frame, material, lightmap_uv) : frame->ambient.rgb * frame->ambient.w;
   float3 color = base.rgb * indirect + emissive;
   int sun = sun_index(frame);
   if (sun >= 0) {
     Light light = push.lights[sun];
     float3 towards = -light.direction_kind.xyz;
-    float3 hit_point = origin + direction * hit.distance + normal * frame.ray_tracing.z;
+    float3 hit_point = origin + direction * hit.distance + normal * frame->ray_tracing.z;
     float lit = saturate(dot(normal, towards)) * visible(hit_point, towards, 1e6);
     color += base.rgb / 3.14159265 * light.color.rgb * light.color.w * lit;
   }
@@ -138,45 +138,45 @@ float3 ggx_half_vector(float3 normal, float roughness, float u, float v) {
   return normalize(tangent * sin_theta * cos(phi) + bitangent * sin_theta * sin(phi) + normal * cos_theta);
 }
 
-float3 radiance_along(Frame frame, float3 origin, float3 direction) {
+float3 radiance_along(Frame *frame, float3 origin, float3 direction) {
   Hit hit = closest(origin, direction, 1e5);
   return hit.found && !sky_hit(hit) ? shade_hit(frame, hit, origin, direction) : sky(frame, direction);
 }
 
-float4 reflection(Frame frame, float3 origin, float3 normal, float3 world, float roughness, inout uint state) {
+float4 reflection(Frame *frame, float3 origin, float3 normal, float3 world, float roughness, inout uint state) {
   if (roughness > GLOSSY_ROUGHNESS) return float4(0);
-  float3 view = normalize(world - frame.camera_position.xyz);
+  float3 view = normalize(world - frame->camera_position.xyz);
   float3 half_vector = roughness < 0.05 ? normal : ggx_half_vector(normal, roughness, random(state), random(state));
   float3 direction = reflect(view, half_vector);
   if (dot(direction, normal) <= 0) direction = reflect(view, normal);
   return float4(radiance_along(frame, origin, direction), 1 - roughness / GLOSSY_ROUGHNESS);
 }
 
-float4 bounce(Frame frame, float3 origin, float3 normal, inout uint state) {
+float4 bounce(Frame *frame, float3 origin, float3 normal, inout uint state) {
   return float4(radiance_along(frame, origin, hemisphere(normal, random(state), random(state))), 1);
 }
 
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void compute_main(uint3 id : SV_DispatchThreadID) {
-  Frame frame = *push.frame;
-  uint width = uint(frame.screen.x);
-  if (id.x >= width || id.y >= uint(frame.screen.y)) return;
-  float2 uv = (float2(id.xy) + 0.5) * frame.screen.zw;
-  float depth = frame.depth.SampleLevel(frame.point_clamp, uv, 0).r;
+  Frame *frame = push.frame;
+  uint width = uint(frame->screen.x);
+  if (id.x >= width || id.y >= uint(frame->screen.y)) return;
+  float2 uv = (float2(id.xy) + 0.5) * frame->screen.zw;
+  float depth = frame->depth.SampleLevel(frame->point_clamp, uv, 0).r;
   float2 result = float2(1, 1);
   float4 mirrored = float4(0);
   float4 indirect = float4(0);
-  uint state = hash(id.x * 7919 + id.y * 104729 + frame.counts.z * 1299709);
-  if (depth > 0 && frame.gbuffer_baked.SampleLevel(frame.point_clamp, uv, 0).w < SKY_MARK) {
-    float4 normal_sample = frame.gbuffer_normal.SampleLevel(frame.point_clamp, uv, 0);
+  uint state = hash(id.x * 7919 + id.y * 104729 + frame->counts.z * 1299709);
+  if (depth > 0 && frame->gbuffer_baked.SampleLevel(frame->point_clamp, uv, 0).w < SKY_MARK) {
+    float4 normal_sample = frame->gbuffer_normal.SampleLevel(frame->point_clamp, uv, 0);
     float3 normal = normalize(normal_sample.xyz);
     float3 world = world_position(frame, uv, depth);
-    float3 origin = world + normal * frame.ray_tracing.z;
-    if ((frame.counts.y & EFFECT_RT_SHADOWS) != 0) result.x = sun_visibility(frame, origin);
-    if ((frame.counts.y & EFFECT_RT_AMBIENT_OCCLUSION) != 0) result.y = ambient_visibility(frame, origin, normal, id.xy);
-    if ((frame.counts.y & EFFECT_RT_REFLECTIONS) != 0) mirrored = reflection(frame, origin, normal, world, normal_sample.w, state);
-    if ((frame.counts.y & EFFECT_RT_GLOBAL_ILLUMINATION) != 0) indirect = bounce(frame, origin, normal, state);
+    float3 origin = world + normal * frame->ray_tracing.z;
+    if ((frame->counts.y & EFFECT_RT_SHADOWS) != 0) result.x = sun_visibility(frame, origin);
+    if ((frame->counts.y & EFFECT_RT_AMBIENT_OCCLUSION) != 0) result.y = ambient_visibility(frame, origin, normal, id.xy);
+    if ((frame->counts.y & EFFECT_RT_REFLECTIONS) != 0) mirrored = reflection(frame, origin, normal, world, abs(normal_sample.w), state);
+    if ((frame->counts.y & EFFECT_RT_GLOBAL_ILLUMINATION) != 0) indirect = bounce(frame, origin, normal, state);
   }
   push.rt[id.y * width + id.x] = result;
   push.reflections[id.y * width + id.x] = mirrored;

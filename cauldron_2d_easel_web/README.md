@@ -11,7 +11,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:cauldron_2d_easel_web, "~> 0.3", only: :dev}
+    {:cauldron_2d_easel_web, "~> 0.4", only: :dev}
   ]
 end
 ```

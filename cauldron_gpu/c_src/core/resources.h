@@ -19,6 +19,8 @@ struct GpuMesh {
   cg_accel *accel = nullptr;
   cg_buffer *skin = nullptr;
   cg_buffer *colors = nullptr;
+  cg_buffer *morphs = nullptr;
+  uint32_t morph_count = 0;
   uint32_t vertex_count = 0;
   uint32_t index_count = 0;
   std::vector<MeshPart> parts;
@@ -33,6 +35,14 @@ struct GpuTexture {
   uint32_t height = 0;
   bool canvas = false;
   bool linear = false;
+  bool srgb = false;
+};
+
+struct GpuScatter {
+  cg_buffer *placements = nullptr;
+  uint32_t count = 0;
+  Sphere bounds{{0, 0, 0}, 0};
+  float largest = 1;
 };
 
 struct Samplers {
@@ -53,6 +63,7 @@ class Resources {
 
   const GpuMesh *mesh(uint32_t id) const;
   const GpuTexture *texture(uint32_t id) const;
+  const GpuScatter *scatter(uint32_t id) const;
   const GpuTexture &white() const { return white_; }
   const GpuTexture &black() const { return black_; }
   const Samplers &samplers() const { return samplers_; }
@@ -64,6 +75,8 @@ class Resources {
   void put_canvas(cg_cmd *cmd, uint32_t id, const TextureData &texture);
   void drop_mesh(uint32_t id);
   void drop_texture(uint32_t id);
+  void put_scatter(cg_cmd *cmd, uint32_t id, const ScatterData &scatter);
+  void drop_scatter(uint32_t id);
   void destroy_mesh(GpuMesh &mesh);
   void staged(cg_cmd *cmd, const void *data, size_t size, cg_buffer *destination);
   GpuTexture solid(cg_cmd *cmd, const uint8_t rgba[4], const char *label);
@@ -74,6 +87,7 @@ class Resources {
   bool ray_tracing_;
   std::unordered_map<uint32_t, GpuMesh> meshes_;
   std::unordered_map<uint32_t, GpuTexture> textures_;
+  std::unordered_map<uint32_t, GpuScatter> scatters_;
   std::vector<cg_buffer *> staging_;
   Samplers samplers_;
   GpuTexture white_;

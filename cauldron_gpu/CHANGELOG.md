@@ -1,5 +1,59 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- The static build for an app (`make static`) covers iOS, tvOS and macOS and their simulators, compiling the Metal backend against `APPLE_SDK` and `APPLE_TARGET`; where the SDK has no MetalFX (the simulators) the renderer reports no upscaling or frame generation.
+- The scene modules are `Cauldron3D.Scene.*` from `cauldron_3d_scene` (was `CauldronGPU.*` from `cauldron_gpu_scene`); `CauldronGPU` and `CauldronGPU.Host` report `Cauldron3D.Scene.Target.capabilities/1` from their renderer's info.
+
+### Added
+
+- `PriorityLayer`, a 2D layer of sprite tiles that show only where a coverage canvas lets them (the sprite-against-scroll-layer priority of Capcom's CPS2 board): the tile's priority in bits 3 to 5 of its flags is compared with the priority recorded in the coverage canvas, and a tile that does not show draws the colour the target held. It adds a `tile_priority` shader and a `coverage` descriptor to the layer structure (`GpuLayer` is 104 bytes).
+- `TileLayer` and `ShadowLayer` 2D layers (palette-indexed tiles with mirror and transpose flags, and shadows that map the colour underneath), the `:r8` texture format and `srgb` canvases.
+- Morph targets: the deform pass applies an instance's morph weights (up to 64 targets a mesh) before skinning, for the picture, shadows and ray tracing. The deform shader's push constants grew by 16 bytes.
+- `CauldronGPU.open(surface: handle)` draws into a surface the host app made instead of a
+  window: on iOS a `CAMetalLayer` with Metal, on Android an `ANativeWindow` with Vulkan,
+  as `CauldronNative.gpu_surface/0` gives them.
+- An Android build: the `static` Makefile target with `CAULDRON_TARGET=android` (Vulkan,
+  loaded from the system's `libvulkan.so`; needs Vulkan's C++ headers on the Mac). Shared
+  memory captures report themselves unavailable there.
+- An iOS build: the `static` Makefile target (no SDL, Metal only, iOS 18 and later) and
+  `priv/shaders/ios`, the shaders compiled for iOS (`make shaders-ios`). Frame generation
+  needs iOS 26 and reports itself unsupported before.
+
+### Changed
+
+- The examples moved to `cauldron_examples/3d/gpu_showcase` in the repository, as Mix tasks
+  (`mix showcase`, `mix spheres`) with a release of the showcase. The Quake, Doom and
+  Half-Life examples are gone: they needed the games' own data.
+- The structs, `CauldronGPU.Stream`, `CauldronGPU.Target`, `CauldronGPU.Host.Record`,
+  `CauldronGPU.PNG` and the converters moved to the new `cauldron_gpu_scene` package,
+  keeping their names. This package depends on it, so code using them needs no change.
+- `cauldron_2d`, `cauldron_3d` and `cauldron_3d_formats` are now optional dependencies of
+  `cauldron_gpu_scene`; here they are needed only by the examples.
+- `examples/terminal.exs` is gone: a terminal is reached through a Cauldron game run by
+  `cauldron_2d_drafter`'s client, as `cauldron/examples/courtyard` shows.
+- `capture/3` answers as soon as the graphics card has finished the frame, instead of
+  three frames later.
+
+### Fixed
+
+- On Metal, buffers and textures created while a frame is recorded are usable by that
+  frame. The first captures after an upload, or after a quiet spell, came back black.
+- Drawing costs a fraction of what it did at large sizes: 3.6 ms a frame at 2880×1700
+  where it was 61 ms. The shaders copied the whole per-frame data into each pixel's memory
+  when they looked up the sun's shadow; they now read it in place. Pictures are unchanged.
+
+### Added
+
+- `CauldronGPU.stream/2`, `stop_stream/1` and `frame_shown/1`, and the same in
+  `CauldronGPU.Host`: every frame the renderer draws, sent to a process, with at most
+  `:ahead` frames waiting. Offscreen devices draw at `:fps` while streaming.
+- PNG and JPEG textures (`CauldronGPU.Texture.encoded/2`) are decoded by the renderer;
+  `decode/1`, `decode!/1` and `reduce_image/2` decode and shrink pictures, using the
+  vendored stb_image libraries.
+
 ## [0.3.3]
 
 ### Fixed

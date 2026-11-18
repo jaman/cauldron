@@ -1,6 +1,6 @@
 defmodule Cauldron2D.TestGames.Dots do
   @moduledoc false
-  @behaviour Cauldron2D.Game
+  @behaviour Cauldron.Game
 
   @impl true
   def init(_opts), do: %{players: %{}, events: []}

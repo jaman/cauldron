@@ -1,6 +1,6 @@
 defmodule Cauldron2D.Surface do
   @moduledoc """
-  Composites a grid of cells into one `FrenchCurve.Raster`.
+  Composites a grid of cells into one `Cauldron2D.Raster`.
 
   ## Cells
 
@@ -33,7 +33,7 @@ defmodule Cauldron2D.Surface do
 
   ## Labels
 
-  `compose/4` also takes `:labels`, text drawn in `Linocut.Font` over everything else:
+  `compose/4` also takes `:labels`, text drawn in the built-in label font over everything else:
   `[{text, {x, y}, colour}]` or `[{text, {x, y}, colour, opts}]`, positioned by the
   text's top-left corner in the raster's pixel coordinates, with `opts` of `:scale`
   (default `1`) and `:background`, a colour filled behind the text (default none).
@@ -60,7 +60,7 @@ defmodule Cauldron2D.Surface do
 
   alias Cauldron2D.{Atlas, Blend, Render}
   alias Cauldron2D.Projection.Volume
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @type cell :: :void | {Atlas.art(), [Atlas.art()], Atlas.tint() | nil}
 
@@ -137,7 +137,10 @@ defmodule Cauldron2D.Surface do
 
   @doc "`above` composited over `beneath`, two rasters of the same width and height."
   @spec stack(Raster.t(), Raster.t()) :: Raster.t()
-  def stack(%Raster{width: width, height: height} = beneath, %Raster{} = above) do
+  def stack(
+        %FrenchCurve.Raster{width: width, height: height} = beneath,
+        %FrenchCurve.Raster{} = above
+      ) do
     Raster.from_rgba(
       width,
       height,
@@ -146,7 +149,7 @@ defmodule Cauldron2D.Surface do
   end
 
   defp beneath(raster, nil), do: raster
-  defp beneath(raster, %Raster{} = under), do: stack(under, raster)
+  defp beneath(raster, %FrenchCurve.Raster{} = under), do: stack(under, raster)
 
   defp fit_to_grid(atlas, rows) do
     {fitted, standing} =
@@ -323,7 +326,7 @@ defmodule Cauldron2D.Surface do
   """
   @spec blit(Atlas.name() | Atlas.t(), Raster.t(), Atlas.art(), {number(), number()}) ::
           Raster.t()
-  def blit(atlas, %Raster{} = raster, art, {x, y}) do
+  def blit(atlas, %FrenchCurve.Raster{} = raster, art, {x, y}) do
     atlas = Atlas.fetch(atlas)
     width = raster.width
 
@@ -343,9 +346,9 @@ defmodule Cauldron2D.Surface do
 
   @doc "The raster `times` as wide and tall, every pixel repeated that many times each way; the raster itself at 1."
   @spec magnify(Raster.t(), pos_integer()) :: Raster.t()
-  def magnify(%Raster{} = raster, 1), do: raster
+  def magnify(%FrenchCurve.Raster{} = raster, 1), do: raster
 
-  def magnify(%Raster{width: width, height: height} = raster, times)
+  def magnify(%FrenchCurve.Raster{width: width, height: height} = raster, times)
       when is_integer(times) and times > 1 do
     rows = for <<row::binary-size(^width * 4) <- Raster.to_rgba_binary(raster)>>, do: row
 
@@ -385,14 +388,21 @@ defmodule Cauldron2D.Surface do
 
   @doc """
   One art's pixels as `{rgba, width, height}`, at `1 / scale` of the atlas's resolution and
-  at the frame showing at `at` milliseconds.
+  at the frame showing at `at` milliseconds, shaded by the atlas's tint `tint` (`nil` for
+  none).
 
   Blends and samples on first sight and keeps the result in the atlas's cache table.
   """
-  @spec sprite_rgba(Atlas.name() | Atlas.t(), Atlas.art(), pos_integer(), integer()) ::
+  @spec sprite_rgba(
+          Atlas.name() | Atlas.t(),
+          Atlas.art(),
+          pos_integer(),
+          integer(),
+          Atlas.tint() | nil
+        ) ::
           {binary(), pos_integer(), pos_integer()}
-  def sprite_rgba(atlas, art, scale \\ 1, at \\ 0),
-    do: atlas |> Atlas.fetch() |> sprite_binary(art, nil, {nil, false}, scale, at)
+  def sprite_rgba(atlas, art, scale \\ 1, at \\ 0, tint \\ nil),
+    do: atlas |> Atlas.fetch() |> sprite_binary(art, tint, {nil, false}, scale, at)
 
   defp sprite_binary(atlas, art, tint, {pose, flip}, scale, at) do
     sprite = posed(atlas, art, pose, at)

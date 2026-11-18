@@ -11,11 +11,25 @@ defmodule Cauldron2D.Particles do
 
   A particle is `%{art: art, pos: {x, y}, vel: {vx, vy}, ttl: seconds}`. When spawning
   would exceed the cap, the oldest particles go first.
+
+  A particle may change as it lives: with `:life` (the seconds it was given) and `:arts`,
+  a list of arts, it shows the art for how much of its life is gone — a spark fading, a
+  puff of smoke growing; with `:tints`, a list of tint names (`Cauldron2D.Atlas.tint/3`),
+  it is shaded by them the same way. `Cauldron2D.Particles.Emitter` makes particles at a
+  rate or in bursts, with these filled in.
   """
 
   alias Cauldron2D.Body
 
-  @type particle :: %{art: term(), pos: Body.point(), vel: Body.point(), ttl: number()}
+  @type particle :: %{
+          required(:art) => term(),
+          required(:pos) => Body.point(),
+          required(:vel) => Body.point(),
+          required(:ttl) => number(),
+          optional(:life) => number(),
+          optional(:arts) => [term()],
+          optional(:tints) => [atom()]
+        }
   @type t :: %__MODULE__{cap: pos_integer(), items: [particle()]}
 
   defstruct cap: 200, items: []
@@ -63,17 +77,35 @@ defmodule Cauldron2D.Particles do
   end
 
   @doc """
-  The particles as `{art, {x, y}}` movers, oldest first, each position shifted by `offset`.
+  The particles as movers, oldest first, each position shifted by `offset`: `{art, {x, y}}`,
+  or `{art, {x, y}, nil, %{tint: tint}}` for a particle with `:tints`, the art and tint
+  those of its age when it has `:arts` and `:tints`.
 
   The offset is what turns a particle's centre into the top-left corner a sprite is drawn
   from; `{-0.5, -0.5}` centres a one-tile sprite.
   """
-  @spec movers(t(), Body.point()) :: [{term(), Body.point()}]
+  @spec movers(t(), Body.point()) :: [tuple()]
   def movers(%__MODULE__{items: items}, {ox, oy} \\ {0.0, 0.0}) do
-    for %{art: art, pos: {x, y}} <- items, do: {art, {x + ox, y + oy}}
+    for %{pos: {x, y}} = particle <- items, do: mover(particle, {x + ox, y + oy})
   end
+
+  @doc "How much of a particle's life is gone, `0.0..1.0`; `0.0` for one without `:life`."
+  @spec spent(particle()) :: float()
+  def spent(%{life: life, ttl: ttl}) when life > 0, do: min(1.0, max(0.0, 1.0 - ttl / life))
+  def spent(_particle), do: 0.0
 
   @doc "How many particles are alive."
   @spec count(t()) :: non_neg_integer()
   def count(%__MODULE__{items: items}), do: length(items)
+
+  defp mover(%{tints: [_ | _] = tints} = particle, at),
+    do: {art(particle), at, nil, %{tint: of_life(tints, particle)}}
+
+  defp mover(particle, at), do: {art(particle), at}
+
+  defp art(%{arts: [_ | _] = arts} = particle), do: of_life(arts, particle)
+  defp art(%{art: art}), do: art
+
+  defp of_life(list, particle),
+    do: Enum.at(list, min(length(list) - 1, trunc(spent(particle) * length(list))))
 end

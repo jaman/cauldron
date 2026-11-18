@@ -10,7 +10,7 @@ defmodule Cauldron2D.Drafter.ClientMenuTest do
 
   defmodule MenuClient do
     @moduledoc false
-    @behaviour Cauldron2D.Client.Game
+    use Cauldron2D.Client.Game
 
     def title, do: %{name: "MENU", tagline: "a game with its own menu"}
     def atlas, do: :menu_dots
@@ -105,7 +105,7 @@ defmodule Cauldron2D.Drafter.ClientMenuTest do
 
     DT.send_key(ctx, :m)
     assert DT.get_state(ctx).menu == %{opened: true}
-    assert Cauldron2D.World.paused?(world)
+    assert Cauldron.World.paused?(world)
 
     Process.sleep(350)
 
@@ -128,7 +128,7 @@ defmodule Cauldron2D.Drafter.ClientMenuTest do
     frames = DT.get_state(ctx).menu_frame
     Process.sleep(250)
     assert DT.get_state(ctx).menu_frame == frames
-    refute Cauldron2D.World.paused?(world)
+    refute Cauldron.World.paused?(world)
     assert DT.get_state(ctx).screen == :play
   end
 end

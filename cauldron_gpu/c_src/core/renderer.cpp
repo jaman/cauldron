@@ -92,7 +92,7 @@ BlendKind blend_of(const MaterialData *material) {
 }
 
 bool transparent(const MaterialData *material) {
-  return material && ((material->flags & (MaterialBlend | MaterialAdd | MaterialMultiply)) || material->smear > 0);
+  return material && ((material->flags & (MaterialBlend | MaterialAdd | MaterialMultiply)) || material->smear > 0 || material->liquid);
 }
 
 float viewport_aspect(const Camera &camera, float width, float height) {
@@ -155,6 +155,8 @@ Renderer::Renderer(const cg_backend *backend, std::string shader_directory, Erro
 Renderer::~Renderer() {
   stop();
   finish_captures(true);
+  for (auto &[size, readback] : spare_readbacks_) backend_->buffer_destroy(device_, readback);
+  spare_readbacks_.clear();
   deformer_.reset();
   passes_.reset();
   resources_.reset();
@@ -211,6 +213,7 @@ void Renderer::submit(Batch batch) {
   {
     std::lock_guard lock(mutex_);
     batches_.push_back(std::move(batch));
+    signal_locked();
   }
   wake_.notify_all();
 }
@@ -226,14 +229,51 @@ void Renderer::request_capture(bool generated, CaptureReply reply) {
   {
     std::lock_guard lock(mutex_);
     capture_requests_.push_back({generated, std::move(reply)});
+    signal_locked();
   }
   wake_.notify_all();
 }
+
+void Renderer::start_stream(CaptureReply reply, uint32_t ahead, float fps) {
+  {
+    std::lock_guard lock(mutex_);
+    uint32_t slots = std::max(ahead, 1u);
+    stream_ = FrameStream{std::move(reply), slots, slots, 1.0 / std::clamp(static_cast<double>(fps), 1.0, 1000.0)};
+    next_stream_frame_ = 0;
+    signal_locked();
+  }
+  wake_.notify_all();
+}
+
+void Renderer::stop_stream() {
+  {
+    std::lock_guard lock(mutex_);
+    stream_.reset();
+    signal_locked();
+  }
+  wake_.notify_all();
+}
+
+void Renderer::frame_shown() {
+  {
+    std::lock_guard lock(mutex_);
+    if (stream_) stream_->credits = std::min(stream_->credits + 1, stream_->ahead);
+    signal_locked();
+  }
+  wake_.notify_all();
+}
+
+void Renderer::signal_locked() { signals_++; }
+
 
 std::vector<CaptureRequest> Renderer::take_capture_requests() {
   std::vector<CaptureRequest> requests;
   std::lock_guard lock(mutex_);
   requests.swap(capture_requests_);
+  if (stream_ && stream_->credits > 0) {
+    stream_->credits--;
+    requests.push_back({false, stream_->reply});
+  }
   return requests;
 }
 
@@ -248,29 +288,30 @@ void Renderer::start_capture(cg_cmd *cmd, const FrameInputs &inputs, std::vector
   start_generated_capture(cmd, std::move(generated));
   if (pictures.empty()) return;
   const Targets &targets = passes_->targets();
-  cg_buffer *readback = backend_->buffer_create(device_, uint64_t(targets.output_width) * targets.output_height * 4, CG_MEMORY_READBACK, "capture");
+  cg_buffer *readback = take_readback(uint64_t(targets.output_width) * targets.output_height * 4, "capture");
   if (!readback) {
     for (CaptureReply &reply : pictures) reply(nullptr);
     return;
   }
   passes_->record_capture(cmd, inputs, readback);
-  captures_.push_back({readback, targets.output_width, targets.output_height, frame_index_, false, std::move(pictures)});
+  captures_.push_back({readback, targets.output_width, targets.output_height, submissions_ + 1, false, std::move(pictures)});
 }
 
 void Renderer::start_generated_capture(cg_cmd *cmd, std::vector<CaptureReply> replies) {
   if (replies.empty()) return;
   const Targets &targets = passes_->targets();
-  cg_buffer *readback = backend_->buffer_create(device_, uint64_t(targets.output_width) * targets.output_height * 4, CG_MEMORY_READBACK, "generated capture");
+  cg_buffer *readback = take_readback(uint64_t(targets.output_width) * targets.output_height * 4, "generated capture");
   if (!readback) {
     for (CaptureReply &reply : replies) reply(nullptr);
     return;
   }
   passes_->record_generated_capture(cmd, readback);
   bool bgra = backend_->surface_format(device_) == CG_FORMAT_BGRA8_SRGB || backend_->surface_format(device_) == CG_FORMAT_BGRA8_UNORM;
-  captures_.push_back({readback, targets.output_width, targets.output_height, frame_index_, bgra, std::move(replies)});
+  captures_.push_back({readback, targets.output_width, targets.output_height, submissions_ + 1, bgra, std::move(replies)});
 }
 
 void Renderer::end_frame(cg_cmd *cmd, const FrameInputs &inputs) {
+  submissions_++;
   if (!inputs.generate || !passes_->generating()) {
     backend_->frame_end(device_, cmd);
     return;
@@ -281,10 +322,31 @@ void Renderer::end_frame(cg_cmd *cmd, const FrameInputs &inputs) {
   passes_->finish_generated();
 }
 
+cg_buffer *Renderer::take_readback(uint64_t size, const char *label) {
+  auto spare = std::find_if(spare_readbacks_.begin(), spare_readbacks_.end(), [size](const auto &entry) { return entry.first == size; });
+  if (spare == spare_readbacks_.end()) return backend_->buffer_create(device_, size, CG_MEMORY_READBACK, label);
+  cg_buffer *readback = spare->second;
+  spare_readbacks_.erase(spare);
+  return readback;
+}
+
+void Renderer::keep_readback(cg_buffer *readback, uint64_t size) {
+  constexpr size_t kept = 4;
+  std::erase_if(spare_readbacks_, [this, size](const auto &entry) {
+    if (entry.first == size) return false;
+    backend_->buffer_destroy(device_, entry.second);
+    return true;
+  });
+  if (spare_readbacks_.size() < kept) spare_readbacks_.emplace_back(size, readback);
+  else backend_->buffer_destroy(device_, readback);
+}
+
 void Renderer::finish_captures(bool everything) {
+  if (captures_.empty()) return;
+  uint64_t completed = backend_->frames_completed(device_);
   std::vector<PendingCapture> waiting;
   for (PendingCapture &capture : captures_) {
-    if (!everything && frame_index_ < capture.frame + 3) {
+    if (!everything && completed < capture.submission) {
       waiting.push_back(std::move(capture));
       continue;
     }
@@ -293,26 +355,46 @@ void Renderer::finish_captures(bool everything) {
       for (size_t at = 0; at < size_t(capture.width) * capture.height * 4; at += 4) std::swap(pixels[at], pixels[at + 2]);
     Capture result{capture.width, capture.height, pixels};
     for (CaptureReply &reply : capture.replies) reply(&result);
-    backend_->buffer_destroy(device_, capture.readback);
+    keep_readback(capture.readback, uint64_t(capture.width) * capture.height * 4);
   }
   captures_.swap(waiting);
 }
 
-bool Renderer::has_work() {
+bool Renderer::offscreen_frame_due(uint64_t &signals) {
   std::lock_guard lock(mutex_);
-  return !batches_.empty() || !capture_requests_.empty() || !captures_.empty();
+  signals = signals_;
+  if (!capture_requests_.empty()) return true;
+  if (stream_) return stream_->credits > 0 && now_seconds() >= next_stream_frame_;
+  return !batches_.empty();
+}
+
+void Renderer::wait_offscreen(uint64_t signals) {
+  std::unique_lock lock(mutex_);
+  double seconds = 0.05;
+  if (!captures_.empty()) seconds = 0.001;
+  else if (stream_ && stream_->credits > 0) seconds = std::clamp(next_stream_frame_ - now_seconds(), 0.0, 0.05);
+  wake_.wait_for(lock, std::chrono::duration<double>(seconds), [this, signals] { return !running_ || signals_ != signals; });
+}
+
+void Renderer::schedule_stream_frame() {
+  std::lock_guard lock(mutex_);
+  if (stream_) next_stream_frame_ = last_frame_started_ + stream_->interval;
 }
 
 void Renderer::run() {
   while (running_) {
     bool resized = resized_.exchange(false);
     if (resized && !offscreen_) backend_->surface_resize(device_, pending_width_, pending_height_);
-    if (offscreen_ && !resized && !has_work()) {
-      std::unique_lock lock(mutex_);
-      wake_.wait_for(lock, std::chrono::milliseconds(50), [this] { return !running_ || !batches_.empty() || !capture_requests_.empty(); });
+    finish_captures(false);
+    uint64_t signals = 0;
+    if (offscreen_ && !resized && !offscreen_frame_due(signals)) {
+      wait_offscreen(signals);
       continue;
     }
-    if (draw_frame()) continue;
+    if (draw_frame()) {
+      if (offscreen_) schedule_stream_frame();
+      continue;
+    }
     take_batches();
     std::unique_lock lock(mutex_);
     wake_.wait_for(lock, std::chrono::milliseconds(16));
@@ -462,6 +544,23 @@ void Renderer::write_materials(FrameArena &arena, FrameInputs &inputs, std::unor
     out.emissive[3] = data.normal_scale;
     std::memcpy(&out.flags[2], &data.smear, sizeof(float));
     if (has_normal_map) out.flags[0] |= GpuMaterialHasNormalMap;
+    bool layered = false;
+    for (int layer = 0; layer < 4; layer++) {
+      const GpuTexture *found = data.layers[layer] ? resources_->texture(data.layers[layer]) : nullptr;
+      out.layers[layer] = found ? found->handle : resources_->white().handle;
+      if (found && !layered) out.sampler = found->sampler;
+      layered = layered || found;
+    }
+    if (layered) out.flags[0] |= GpuMaterialLayers;
+    out.extra[2] = data.layer_scale;
+    if (data.liquid) {
+      out.flags[0] |= GpuMaterialLiquid;
+      std::memcpy(out.liquid_shallow, data.liquid_shallow, sizeof(out.liquid_shallow));
+      std::memcpy(out.liquid_deep, data.liquid_deep, sizeof(out.liquid_deep));
+      std::memcpy(out.liquid_foam, data.liquid_foam, sizeof(out.liquid_foam));
+      std::memcpy(out.liquid_waves, data.liquid_waves, sizeof(out.liquid_waves));
+    }
+    if (data.flags & MaterialNoOutline) out.flags[0] |= GpuMaterialNoOutline;
     materials.push_back(out);
   };
   add(MaterialData{});
@@ -526,8 +625,13 @@ void Renderer::build_frame(cg_cmd *cmd, FrameArena &arena, FrameInputs &inputs, 
     if (instance.flags & InstanceHidden) continue;
     const GpuMesh *mesh = resources_->mesh(instance.mesh);
     if (!mesh) continue;
+    const GpuScatter *scatter = instance.scatter ? resources_->scatter(instance.scatter) : nullptr;
+    if (instance.scatter && !scatter) continue;
     Transform pose = interpolate(instance.previous, instance.current, progress);
     GpuInstance gpu{};
+    std::copy(instance.sway, instance.sway + 4, gpu.sway);
+    gpu.fade[0] = instance.fade[0];
+    gpu.fade[1] = instance.fade[1];
     copy_matrix(gpu.model, model_matrix(pose));
     copy_matrix(gpu.normal, normal_matrix(pose));
     Mat4 model = model_matrix(pose);
@@ -555,7 +659,7 @@ void Renderer::build_frame(cg_cmd *cmd, FrameArena &arena, FrameInputs &inputs, 
     uint64_t vertices = animated ? deformation->second.vertices : backend_->buffer_address(mesh->vertices);
     uint64_t previous_vertices = animated ? deformation->second.previous_vertices : 0;
     cg_accel *accel = animated ? deformation->second.accel : mesh->accel;
-    if (accel && !in_front) {
+    if (accel && !in_front && !scatter) {
       traced.push_back(accel_instance(model_matrix(pose), accel, !(instance.flags & InstanceNoShadow) && has_opaque_part(instance, *mesh)));
       traced_tables.push_back({vertices, backend_->buffer_address(mesh->indices), 0,
                                static_cast<uint32_t>(mesh->parts.size()), index});
@@ -573,10 +677,22 @@ void Renderer::build_frame(cg_cmd *cmd, FrameArena &arena, FrameInputs &inputs, 
       bool double_sided = data && (data->flags & MaterialDoubleSided);
       bool visible = animated || part >= mesh->bounds.size() ||
                      inside(frustum, transform_point(model, mesh->bounds[part].centre), mesh->bounds[part].radius * largest_scale(pose.scale));
+      if (scatter) {
+        Vec3 centre = transform_point(model, scatter->bounds.centre);
+        float reach = scatter->bounds.radius * largest_scale(pose.scale);
+        if (part < mesh->bounds.size()) reach += (length(mesh->bounds[part].centre) + mesh->bounds[part].radius) * largest_scale(pose.scale) * scatter->largest;
+        Vec3 away = centre - camera_position;
+        bool faded = instance.fade[1] > 0 && std::sqrt(dot(away, away)) - reach > instance.fade[1];
+        visible = !faded && inside(frustum, centre, reach);
+      }
       Draw item{mesh, part, index, slot == material_slots.end() ? 0 : slot->second, double_sided,
                 !(instance.flags & InstanceNoShadow) && !in_front && !(data && (data->flags & MaterialSky)), animated ? vertices : 0,
                 previous_vertices, visible, data && data->smear > 0, standing, blend_of(data), depth_always,
                 mesh->colors ? backend_->buffer_address(mesh->colors) : 0};
+      item.scatter = scatter ? backend_->buffer_address(scatter->placements) : 0;
+      item.count = scatter ? scatter->count : 1;
+      item.cutout = data && data->alpha_cutoff > 0;
+      item.liquid = data && data->liquid;
       if (transparent(data) || depth_always || standing) {
         Vec3 offset = pose.position - camera_position;
         sorted_transparent.push_back({dot(offset, offset), item});
@@ -674,6 +790,20 @@ void Renderer::build_frame(cg_cmd *cmd, FrameArena &arena, FrameInputs &inputs, 
   frame.counts[0] = static_cast<uint32_t>(lights.size());
   frame.counts[1] = inputs.effects;
   frame.counts[2] = static_cast<uint32_t>(frame_index_);
+  uint32_t pushers = std::min<uint32_t>(static_cast<uint32_t>(scene_.pushers.size() / 4), 8);
+  std::copy_n(scene_.pushers.begin(), pushers * 4, frame.pushers);
+  frame.counts[3] = pushers;
+  frame.toon[0] = static_cast<float>(environment.shading);
+  frame.toon[1] = std::max(environment.toon[0], 1.0f);
+  frame.toon[2] = std::max(environment.toon[1], 1e-3f);
+  frame.toon[3] = environment.toon[2];
+  copy_vec(frame.shade, environment.shade, environment.outline_reach);
+  copy_vec(frame.outline, environment.outline, environment.outline_width);
+  float gust = std::sqrt(environment.wind[0] * environment.wind[0] + environment.wind[1] * environment.wind[1]);
+  frame.wind[0] = gust > 0 ? environment.wind[0] / gust : 1.0f;
+  frame.wind[1] = gust > 0 ? environment.wind[1] / gust : 0.0f;
+  frame.wind[2] = environment.wind[2];
+  frame.wind[3] = environment.wind[3];
   frame.gbuffer_albedo = backend_->texture_handle(targets.albedo);
   frame.gbuffer_normal = backend_->texture_handle(targets.normal);
   frame.gbuffer_emissive = backend_->texture_handle(targets.emissive);
@@ -712,7 +842,7 @@ void Renderer::build_frame(cg_cmd *cmd, FrameArena &arena, FrameInputs &inputs, 
 size_t Renderer::layer_bytes() const {
   size_t bytes = 0;
   for (const Layer &layer : scene_.layers)
-    bytes += sizeof(GpuLayer) + layer.sprites.size() * sizeof(GpuSprite) + layer.columns.size() / 3 * 16 + 512;
+    bytes += 2 * sizeof(GpuLayer) + layer.sprites.size() * sizeof(GpuSprite) + layer.columns.size() / 3 * 16 + layer.tiles.size() * sizeof(GpuTile) + 512;
   return bytes;
 }
 
@@ -743,6 +873,8 @@ bool Renderer::build_layers(FrameArena &arena, FrameInputs &inputs) {
       height = canvas->height;
     }
     LayerDraw draw{layer.kind, target, layer.clear, {}, 0, 0, {}};
+    const GpuTexture *canvas_texture = layer.target ? resources_->texture(layer.target) : nullptr;
+    draw.srgb = canvas_texture && canvas_texture->srgb;
     std::copy(std::begin(layer.clear_colour), std::end(layer.clear_colour), draw.clear_colour);
     if (!layer.target && !flat_started) {
       if (!layer.clear) std::fill(std::begin(draw.clear_colour), std::end(draw.clear_colour), 0.0f);
@@ -763,6 +895,7 @@ bool Renderer::build_layers(FrameArena &arena, FrameInputs &inputs) {
     gpu.target[2] = 1.0f / float(width);
     gpu.target[3] = 1.0f / float(height);
     if (layer.kind == LayerKind::Columns) build_columns(arena, layer, draw, gpu);
+    else if (layer.kind == LayerKind::Tiles || layer.kind == LayerKind::Shadows || layer.kind == LayerKind::Priority || layer.kind == LayerKind::PriorityShadows) build_tiles(arena, layer, draw, gpu, canvas_texture);
     else build_sprites(arena, layer, draw);
     draw.layer = arena.write(&gpu, sizeof(gpu));
     if (draw.layer) inputs.layers.push_back(std::move(draw));
@@ -798,7 +931,51 @@ void Renderer::build_sprites(FrameArena &arena, const Layer &layer, LayerDraw &d
   if (!draw.items) draw.runs.clear();
 }
 
+void Renderer::build_tiles(FrameArena &arena, const Layer &layer, LayerDraw &draw, GpuLayer &gpu, const GpuTexture *canvas) {
+  const GpuTexture *atlas = resources_->texture(layer.source);
+  const GpuTexture *palette = resources_->texture(layer.palette);
+  if (!atlas || !palette || layer.source == layer.target || layer.tiles.empty()) return;
+  std::vector<GpuTile> tiles;
+  tiles.reserve(layer.tiles.size());
+  for (const Tile &tile : layer.tiles) {
+    tiles.push_back({{float(tile.x), float(tile.y), 0, 0},
+                     {float(tile.source_x), float(tile.source_y), float(tile.width), float(tile.height)},
+                     {tile.flags, tile.base, 0, 0}});
+  }
+  gpu.source = atlas->handle;
+  gpu.palette = palette->handle;
+  gpu.sampler = resources_->sampler_handle(false, true);
+  gpu.counts[0] = layer.count;
+  gpu.counts[1] = layer.transparent;
+  gpu.counts[2] = layer.pens;
+  gpu.counts[3] = draw.srgb ? 1 : 0;
+  if (layer.kind == LayerKind::Priority) {
+    const GpuTexture *coverage = resources_->texture(layer.count);
+    if (!coverage || !coverage->canvas || layer.count == layer.target) return;
+    gpu.coverage = coverage->handle;
+    gpu.counts[0] = 0;
+  }
+  if (layer.kind == LayerKind::PriorityShadows) {
+    const GpuTexture *coverage = resources_->texture(layer.coverage);
+    if (!coverage || !coverage->canvas || layer.coverage == layer.target) return;
+    gpu.coverage = coverage->handle;
+  }
+  if (layer.kind == LayerKind::Shadows || layer.kind == LayerKind::Priority || layer.kind == LayerKind::PriorityShadows) {
+    if (!canvas) return;
+    draw.behind = passes_->behind_target(canvas->width, canvas->height, draw.srgb);
+    if (!draw.behind) return;
+    gpu.behind = backend_->texture_handle(draw.behind);
+    GpuLayer blit{};
+    std::copy(std::begin(gpu.target), std::end(gpu.target), blit.target);
+    blit.source = canvas->handle;
+    draw.blit = arena.write(&blit, sizeof(blit));
+  }
+  draw.items = arena.write(tiles.data(), tiles.size() * sizeof(GpuTile));
+  draw.tiles = draw.items ? static_cast<uint32_t>(tiles.size()) : 0;
+}
+
 void Renderer::build_columns(FrameArena &arena, const Layer &layer, LayerDraw &draw, GpuLayer &gpu) {
+
   const GpuTexture *source = resources_->texture(layer.source);
   size_t count = layer.columns.size() / 3;
   if (!source || layer.source == layer.target || count == 0) return;

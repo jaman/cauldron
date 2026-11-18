@@ -19,7 +19,7 @@ It decides what moves, what collides and what is drawn.
 * [`cauldron_gpu`](https://hexdocs.pm/cauldron_gpu) draws the same worlds and models on
   the graphics card. It converts a `Cauldron3D.Bsp` and its models into its own scene.
 * `Cauldron3D.Frame.rgba/2` gives a frame's RGBA bytes. Show them anywhere a picture
-  goes. For example, make a `FrenchCurve.Raster` with `FrenchCurve.Raster.from_rgba/3`
+  goes. For example, make a `Cauldron2D.Raster` with `Cauldron2D.Raster.from_rgba/4`
   for the terminal, or write a file.
 
 ## Installation
@@ -49,6 +49,8 @@ the same pixels are made in Elixir, more slowly.
 | `Cauldron3D.Setup`, `Cauldron3D.Raster` | Do the drawing. Setup clips and projects a polygon. Raster fills each row. |
 | `Cauldron3D.Mesh` | Holds textured triangles posed by keyframes. It blends between frames, and turns and lights the triangles by their normals. |
 | `Cauldron3D.Skeleton` | Poses bones from their parents into transforms. |
+| `Cauldron3D.SpringBones` | Swings chains of bones on their own — hair, sleeves, skirts — with drag, stiffness and gravity, posed with the rest of a skeleton. |
+| `Cauldron3D.WalkGrid` | Finds where something walking on a flat floor can go: a grid of cells seen from above, blocked where a triangle crosses between a low and a high height. |
 | `Cauldron3D.Quat` | Holds rotations as quaternions. |
 | `Cauldron3D.Billboard` | Stands a picture in the world facing the camera, upright or not. |
 | `Cauldron3D.Bsp`, `Cauldron3D.Bsp.Face` | Hold a world cut into convex leaves. They find the leaf at a point, what a leaf can see, and the leaves a box touches. |

@@ -46,7 +46,7 @@ defmodule Cauldron2D.Projection.Oblique do
 
   alias Cauldron2D.Atlas
   alias Cauldron2D.Projection.{Canvas, Volume}
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @face_shade 0.78
 

@@ -27,8 +27,10 @@ defmodule Cauldron3D.Net.MixProject do
 
   defp deps do
     [
-      family(:cauldron_gpu, "~> 0.3.4", "../cauldron_gpu", []),
-      family(:cauldron_3d_formats, "~> 0.3.4", "../cauldron_3d_formats", only: [:dev, :test]),
+      family(:cauldron_core, "~> 0.4.0", "../cauldron_core", []),
+      family(:cauldron_3d_scene, "~> 0.4.0", "../cauldron_3d_scene", []),
+      family(:cauldron_net, "~> 0.4.0", "../cauldron_net", []),
+      family(:cauldron_3d_formats, "~> 0.4.0", "../cauldron_3d_formats", only: [:dev, :test]),
       {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.1"},
       {:jason, "~> 1.4"},

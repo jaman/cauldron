@@ -1,0 +1,30 @@
+sky_high_a	  	#1b1530	
+sky_high_b	  	#1b1530	
+sky_high_c	  	#1b1530	
+sky_high_d	  	#1b1530	
+sky_dusk_a	  	#231a3a	
+sky_mid	  	#2c1f45	
+sky_dusk_b	  	#3a254d	
+sky_low	  	#4a2c55	
+roofs_a	/\	#160f1c	
+roofs_b	__	#160f1c	
+roofs_c	()	#160f1c	
+walls_a	##	#24182c	
+walls_b	#o	#f0b45a	
+walls_c	##	#24182c	
+ground	==	#8a6436	
+squall	@@	#b2aecb	3
+squall_grin	@@	#e2e0ee	6
+drop	' 	#6cc8ff	6
+shadow_far	. 	#6c98b8	
+shadow_mid	o 	#88b8d8	
+shadow_near	O 	#b8e4ff	
+jar	u 	#d9804a	
+jar_head	u 	#d9804a	
+jar_robot	u 	#6f9ec4		from jar; colour C #4f7ea4; colour L #6f9ec4; colour H #a8d0f0; colour D #35526f
+jar_head_robot	u 	#6f9ec4		from jar_head; colour C #4f7ea4; colour L #6f9ec4; colour H #a8d0f0; colour D #35526f
+keeper	& 	#e0b850	
+keeper_robot	& 	#a8d0f0		from keeper; colour H #a8d0f0; colour h #6f9ec4; colour T #8a8a8a; colour t #5a5a5a
+splash_1	* 	#d0f0ff	
+splash_2	* 	#6cc8ff	
+splash_3	. 	#3a88c8	

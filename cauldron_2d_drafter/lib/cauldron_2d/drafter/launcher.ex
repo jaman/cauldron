@@ -31,9 +31,10 @@ defmodule Cauldron2D.Drafter.Launcher do
   then what was saved, then `:discover`, then `:default`. It shows the page when nothing
   has been saved yet, when a path does not pass its check, or when the option
   `launcher: true` asks for it. Play saves the values under
-  `$XDG_CONFIG_HOME/<game>/launcher.config` (or `~/.config`), `<game>` named as
-  `Cauldron2D.Drafter.Client.Settings` names it. Overrides that skip the page are not
-  saved.
+  `$XDG_CONFIG_HOME/<home>/launcher.config` (or `~/.config`), `<home>` the game's
+  `Cauldron.Client.Game.home/1`, and are read from the folder named after the game's
+  title when the home has none (`Cauldron2D.Drafter.Client.Settings.title_folder/1`).
+  Overrides that skip the page are not saved.
 
   A field with key `:drawing` (`drawing_field/0`) is also written into the player's
   settings (`Cauldron2D.Drafter.Client.Settings`'s `drawing`) when `:player` is given, so
@@ -144,7 +145,13 @@ defmodule Cauldron2D.Drafter.Launcher do
   @doc "The values saved for `game`, or an empty map."
   @spec load(module()) :: map()
   def load(game) do
-    case File.read(path(game)) do
+    file =
+      Cauldron.Paths.existing(
+        path(game),
+        Path.join(Settings.title_folder(game), "launcher.config")
+      )
+
+    case File.read(file) do
       {:ok, binary} -> :erlang.binary_to_term(binary)
       {:error, _reason} -> %{}
     end

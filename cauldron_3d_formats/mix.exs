@@ -25,7 +25,7 @@ defmodule Cauldron3D.Formats.MixProject do
 
   defp deps do
     [
-      family(:cauldron_3d, "~> 0.3.4", "../cauldron_3d", []),
+      family(:cauldron_3d, "~> 0.4.0", "../cauldron_3d", []),
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]

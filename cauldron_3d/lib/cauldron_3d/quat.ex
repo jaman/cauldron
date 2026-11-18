@@ -56,6 +56,44 @@ defmodule Cauldron3D.Quat do
     normalize({x * wa + cx * wb, y * wa + cy * wb, z * wa + cz * wb, w * wa + cw * wb})
   end
 
+  @doc "The rotation turning `angle` radians about the unit vector `axis`."
+  @spec axis_angle(Vec.t(), number()) :: t()
+  def axis_angle({x, y, z}, angle) do
+    s = :math.sin(angle / 2)
+    {x * s, y * s, z * s, :math.cos(angle / 2)}
+  end
+
+  @doc "The rotation doing `inner` and then `outer`."
+  @spec multiply(t(), t()) :: t()
+  def multiply({ax, ay, az, aw}, {bx, by, bz, bw}) do
+    {aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+     aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz}
+  end
+
+  @doc "The rotation undoing `q`."
+  @spec conjugate(t()) :: t()
+  def conjugate({x, y, z, w}), do: {-x, -y, -z, w}
+
+  @doc """
+  The shortest rotation turning direction `from` onto direction `to`; neither needs unit
+  length. Opposite directions turn half a turn about an axis across `from`.
+  """
+  @spec from_to(Vec.t(), Vec.t()) :: t()
+  def from_to(from, to) do
+    a = Vec.normalize(from)
+    b = Vec.normalize(to)
+    dot = Vec.dot(a, b)
+
+    if dot < -0.999_999 do
+      across = Vec.cross({1.0, 0.0, 0.0}, a)
+      across = if Vec.length(across) < 1.0e-6, do: Vec.cross({0.0, 1.0, 0.0}, a), else: across
+      axis_angle(Vec.normalize(across), :math.pi())
+    else
+      {x, y, z} = Vec.cross(a, b)
+      normalize({x, y, z, 1.0 + dot})
+    end
+  end
+
   @doc "The rotation as the rows of a 3 by 3 matrix."
   @spec to_rows(t()) :: {Vec.t(), Vec.t(), Vec.t()}
   def to_rows({x, y, z, w}) do

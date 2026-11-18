@@ -11,7 +11,7 @@ across parallax layers.
 Add the package in a notebook's setup cell:
 
 ```elixir
-Mix.install([{:cauldron_2d_easel_kino, "~> 0.3"}])
+Mix.install([{:cauldron_2d_easel_kino, "~> 0.4"}])
 ```
 
 ## Usage
@@ -37,7 +37,7 @@ as it stands in a later cell.
 
 The other functions of `Cauldron2D.Easel.Kino`:
 
-* `image/2` shows one picture. A picture is a `Cauldron2D.Easel`, a `FrenchCurve.Raster`,
+* `image/2` shows one picture. A picture is a `Cauldron2D.Easel`, a `Cauldron2D.Raster`,
   or the path of a `.pic` or `.png`. `:scale` enlarges every pixel. The default is `4`.
 * `sheet/2` shows every art of a directory, or of a `Cauldron2D.Atlas`, on one sheet.
   `Cauldron2D.Sheet` packs it. `:tile` is required for a directory.

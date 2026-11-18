@@ -35,11 +35,13 @@ cg_pipeline_desc fullscreen_desc(const ShaderFile &file, cg_format format, const
 
 Passes::~Passes() {
   release_targets(true);
+  for (auto &behind : behinds_) backend_->texture_destroy(device_, behind.second);
   release_traced_buffers();
   if (upscaler_) backend_->upscaler_destroy(device_, upscaler_);
   if (interpolator_) backend_->interpolator_destroy(device_, interpolator_);
-  for (cg_pipeline *pipeline : {shadow_, geometry_, geometry_double_sided_, lighting_, tonemap_, capture_tonemap_, raytrace_, denoise_, copy_,
-                                 sprite_[0], sprite_[1], sprite_[2], columns_, present_, capture_present_})
+  for (cg_pipeline *pipeline : {shadow_, shadow_cutout_, geometry_, geometry_double_sided_, lighting_, tonemap_, capture_tonemap_, raytrace_, denoise_, copy_,
+                                 sprite_[0], sprite_[1], sprite_[2], columns_, present_, capture_present_, tile_[0], tile_[1],
+                                 tile_shadow_[0], tile_shadow_[1], tile_priority_shadows_[0], tile_priority_shadows_[1], tile_priority_[0], tile_priority_[1], tile_blit_[0], tile_blit_[1]})
     if (pipeline) backend_->pipeline_destroy(device_, pipeline);
   for (auto &by_blend : forward_)
     for (auto &by_side : by_blend)
@@ -51,10 +53,14 @@ bool Passes::create_pipelines(const std::string &shader_directory, bool ray_trac
   auto load = [&](const char *name) {
     return ShaderFile{read_file(shader_directory + "/" + name + "." + backend_->shader_extension)};
   };
-  ShaderFile shadow = load("shadow"), gbuffer = load("gbuffer"), lighting = load("lighting"), tonemap = load("tonemap"),
+  ShaderFile shadow = load("shadow"), shadow_cutout = load("shadow_cutout"), gbuffer = load("gbuffer"), lighting = load("lighting"), tonemap = load("tonemap"),
              forward = load("forward"), copy = load("copy"), sprite = load("sprite"), columns = load("columns"),
-             present = load("present2d");
-  if (shadow.code.empty() || gbuffer.code.empty() || lighting.code.empty() || tonemap.code.empty() || forward.code.empty() ||
+             present = load("present2d"), tile = load("tile"), tile_shadow = load("tile_shadow"), tile_priority_shadows = load("tile_priority_shadows"), tile_priority = load("tile_priority"), tile_blit = load("tile_blit");
+  if (tile.code.empty() || tile_shadow.code.empty() || tile_priority_shadows.code.empty() || tile_priority.code.empty() || tile_blit.code.empty()) {
+    error = "tile shaders not found in " + shader_directory;
+    return false;
+  }
+  if (shadow.code.empty() || shadow_cutout.code.empty() || gbuffer.code.empty() || lighting.code.empty() || tonemap.code.empty() || forward.code.empty() ||
       copy.code.empty() || sprite.code.empty() || columns.code.empty() || present.code.empty()) {
     error = "shaders not found in " + shader_directory;
     return false;
@@ -70,6 +76,10 @@ bool Passes::create_pipelines(const std::string &shader_directory, bool ray_trac
   shadow_desc.depth_slope_bias = -2.0f;
   shadow_desc.label = "shadow";
   shadow_ = backend_->pipeline_create(device_, &shadow_desc);
+  shadow_desc.vertex = shadow_cutout.entry("vertex_main");
+  shadow_desc.fragment = shadow_cutout.entry("fragment_main");
+  shadow_desc.label = "shadow cutout";
+  shadow_cutout_ = backend_->pipeline_create(device_, &shadow_desc);
 
   cg_pipeline_desc geometry_desc{};
   geometry_desc.vertex = gbuffer.entry("vertex_main");
@@ -128,14 +138,29 @@ bool Passes::create_pipelines(const std::string &shader_directory, bool ray_trac
   }
   cg_pipeline_desc columns_desc = fullscreen_desc(columns, CG_FORMAT_RGBA8_UNORM, "columns");
   columns_ = backend_->pipeline_create(device_, &columns_desc);
+  for (int srgb = 0; srgb < 2; srgb++) {
+    cg_format target_format = srgb ? CG_FORMAT_RGBA8_SRGB : CG_FORMAT_RGBA8_UNORM;
+    cg_pipeline_desc tile_desc = fullscreen_desc(tile, target_format, "tiles");
+    tile_[srgb] = backend_->pipeline_create(device_, &tile_desc);
+    cg_pipeline_desc shadow_tile_desc = fullscreen_desc(tile_shadow, target_format, "tile shadows");
+    tile_shadow_[srgb] = backend_->pipeline_create(device_, &shadow_tile_desc);
+    cg_pipeline_desc priority_shadows_tile_desc = fullscreen_desc(tile_priority_shadows, target_format, "tile priorities with shadows");
+    tile_priority_shadows_[srgb] = backend_->pipeline_create(device_, &priority_shadows_tile_desc);
+    cg_pipeline_desc priority_tile_desc = fullscreen_desc(tile_priority, target_format, "tile priorities");
+    tile_priority_[srgb] = backend_->pipeline_create(device_, &priority_tile_desc);
+    cg_pipeline_desc blit_desc = fullscreen_desc(tile_blit, target_format, "tile blit");
+    tile_blit_[srgb] = backend_->pipeline_create(device_, &blit_desc);
+    forward_ready = forward_ready && tile_[srgb] && tile_shadow_[srgb] && tile_priority_shadows_[srgb] && tile_priority_[srgb] && tile_blit_[srgb];
+  }
   cg_pipeline_desc present_desc = fullscreen_desc(present, backend_->surface_format(device_), "present layers");
+
   present_ = backend_->pipeline_create(device_, &present_desc);
   cg_pipeline_desc capture_present_desc = fullscreen_desc(present, CG_FORMAT_RGBA8_SRGB, "capture layers");
   capture_present_ = backend_->pipeline_create(device_, &capture_present_desc);
   bloom_ = std::make_unique<Bloom>(backend_, device_);
   if (!bloom_->create_pipelines(shader_directory)) bloom_.reset();
 
-  if (!shadow_ || !geometry_ || !geometry_double_sided_ || !lighting_ || !tonemap_ || !capture_tonemap_ || !forward_ready || !copy_ ||
+  if (!shadow_ || !shadow_cutout_ || !geometry_ || !geometry_double_sided_ || !lighting_ || !tonemap_ || !capture_tonemap_ || !forward_ready || !copy_ ||
       !columns_ || !present_ || !capture_present_) {
     error = "pipeline creation failed";
     return false;
@@ -298,10 +323,10 @@ void Passes::upscale(cg_cmd *cmd, const FrameInputs &inputs) {
 void Passes::draw(cg_cmd *cmd, const FrameInputs &inputs, const Draw &item, uint32_t cascade) {
   uint64_t vertices = item.vertices ? item.vertices : backend_->buffer_address(item.mesh->vertices);
   DrawPush push{inputs.frame, vertices, inputs.instances, inputs.materials, inputs.lights, item.instance, item.material, 0, 0, 0,
-                item.previous_vertices, cascade, 0, 0, 0, item.colors};
+                item.previous_vertices, cascade, 0, 0, 0, item.colors, item.scatter};
   backend_->cmd_push(cmd, &push, sizeof(push));
   const MeshPart &part = item.mesh->parts[item.part];
-  backend_->cmd_draw_indexed(cmd, item.mesh->indices, part.count, 1, part.first);
+  backend_->cmd_draw_indexed(cmd, item.mesh->indices, part.count, item.count, part.first);
 }
 
 void Passes::shadow_pass(cg_cmd *cmd, const FrameInputs &inputs) {
@@ -311,9 +336,14 @@ void Passes::shadow_pass(cg_cmd *cmd, const FrameInputs &inputs) {
     pass.label = "shadow";
     backend_->cmd_begin_pass(cmd, &pass);
     if (inputs.shadows) {
-      backend_->cmd_set_pipeline(cmd, shadow_);
-      for (const Draw &item : inputs.draws)
-        if (item.casts_shadow) draw(cmd, inputs, item, cascade);
+      cg_pipeline *current = nullptr;
+      for (const Draw &item : inputs.draws) {
+        if (!item.casts_shadow) continue;
+        cg_pipeline *wanted = item.cutout ? shadow_cutout_ : shadow_;
+        if (wanted != current) backend_->cmd_set_pipeline(cmd, wanted);
+        current = wanted;
+        draw(cmd, inputs, item, cascade);
+      }
     }
     backend_->cmd_end_pass(cmd);
   }
@@ -326,7 +356,7 @@ void Passes::copy_behind(cg_cmd *cmd, const FrameInputs &inputs) {
   pass.label = "copy behind";
   backend_->cmd_begin_pass(cmd, &pass);
   backend_->cmd_set_pipeline(cmd, copy_);
-  DrawPush push{inputs.frame, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  DrawPush push{inputs.frame, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   backend_->cmd_push(cmd, &push, sizeof(push));
   backend_->cmd_draw(cmd, 3, 1, 0);
   backend_->cmd_end_pass(cmd);
@@ -334,7 +364,7 @@ void Passes::copy_behind(cg_cmd *cmd, const FrameInputs &inputs) {
 
 void Passes::forward_pass(cg_cmd *cmd, const FrameInputs &inputs) {
   if (inputs.transparent.empty()) return;
-  if (std::any_of(inputs.transparent.begin(), inputs.transparent.end(), [](const Draw &item) { return item.smear && item.visible; }))
+  if (std::any_of(inputs.transparent.begin(), inputs.transparent.end(), [](const Draw &item) { return (item.smear || item.liquid) && item.visible; }))
     copy_behind(cmd, inputs);
   cg_pass_desc pass{};
   pass.color_count = 1;
@@ -392,7 +422,7 @@ DrawPush Passes::push_for(const FrameInputs &inputs) const {
   return {inputs.frame, 0, inputs.instances, inputs.materials, inputs.lights, 0, 0,
           traced_ ? backend_->buffer_address(traced_) : 0, inputs.traced,
           reflections_ ? backend_->buffer_address(reflections_) : 0, 0, 0, 0,
-          gi_ ? backend_->buffer_address(gi_) : 0, histories_[history_index_] ? backend_->buffer_address(histories_[history_index_]) : 0, 0};
+          gi_ ? backend_->buffer_address(gi_) : 0, histories_[history_index_] ? backend_->buffer_address(histories_[history_index_]) : 0, 0, 0};
 }
 
 void Passes::ray_trace(cg_cmd *cmd, const FrameInputs &inputs) {
@@ -431,25 +461,55 @@ void Passes::tonemap_pass(cg_cmd *cmd, const FrameInputs &inputs, cg_texture *ou
   pass.label = "tonemap";
   backend_->cmd_begin_pass(cmd, &pass);
   backend_->cmd_set_pipeline(cmd, pipeline);
-  DrawPush push{inputs.frame, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  DrawPush push{inputs.frame, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   backend_->cmd_push(cmd, &push, sizeof(push));
   backend_->cmd_draw(cmd, 3, 1, 0);
   backend_->cmd_end_pass(cmd);
 }
 
+cg_texture *Passes::behind_target(uint32_t width, uint32_t height, bool srgb) {
+  uint64_t key = uint64_t(width) << 33 | uint64_t(height) << 1 | (srgb ? 1 : 0);
+  for (auto &behind : behinds_)
+    if (behind.first == key) return behind.second;
+  cg_texture_desc desc{CG_TEXTURE_2D, srgb ? CG_FORMAT_RGBA8_SRGB : CG_FORMAT_RGBA8_UNORM, width, height, 1,
+                       CG_TEXTURE_SAMPLED | CG_TEXTURE_RENDER_TARGET, "tile shadow behind"};
+  cg_texture *created = backend_->texture_create(device_, &desc);
+  if (created) behinds_.emplace_back(key, created);
+  return created;
+}
+
 void Passes::layer_passes(cg_cmd *cmd, const FrameInputs &inputs) {
   for (const LayerDraw &layer : inputs.layers) {
+    if ((layer.kind == LayerKind::Shadows || layer.kind == LayerKind::Priority || layer.kind == LayerKind::PriorityShadows) && layer.behind && layer.blit && layer.items) {
+      cg_pass_desc copy_pass{};
+      copy_pass.color_count = 1;
+      copy_pass.colors[0] = {layer.behind, CG_LOAD_DONT_CARE, true, {0, 0, 0, 0}};
+      copy_pass.label = "shadow behind";
+      backend_->cmd_begin_pass(cmd, &copy_pass);
+      backend_->cmd_set_pipeline(cmd, tile_blit_[layer.srgb ? 1 : 0]);
+      LayerPush blit_push{inputs.frame, layer.blit, 0, 0, 0};
+      backend_->cmd_push(cmd, &blit_push, sizeof(blit_push));
+      backend_->cmd_draw(cmd, 3, 1, 0);
+      backend_->cmd_end_pass(cmd);
+    }
     cg_pass_desc pass{};
+
     pass.color_count = 1;
     pass.colors[0] = {layer.target, layer.clear ? CG_LOAD_CLEAR : CG_LOAD_LOAD, true,
                       {layer.clear_colour[0], layer.clear_colour[1], layer.clear_colour[2], layer.clear_colour[3]}};
-    pass.label = layer.kind == LayerKind::Sprites ? "sprites" : "columns";
+    pass.label = layer.kind == LayerKind::Sprites ? "sprites" : layer.kind == LayerKind::Columns ? "columns" : layer.kind == LayerKind::Tiles ? "tiles" : layer.kind == LayerKind::Priority ? "tile priorities" : layer.kind == LayerKind::PriorityShadows ? "tile priorities with shadows" : "tile shadows";
     backend_->cmd_begin_pass(cmd, &pass);
     LayerPush push{inputs.frame, layer.layer, layer.items, 0, 0};
     if (layer.kind == LayerKind::Columns && layer.items) {
       backend_->cmd_set_pipeline(cmd, columns_);
       backend_->cmd_push(cmd, &push, sizeof(push));
       backend_->cmd_draw(cmd, 6, 1, 0);
+    }
+    if ((layer.kind == LayerKind::Tiles || layer.kind == LayerKind::Shadows || layer.kind == LayerKind::Priority || layer.kind == LayerKind::PriorityShadows) && layer.items && layer.tiles) {
+      cg_pipeline *const *pipelines = layer.kind == LayerKind::Tiles ? tile_ : layer.kind == LayerKind::Priority ? tile_priority_ : layer.kind == LayerKind::PriorityShadows ? tile_priority_shadows_ : tile_shadow_;
+      backend_->cmd_set_pipeline(cmd, pipelines[layer.srgb ? 1 : 0]);
+      backend_->cmd_push(cmd, &push, sizeof(push));
+      backend_->cmd_draw(cmd, layer.tiles * 6, 1, 0);
     }
     for (const SpriteRun &run : layer.runs) {
       backend_->cmd_set_pipeline(cmd, sprite_[run.mode]);
@@ -468,7 +528,7 @@ void Passes::present_flat(cg_cmd *cmd, const FrameInputs &inputs, cg_texture *ou
   pass.label = "present layers";
   backend_->cmd_begin_pass(cmd, &pass);
   backend_->cmd_set_pipeline(cmd, pipeline);
-  DrawPush push{inputs.frame, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  DrawPush push{inputs.frame, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   backend_->cmd_push(cmd, &push, sizeof(push));
   backend_->cmd_draw(cmd, 3, 1, 0);
   backend_->cmd_end_pass(cmd);

@@ -42,6 +42,9 @@ class Session {
   void submit_inline(std::vector<uint8_t> packet);
   void submit_shared(Request &request);
   void capture(Request &request);
+  void stream(Request &request);
+  void stop_stream(Request &request);
+  void frame_shown();
   void resize(Request &request);
   void relative_mouse(Request &request);
   void frames(Request &request);

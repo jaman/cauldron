@@ -14,7 +14,7 @@ defmodule Cauldron2D.Parallax.Preview do
   """
 
   alias Cauldron2D.{Atlas, Parallax, Surface}
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @doc """
   The pictures a camera sees as it travels.

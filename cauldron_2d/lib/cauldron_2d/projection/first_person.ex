@@ -49,7 +49,7 @@ defmodule Cauldron2D.Projection.FirstPerson do
 
   alias Cauldron2D.Atlas
   alias Cauldron2D.Projection.{Canvas, Volume}
-  alias FrenchCurve.Raster
+  alias Cauldron2D.Raster
 
   @eye 0.6
   @fog_levels 6

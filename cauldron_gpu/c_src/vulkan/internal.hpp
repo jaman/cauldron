@@ -2,6 +2,9 @@
 
 #define VK_ENABLE_BETA_EXTENSIONS
 #define VULKAN_HPP_DISPATCH_LOADER_DYNAMIC 1
+#if defined(__ANDROID__)
+#define VK_USE_PLATFORM_ANDROID_KHR
+#endif
 #define VULKAN_HPP_NO_CONSTRUCTORS
 #include <vulkan/vulkan.hpp>
 #include <vulkan/vulkan_format_traits.hpp>
@@ -160,6 +163,7 @@ struct Surface {
 
 struct cg_device {
   bool sdl_library_loaded = false;
+  void *library = nullptr;
   vk::Instance instance;
   vk::DebugUtilsMessengerEXT messenger;
   vk::PhysicalDevice physical;
@@ -274,6 +278,7 @@ void device_destroy(cg_device *device) noexcept;
 void device_info(cg_device *device, cg_device_info *info) noexcept;
 
 bool surface_attach(cg_device *device, void *sdl_window) noexcept;
+bool surface_attach_native(cg_device *device, void *window) noexcept;
 void surface_detach(cg_device *device) noexcept;
 void surface_resize(cg_device *device, uint32_t width, uint32_t height) noexcept;
 cg_format surface_format(cg_device *device) noexcept;
@@ -311,6 +316,7 @@ cg_texture *frame_target(cg_device *device) noexcept;
 void frame_end(cg_device *device, cg_cmd *cmd) noexcept;
 void frame_end_pair(cg_device *device, cg_cmd *cmd, cg_texture *first, cg_texture *second, float spacing) noexcept;
 float frame_gpu_seconds(cg_device *device) noexcept;
+uint64_t frames_completed(cg_device *device) noexcept;
 
 void cmd_copy_buffer(cg_cmd *cmd, cg_buffer *src, uint64_t src_offset, cg_buffer *dst, uint64_t dst_offset, uint64_t size) noexcept;
 void cmd_copy_to_texture(cg_cmd *cmd, cg_buffer *src, uint64_t src_offset, uint32_t bytes_per_row, cg_texture *dst, uint32_t mip, uint32_t layer, uint32_t width, uint32_t height) noexcept;

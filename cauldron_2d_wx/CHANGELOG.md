@@ -1,5 +1,45 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- Depends on `cauldron_core` 0.4 and `cauldron_2d` 0.4: the engine modules that moved from `cauldron_2d` are named `Cauldron.*`, and test and example games write `use Cauldron2D.Client.Game`.
+- Depends on `cauldron_net` for the links (`Cauldron.Net.Link.Socket`, `Link.Local`, `Sound`); `Cauldron2D.Wx.View.join/3` starts a link with `drawer: Cauldron2D.Net.Drawer` unless given another.
+
+### Breaking changes
+
+- `Cauldron2D.Wx.View` shows the picture the link sends, or a scene the link decodes,
+  drawn by `Cauldron2D.Draw`, and sends raw input: keys down and up, the mouse with the
+  pointer as fractions of the picture, and controller events. The session on the far
+  side reads them with the game's keymaps and padmap. Removed with this:
+  - the `:keymap`, `:steering`, `:pointer`, `:input_every` and `:zoom` options
+    of `View.new/2`, and `View.keymap/2`, `View.pointer/2` and `View.zoom/2`. Give the
+    player's preset and pointer setting to `View.configure/2`; the client's zoom keys
+    and the wheel zoom on the server.
+  - `Cauldron2D.Wx.Input`. Raw input is read by `Cauldron.Client.Controls` and
+    `Cauldron.Client.Party` in `cauldron_2d`.
+  - `Cauldron2D.Wx.Painter` and `Cauldron2D.Wx.Sheet`. The picture is
+    `Cauldron2D.Draw`'s.
+  - `Cauldron2D.Wx.Keys.wx_keymap/1`. Use `Cauldron2D.Wx.Keys.input_key/1` to name a wx
+    key code as `Cauldron.Input` does.
+- `View.new/2`'s `:on_key` is called only while no link is joined.
+- `View.new/2`'s `:scale` is screen pixels a picture pixel, default `2`;
+  `Cauldron2D.Wx.Client.run/1`'s `:scale` defaults to `1`.
+
+### Added
+
+- `View.new/2` options `:on_go`, `:on_settings`, `:on_pad`, `:on_world` and
+  `:controllers`; `View.configure/2`, `View.show/2` and `View.pane/2`; `View.join/3`'s
+  `:watching`.
+- A link to a server that leaves the drawing to its clients: give the socket link
+  `:atlas`, and the view draws the scenes it receives, with the server's overlay.
+- `Cauldron2D.Wx.Client` runs the game's own title and summary (`fronts/1`), opens where
+  the game's `start/0` says, runs the game's menu, look and client keys in the world
+  (`Cauldron.Client.Stage`), plays with game controllers, and has a lobby chat and a
+  world chat in a game with chat.
+- The settings screen offers the frame rate (`frame_rates/1`) and the game's own options.
+
 ## [0.3.3]
 
 ### Changed

@@ -8,3 +8,12 @@ erl_crash.dump
 cauldron_gpu-*.tar
 /priv/native/
 /tools/
+
+# The NIF and its host program, built by the Makefile. priv/shaders is compiled
+# with them and is shipped, so it stays tracked.
+/priv/*.so
+/priv/*.dylib
+/priv/*.dll
+/priv/*.dSYM/
+/priv/*.pdb
+/priv/cauldron_gpu_host

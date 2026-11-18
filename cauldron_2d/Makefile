@@ -24,8 +24,20 @@ $(PRIV_DIR)/%.so: c_src/%.c | $(PRIV_DIR)
 $(PRIV_DIR):
 	mkdir -p $(PRIV_DIR)
 
+STATIC_DIR ?= priv/static
+STATIC_NIFS = $(STATIC_DIR)/plane_nif.a $(STATIC_DIR)/volume_nif.a $(STATIC_DIR)/blend_nif.a $(STATIC_DIR)/sector_nif.a
+
+static: $(STATIC_NIFS)
+
+$(STATIC_DIR)/%.a: c_src/%.c | $(STATIC_DIR)
+	$(CC) $(CFLAGS) -DSTATIC_ERLANG_NIF_LIBNAME=$* -I$(ERTS_INCLUDE_DIR) -c -o $(STATIC_DIR)/$*.o $<
+	$(AR) rcs $@ $(STATIC_DIR)/$*.o
+
+$(STATIC_DIR):
+	mkdir -p $(STATIC_DIR)
+
 clean:
 	rm -f $(PRIV_DIR)/*.so $(PRIV_DIR)/*.tmp
 	rm -rf $(PRIV_DIR)/*.tmp.dSYM
 
-.PHONY: all clean
+.PHONY: all static clean

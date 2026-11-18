@@ -25,8 +25,8 @@ defmodule Cauldron2D.DrawList do
   A `:picture` scene returns that raster from its function of the pane's size.
   """
 
+  alias Cauldron2D.Raster
   alias Cauldron2D.Render
-  alias FrenchCurve.Raster
 
   @type item :: %{
           required(:picture) => term(),
@@ -42,7 +42,7 @@ defmodule Cauldron2D.DrawList do
 
   @doc """
   The raster of `items`, `size` `{width, height}` pixels, each item's picture found by
-  `pictures`, a function from the item's `:picture` to a `FrenchCurve.Raster` or `nil`
+  `pictures`, a function from the item's `:picture` to a `Cauldron2D.Raster` or `nil`
   (an item whose picture is `nil` is skipped).
 
   Options:
@@ -61,7 +61,7 @@ defmodule Cauldron2D.DrawList do
 
     operations =
       for item <- in_depth_order(items),
-          %Raster{} = picture <- [pictures.(item.picture)],
+          %FrenchCurve.Raster{} = picture <- [pictures.(item.picture)],
           placement = placement(item, camera),
           reaches?(placement, Raster.dimensions(picture), size),
           do: {:sprite, picture, placement}

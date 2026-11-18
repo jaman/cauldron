@@ -18,8 +18,11 @@ defmodule Cauldron2D.Wx.KeysTest do
     assert Keys.code(:unknownkey) == nil
   end
 
-  test "a game keymap becomes the wx input's, codes to actions" do
-    assert Keys.wx_keymap(%{left: [:a, :left], fire: [:" ", {:mouse, :left}], odd: [:unknownkey]}) ==
-             %{?A => :left, 314 => :left, 32 => :fire, {:mouse, :left} => :fire}
+  test "wx key codes read as Cauldron.Input names them" do
+    assert Keys.input_key(?A) == :a
+    assert Keys.input_key(314) == :left
+    assert Keys.input_key(32) == :" "
+    assert Keys.input_key(344) == :f5
+    assert Keys.input_key(?[) == :"["
   end
 end

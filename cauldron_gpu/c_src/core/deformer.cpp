@@ -1,5 +1,6 @@
 #include "deformer.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 
@@ -66,9 +67,12 @@ std::unordered_map<uint32_t, Deformed> Deformer::run(cg_cmd *cmd, FrameArena &ar
     bool blends = blend && blend->vertex_count == mesh->vertex_count;
     bool skins = mesh->skin && !instance.bones.empty();
     uint64_t bones = skins ? arena.write(instance.bones.data(), instance.bones.size() * sizeof(float)) : 0;
+    uint32_t morphs = mesh->morphs ? std::min<uint32_t>(mesh->morph_count, static_cast<uint32_t>(instance.morph_weights.size())) : 0;
+    uint64_t weights = morphs ? arena.write(instance.morph_weights.data(), morphs * sizeof(float)) : 0;
     jobs.push_back({backend_->buffer_address(mesh->vertices), blends ? backend_->buffer_address(blend->vertices) : 0,
-                    skins ? backend_->buffer_address(mesh->skin) : 0, bones, backend_->buffer_address(buffers.current),
-                    mesh->vertex_count, instance.blend, skins ? static_cast<uint32_t>(instance.bones.size() / 12) : 0, 0});
+                    skins ? backend_->buffer_address(mesh->skin) : 0, bones, morphs ? backend_->buffer_address(mesh->morphs) : 0, weights,
+                    backend_->buffer_address(buffers.current), mesh->vertex_count, instance.blend,
+                    skins ? static_cast<uint32_t>(instance.bones.size() / 12) : 0, morphs});
     frame[id] = {backend_->buffer_address(buffers.current), buffers.has_previous ? backend_->buffer_address(buffers.previous) : 0,
                  nullptr};
     built.push_back({id, mesh});
