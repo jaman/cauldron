@@ -77,7 +77,7 @@ defmodule QuakeC.Compiler do
 
   defp load_cached(key) do
     with {:ok, data} <- File.read(cache_path(key)),
-         modules when is_list(modules) <- :erlang.binary_to_term(data) do
+         modules when is_list(modules) <- :erlang.binary_to_term(data, [:safe]) do
       Enum.each(modules, fn {module, beam} ->
         {:module, _} = :code.load_binary(module, ~c"quake_c", beam)
       end)

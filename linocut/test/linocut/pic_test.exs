@@ -44,6 +44,7 @@ defmodule Linocut.PicTest do
   test "load reads a png or a pic by its extension" do
     dir = Path.join(System.tmp_dir!(), "linocut_load_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
     {:ok, from_pic} = Linocut.pic(@pic)
     File.write!(Path.join(dir, "ship.pic"), @pic)
 
@@ -57,7 +58,5 @@ defmodule Linocut.PicTest do
     assert Raster.to_rgba_binary(png) == Raster.to_rgba_binary(pic)
     assert {:error, {:unknown_format, ".txt"}} = Linocut.load(Path.join(dir, "ship.txt"))
     assert {:error, :enoent} = Linocut.load(Path.join(dir, "missing.png"))
-  after
-    File.rm_rf(Path.join(System.tmp_dir!(), "linocut_load_*"))
   end
 end

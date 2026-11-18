@@ -19,7 +19,7 @@ defmodule Linocut.Cache do
 
     case File.read(path) do
       {:ok, binary} ->
-        binary |> :erlang.binary_to_term() |> thaw()
+        binary |> :erlang.binary_to_term([:safe]) |> thaw()
 
       {:error, _} ->
         rendered = render.()

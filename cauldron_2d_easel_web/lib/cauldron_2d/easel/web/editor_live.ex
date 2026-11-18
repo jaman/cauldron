@@ -49,8 +49,12 @@ defmodule Cauldron2D.Easel.Web.EditorLive do
   end
 
   @impl true
-  def handle_params(%{"art" => art}, _uri, socket),
-    do: {:noreply, open(socket, String.to_atom(art))}
+  def handle_params(%{"art" => art}, _uri, socket) do
+    case existing_art(socket, art) do
+      nil -> {:noreply, assign(socket, status: "no art named #{art}")}
+      name -> {:noreply, open(socket, name)}
+    end
+  end
 
   def handle_params(_params, _uri, socket),
     do:
@@ -131,18 +135,22 @@ defmodule Cauldron2D.Easel.Web.EditorLive do
   def handle_event("zoom", %{"zoom" => zoom}, socket),
     do: {:noreply, socket |> assign(zoom: String.to_integer(zoom)) |> push_frame()}
 
-  def handle_event("new_art", %{"name" => name}, socket) when name != "",
-    do: {:noreply, new_art(socket, String.to_atom(name))}
+  def handle_event("new_art", %{"name" => name}, socket),
+    do: {:noreply, with_art(socket, name, &new_art(socket, &1))}
 
   def handle_event("new_art", _params, socket), do: {:noreply, socket}
 
-  def handle_event("derive", %{"name" => name, "line" => line}, socket) when name != "",
-    do: {:noreply, derive(socket, String.to_atom(String.trim(name)), String.trim(line))}
+  def handle_event("derive", %{"name" => name, "line" => line}, socket),
+    do: {:noreply, with_art(socket, name, &derive(socket, &1, String.trim(line)))}
 
   def handle_event("derive", _params, socket), do: {:noreply, socket}
 
-  def handle_event("clone", %{"from" => from, "name" => name}, socket) when name != "",
-    do: {:noreply, clone(socket, String.to_atom(from), String.to_atom(String.trim(name)))}
+  def handle_event("clone", %{"from" => from, "name" => name}, socket) do
+    case existing_art(socket, from) do
+      nil -> {:noreply, assign(socket, status: "no art named #{from}")}
+      from_name -> {:noreply, with_art(socket, name, &clone(socket, from_name, &1))}
+    end
+  end
 
   def handle_event("clone", _params, socket), do: {:noreply, socket}
   def handle_event("key", %{"key" => key}, socket), do: {:noreply, key(key, socket)}
@@ -291,6 +299,26 @@ defmodule Cauldron2D.Easel.Web.EditorLive do
     end
   rescue
     ArgumentError -> assign(socket, status: "not a colour: #{colour}")
+  end
+
+  # The art a name in the URL or a form already refers to, without making an atom.
+  defp existing_art(socket, name) do
+    Enum.find_value(Project.arts(socket.assigns.project), fn art ->
+      if Atom.to_string(art.name) == name, do: art.name
+    end)
+  end
+
+  # Art names are atoms because an atlas is keyed by them. A name typed into the editor
+  # is a new one, so it has to be made here; the shape check keeps a name to the
+  # filename-safe characters the rest of the editor already writes.
+  defp with_art(socket, name, fun) do
+    name = String.trim(name)
+
+    if Regex.match?(~r/\A[A-Za-z0-9_-]{1,64}\z/, name) do
+      fun.(String.to_atom(name))
+    else
+      assign(socket, status: "an art name is letters, digits, - and _, up to 64 of them")
+    end
   end
 
   defp new_art(socket, name) do

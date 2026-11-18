@@ -295,7 +295,7 @@ defmodule Cauldron2D.Drafter.Client.Settings do
 
     stored =
       case File.read(file) do
-        {:ok, binary} -> :erlang.binary_to_term(binary)
+        {:ok, binary} -> :erlang.binary_to_term(binary, [:safe])
         {:error, _} -> %{}
       end
 

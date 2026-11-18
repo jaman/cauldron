@@ -25,10 +25,33 @@ defmodule Cauldron2D.Assets.Lock do
   @spec read(Path.t()) :: t()
   def read(path) do
     case File.read(path) do
-      {:ok, text} -> text |> Code.eval_string() |> elem(0)
+      {:ok, text} -> text |> Code.string_to_quoted!(file: path) |> literal!(path)
       {:error, :enoent} -> %{}
     end
   end
+
+  # `write/2` writes a literal term, so read one back as data. A lock holding anything
+  # else — a call, an alias, a function — is refused instead of evaluated.
+  defp literal!(ast, path) do
+    if literal?(ast) do
+      {value, _binding} = Code.eval_quoted(ast, [], file: path)
+      value
+    else
+      raise ArgumentError, "#{path} is not an asset lock: it holds code, not data"
+    end
+  end
+
+  defp literal?(ast) when is_list(ast), do: Enum.all?(ast, &literal?/1)
+
+  defp literal?({:%{}, _meta, pairs}),
+    do: Enum.all?(pairs, fn {key, value} -> literal?(key) and literal?(value) end)
+
+  defp literal?({:{}, _meta, items}), do: Enum.all?(items, &literal?/1)
+  defp literal?({:__block__, _meta, [item]}), do: literal?(item)
+  defp literal?({:-, _meta, [number]}) when is_number(number), do: true
+
+  defp literal?(value) when is_atom(value) or is_binary(value) or is_number(value), do: true
+  defp literal?(_other), do: false
 
   @doc "Write `lock` to `path`."
   @spec write(Path.t(), t()) :: :ok

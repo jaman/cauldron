@@ -8,7 +8,7 @@ defmodule Cauldron.Input.Pad do
       padmap = %{left: [:dpad_left, {:axis, :left_x, :neg}], fire: [:a, :right_bumper]}
       pad = Cauldron.Input.Pad.new(padmap, deadzone: 0.3)
 
-  Feed it every `{:controller, event}` map with `handle/2`; `held/1` is the set of
+  Feed it each controller event — the `event` of a `{:controller, event}` message — with `handle/2`; `held/1` is the set of
   actions held and `strength/1` how hard each axis-driven one is pushed. Hand both to
   `Cauldron.Input.merge/3`.
 

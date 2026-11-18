@@ -285,7 +285,7 @@ defmodule CauldronGPU.Host do
 
   @impl GenServer
   def handle_info({port, {:data, data}}, %{port: port} = state),
-    do: {:noreply, host_message(:erlang.binary_to_term(data), state)}
+    do: {:noreply, host_message(:erlang.binary_to_term(data, [:safe]), state)}
 
   def handle_info({port, {:exit_status, _status}}, %{port: port} = state),
     do: {:noreply, renderer_exited(state)}
@@ -341,7 +341,7 @@ defmodule CauldronGPU.Host do
   defp await_open(%{port: port} = state, held) do
     receive do
       {^port, {:data, data}} ->
-        case :erlang.binary_to_term(data) do
+        case :erlang.binary_to_term(data, [:safe]) do
           {:opened, id, info} -> {:ok, opened(state, id, info, held)}
           {:open_failed, message} -> stop_port(state, message)
           other -> await_open(state, [other | held])
