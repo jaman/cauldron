@@ -78,7 +78,7 @@ defmodule Crossing.Client do
     end
   end
 
-  defp segment(lane, step) when lane.row in 2..5 do
+  defp segment(lane, step) when lane.row in 1..5 do
     cond do
       step == 0 -> :log_left
       step == lane.length - 1 -> :log_right
@@ -87,15 +87,27 @@ defmodule Crossing.Client do
   end
 
   defp segment(lane, step) do
+    kind = kind(lane.row)
     front = if lane.dir == 1, do: lane.length - 1, else: 0
-    if step == front, do: :cart_front, else: :cart_back
+
+    cond do
+      step == front -> :"#{kind}_front"
+      step == 0 -> :"#{kind}_back"
+      true -> :"#{kind}_mid"
+    end
   end
+
+  defp kind(7), do: :car
+  defp kind(8), do: :truck
+  defp kind(9), do: :car
+  defp kind(10), do: :bus
+  defp kind(11), do: :truck
 
   defp cell({x, 0}), do: if(rem(x, 3) == 1, do: :bank, else: :water_a)
 
-  defp cell({x, row}) when row in 2..5,
+  defp cell({x, row}) when row in 1..5,
     do: if(rem(x + row, 2) == 0, do: :water_a, else: :water_b)
 
-  defp cell({_x, row}) when row in 7..10, do: :road
+  defp cell({_x, row}) when row in 7..11, do: :road
   defp cell({x, y}), do: Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
 end

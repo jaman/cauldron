@@ -35,8 +35,8 @@ view = Game.view(game, :frog)
 
 cell = fn
   {x, 0} -> if(rem(x, 3) == 1, do: :bank, else: :water_a)
-  {x, row} when row in 2..5 -> if(rem(x + row, 2) == 0, do: :water_a, else: :water_b)
-  {_x, row} when row in 7..10 -> :road
+  {x, row} when row in 1..5 -> if(rem(x + row, 2) == 0, do: :water_a, else: :water_b)
+  {_x, row} when row in 7..11 -> :road
   {x, y} -> Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
 end
 
@@ -46,17 +46,26 @@ place = fn art, x, y ->
 end
 
 ground =
-  for y <- 0..14, x <- 0..14 do
+  for y <- 0..12, x <- 0..14 do
     place.(cell.({x, y}), x, y)
   end
 
+kind = fn
+  7 -> :car
+  8 -> :truck
+  9 -> :car
+  10 -> :bus
+  11 -> :truck
+end
+
 segment = fn lane, step ->
   cond do
-    lane.row in 2..5 and step == 0 -> :log_left
-    lane.row in 2..5 and step == lane.length - 1 -> :log_right
-    lane.row in 2..5 -> :log_mid
-    step == if(lane.dir == 1, do: lane.length - 1, else: 0) -> :cart_front
-    true -> :cart_back
+    lane.row in 1..5 and step == 0 -> :log_left
+    lane.row in 1..5 and step == lane.length - 1 -> :log_right
+    lane.row in 1..5 -> :log_mid
+    step == if(lane.dir == 1, do: lane.length - 1, else: 0) -> :"#{kind.(lane.row)}_front"
+    step == 0 -> :"#{kind.(lane.row)}_back"
+    true -> :"#{kind.(lane.row)}_mid"
   end
 end
 
@@ -77,7 +86,7 @@ movers =
 
 frog = [place.(:shadow, fx, fy + 0.28), place.(:frog, fx, fy)]
 
-size = {15 * tile, 15 * tile}
+size = {15 * tile, 13 * tile}
 
 frame = Render.render(size, ground ++ movers ++ frog, background: {14, 20, 18, 255})
 

@@ -8,11 +8,7 @@ defmodule Crossing.Lanes do
   when someone asks, so the lane is a value like the game itself.
   """
 
-  # The lane repeats every so many tiles; a cart that runs off one side comes back on the
-  # other. Wider than the board, so there is a gap between the last cart and the first.
-  @period 21
-
-  defstruct [:row, :dir, :speed, :length, :count, :phase]
+  defstruct [:row, :dir, :speed, :length, :count, :gap, :phase]
 
   @type t :: %__MODULE__{
           row: non_neg_integer(),
@@ -20,18 +16,31 @@ defmodule Crossing.Lanes do
           speed: float(),
           length: pos_integer(),
           count: pos_integer(),
+          gap: non_neg_integer(),
           phase: float()
         }
 
-  @doc "A lane at `row`, running `dir` at `speed` tiles a second, of `count` items."
-  @spec lane(non_neg_integer(), 1 | -1, float(), pos_integer(), pos_integer(), float()) :: t()
-  def lane(row, dir, speed, length, count, phase \\ 0.0) do
+  @doc """
+  A lane at `row`, running `dir` at `speed` tiles a second: `count` items, each `length`
+  tiles long, with `gap` tiles of clear road or water between them.
+  """
+  @spec lane(
+          non_neg_integer(),
+          1 | -1,
+          float(),
+          pos_integer(),
+          pos_integer(),
+          non_neg_integer(),
+          float()
+        ) :: t()
+  def lane(row, dir, speed, length, count, gap, phase \\ 0.0) do
     %__MODULE__{
       row: row,
       dir: dir,
       speed: speed,
       length: length,
       count: count,
+      gap: gap,
       phase: phase
     }
   end
@@ -39,14 +48,13 @@ defmodule Crossing.Lanes do
   @doc "The lane after `dt` seconds."
   @spec step(t(), float()) :: t()
   def step(%__MODULE__{} = lane, dt) do
-    %{lane | phase: wrap(lane.phase + lane.dir * lane.speed * dt)}
+    %{lane | phase: wrap(lane.phase + lane.dir * lane.speed * dt, lane)}
   end
 
   @doc "The left edge of each cart or log, in tiles."
   @spec items(t()) :: [float()]
   def items(%__MODULE__{} = lane) do
-    spacing = @period / lane.count
-    for index <- 0..(lane.count - 1), do: wrap(index * spacing + lane.phase)
+    for index <- 0..(lane.count - 1), do: wrap(index * spacing(lane) + lane.phase, lane)
   end
 
   @doc "Whether a cart or log covers tile `x` of its row."
@@ -57,12 +65,17 @@ defmodule Crossing.Lanes do
     Enum.any?(items(lane), fn edge -> centre >= edge and centre < edge + lane.length end)
   end
 
-  @doc "How wide the lane's beat is, in tiles."
-  @spec period() :: pos_integer()
-  def period, do: @period
+  @doc "The distance from one item's left edge to the next, in tiles."
+  @spec spacing(t()) :: float()
+  def spacing(%__MODULE__{length: length, gap: gap}), do: (length + gap) * 1.0
 
-  defp wrap(value) do
-    wrapped = :math.fmod(value, @period)
-    if wrapped < 0, do: wrapped + @period, else: wrapped
+  @doc "How wide the lane's beat is, in tiles: every item and every gap."
+  @spec period(t()) :: float()
+  def period(%__MODULE__{} = lane), do: spacing(lane) * lane.count
+
+  defp wrap(value, lane) do
+    period = period(lane)
+    wrapped = :math.fmod(value, period)
+    if wrapped < 0, do: wrapped + period, else: wrapped
   end
 end

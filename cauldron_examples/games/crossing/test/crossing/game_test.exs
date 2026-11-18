@@ -38,11 +38,24 @@ defmodule Crossing.GameTest do
 
   test "a log carries the frog" do
     game = game()
-    lane = Enum.find(game.lanes, &(&1.row == 2))
+    lane = Enum.find(game.lanes, &(&1.row == 1))
     x = Enum.find(0..14, fn x -> Lanes.covers?(lane, x) end)
-    game = %{game | frog: {x / 1, 2}}
+    game = %{game | frog: {x / 1, 1}}
     carried = Game.step(game, 1 / 60)
     assert carried.frog |> elem(0) > x
+  end
+
+  test "every row between the banks is a lane" do
+    rows = game().lanes |> Enum.map(& &1.row)
+    assert rows == [1, 2, 3, 4, 5, 7, 8, 9, 10, 11]
+  end
+
+  test "each lane runs at its own pace and spacing" do
+    spacings = game().lanes |> Enum.map(&Lanes.spacing/1) |> Enum.uniq()
+    speeds = game().lanes |> Enum.map(& &1.speed) |> Enum.uniq()
+
+    assert length(spacings) > 3
+    assert length(speeds) > 3
   end
 
   test "water without a log drowns the frog" do

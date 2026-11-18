@@ -13,11 +13,11 @@ defmodule Crossing.Game do
   alias Crossing.Lanes
 
   @width 15
-  @height 15
+  @height 13
   @start {7.0, 12}
   @home 0
-  @water 2..5
-  @road 7..10
+  @water 1..5
+  @road 7..11
   @lives 3
 
   defstruct frog: @start,
@@ -41,14 +41,16 @@ defmodule Crossing.Game do
   def init(_opts) do
     lanes =
       [
-        Lanes.lane(2, 1, 1.4, 3, 4, 0.0),
-        Lanes.lane(3, -1, 1.8, 3, 4, 5.0),
-        Lanes.lane(4, 1, 1.1, 4, 3, 9.0),
-        Lanes.lane(5, -1, 2.1, 3, 4, 2.0),
-        Lanes.lane(7, 1, 2.8, 2, 5, 0.0),
-        Lanes.lane(8, -1, 3.6, 2, 5, 7.0),
-        Lanes.lane(9, 1, 2.2, 2, 5, 3.0),
-        Lanes.lane(10, -1, 4.2, 2, 5, 11.0)
+        Lanes.lane(1, 1, 1.2, 4, 3, 3, 0.0),
+        Lanes.lane(2, -1, 1.6, 3, 4, 2, 2.0),
+        Lanes.lane(3, 1, 1.0, 2, 5, 2, 5.0),
+        Lanes.lane(4, -1, 2.0, 3, 3, 4, 1.0),
+        Lanes.lane(5, 1, 1.5, 4, 4, 2, 7.0),
+        Lanes.lane(7, 1, 3.0, 2, 5, 3, 0.0),
+        Lanes.lane(8, -1, 2.4, 3, 4, 3, 4.0),
+        Lanes.lane(9, 1, 3.6, 2, 6, 2, 1.0),
+        Lanes.lane(10, -1, 2.0, 4, 3, 3, 6.0),
+        Lanes.lane(11, 1, 2.8, 3, 5, 2, 3.0)
       ]
 
     %__MODULE__{lanes: lanes}

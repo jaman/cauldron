@@ -28,8 +28,14 @@ defmodule Crossing.Art do
     {:log_left, "▬▬", {150, 104, 62}},
     {:log_mid, "▬▬", {150, 104, 62}},
     {:log_right, "▬▬", {150, 104, 62}},
-    {:cart_front, "▛▜", {206, 76, 84}},
-    {:cart_back, "▛▜", {176, 62, 74}},
+    {:car_front, "▛▜", {206, 76, 84}},
+    {:car_back, "▛▜", {176, 62, 74}},
+    {:truck_back, "▛▜", {206, 146, 58}},
+    {:truck_mid, "▛▜", {190, 132, 52}},
+    {:truck_front, "▛▜", {86, 128, 186}},
+    {:bus_back, "▛▜", {92, 150, 210}},
+    {:bus_mid, "▛▜", {78, 134, 196}},
+    {:bus_front, "▛▜", {64, 116, 178}},
     {:frog, "♞ ", {132, 214, 96}},
     {:frog_hop, "♞ ", {150, 226, 110}},
     {:bank, "○ ", {120, 170, 110}},
@@ -70,8 +76,14 @@ defmodule Crossing.Art do
   defp raster(:log_left), do: log(:left)
   defp raster(:log_mid), do: log(:middle)
   defp raster(:log_right), do: log(:right)
-  defp raster(:cart_front), do: cart(false)
-  defp raster(:cart_back), do: cart(true)
+  defp raster(:car_front), do: car(false)
+  defp raster(:car_back), do: car(true)
+  defp raster(:truck_back), do: truck(:back)
+  defp raster(:truck_mid), do: truck(:middle)
+  defp raster(:truck_front), do: truck(:front)
+  defp raster(:bus_back), do: bus(:back)
+  defp raster(:bus_mid), do: bus(:middle)
+  defp raster(:bus_front), do: bus(:front)
   defp raster(:frog), do: frog(false)
   defp raster(:frog_hop), do: frog(true)
   defp raster(:bank), do: bank()
@@ -189,7 +201,7 @@ defmodule Crossing.Art do
     end)
   end
 
-  defp cart(front?) do
+  defp car(front?) do
     {186, 66, 76, 255}
     |> tile()
     |> Draw.fill_rect({0, 3}, {@tile - 1, 11}, {210, 82, 92, 255})
@@ -233,6 +245,74 @@ defmodule Crossing.Art do
     |> Raster.put_pixel(11, 4, {26, 40, 24, 255})
     |> Draw.fill_rect({7, 10}, {9, 11}, {88, 150, 66, 255})
     |> outline({38, 62, 34, 255})
+  end
+
+  defp truck(:back) do
+    {196, 138, 56, 255}
+    |> tile()
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 12}, {210, 150, 62, 255})
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 3}, {236, 180, 92, 255})
+    |> Draw.fill_rect({0, 11}, {@tile - 1, 12}, {160, 108, 40, 255})
+    |> Draw.fill_rect({3, 5}, {12, 6}, {176, 120, 44, 255})
+    |> Draw.fill_rect({3, 9}, {12, 10}, {176, 120, 44, 255})
+    |> Draw.fill_circle({4, 13}, 2, {38, 38, 46, 255})
+    |> Draw.fill_circle({11, 13}, 2, {38, 38, 46, 255})
+    |> outline({52, 36, 18, 255})
+  end
+
+  defp truck(:middle) do
+    {190, 132, 52, 255}
+    |> tile()
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 12}, {204, 144, 58, 255})
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 3}, {230, 174, 88, 255})
+    |> Draw.fill_rect({0, 11}, {@tile - 1, 12}, {156, 104, 38, 255})
+    |> Draw.fill_rect({3, 5}, {12, 6}, {172, 116, 42, 255})
+    |> Draw.fill_rect({3, 9}, {12, 10}, {172, 116, 42, 255})
+  end
+
+  defp truck(:front) do
+    {78, 120, 178, 255}
+    |> tile()
+    |> Draw.fill_rect({0, 3}, {@tile - 1, 12}, {92, 138, 198, 255})
+    |> Draw.fill_rect({0, 3}, {@tile - 1, 4}, {124, 172, 226, 255})
+    |> Draw.fill_rect({2, 5}, {13, 9}, {168, 216, 244, 255})
+    |> Draw.fill_rect({2, 5}, {13, 6}, {206, 236, 252, 255})
+    |> Draw.fill_circle({4, 13}, 2, {38, 38, 46, 255})
+    |> Draw.fill_circle({11, 13}, 2, {38, 38, 46, 255})
+    |> outline({26, 44, 74, 255})
+  end
+
+  defp bus(:back) do
+    {82, 140, 200, 255}
+    |> tile()
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 12}, {96, 156, 216, 255})
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 3}, {128, 188, 238, 255})
+    |> Draw.fill_rect({2, 5}, {13, 8}, {44, 62, 92, 255})
+    |> Draw.fill_circle({4, 13}, 2, {38, 38, 46, 255})
+    |> Draw.fill_circle({11, 13}, 2, {38, 38, 46, 255})
+    |> outline({24, 44, 70, 255})
+  end
+
+  defp bus(:middle) do
+    {78, 134, 196, 255}
+    |> tile()
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 12}, {92, 150, 210, 255})
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 3}, {124, 184, 234, 255})
+    |> Draw.fill_rect({1, 5}, {5, 8}, {188, 228, 250, 255})
+    |> Draw.fill_rect({8, 5}, {12, 8}, {188, 228, 250, 255})
+    |> Draw.fill_rect({0, 11}, {@tile - 1, 12}, {58, 106, 160, 255})
+  end
+
+  defp bus(:front) do
+    {68, 118, 180, 255}
+    |> tile()
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 12}, {84, 140, 200, 255})
+    |> Draw.fill_rect({0, 2}, {@tile - 1, 3}, {118, 176, 230, 255})
+    |> Draw.fill_rect({2, 4}, {13, 9}, {170, 218, 246, 255})
+    |> Draw.fill_rect({2, 4}, {13, 5}, {212, 240, 252, 255})
+    |> Draw.fill_circle({4, 13}, 2, {38, 38, 46, 255})
+    |> Draw.fill_circle({11, 13}, 2, {38, 38, 46, 255})
+    |> outline({24, 42, 66, 255})
   end
 
   # --- the far bank ---------------------------------------------------------------
