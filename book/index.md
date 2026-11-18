@@ -13,27 +13,22 @@
 
 # Cauldron
 
-A family of Elixir packages for writing games on the BEAM. You write the game once, as
-plain data and pure functions, and Cauldron runs it for one player or many and puts it on
-a terminal, in a browser, in a desktop window, or on a phone.
+Cauldron is a game engine for the BEAM, written in Elixir.
 
-The game is two modules. A world module is pure state and pure rules: it holds the game,
-takes a tick, and answers with a view. A client module says how that view looks — the
-pictures, the keys, the menus, the sound — and every front end reads it. Because the world
-is pure, a game is testable with no process and no clock, and the same game runs in a
-terminal, in a browser, in a window and on a phone without being rewritten.
+A game is two modules. The world module is pure state and pure rules: it holds the game,
+takes a tick, and answers with a view. The client module says what that view looks like —
+the pictures, the keys, the menus, the sound — and every front end reads it. Because the
+world is pure, a test runs a game with no process and no clock, and the same game runs in
+a terminal, in a browser, in a desktop window and on a phone without being rewritten.
 
-It grows too. A game can start as a grid of tiles, gather an atlas of art, and end as an
-open world of cells streamed around the player, and the contract between the game and the
-engine does not change on the way.
+A game can begin as a grid of tiles, gather an atlas of art, and end as an open world of
+cells streamed around the player. The contract between the game and the engine does not
+change along the way.
 
-This book is in two parts. The first is for making a game: worlds and players, input,
-sound, saving, testing, the 2D engine and every front end, and a chapter that follows a
-game from tiles to an open world. The second is for working on the engine: how a frame is
-made, what a new front end or renderer implements, and the rules a change is held to.
-
-</div>
-
+Part one is for making a game: worlds and players, input, sound, saving, testing, the 2D
+engine and every front end, and a chapter that follows one game from tiles to an open
+world. Part two is for working on the engine: how a frame is made, what a new front end
+or renderer implements, and the rules a change is held to.
 
 ## How to read this book
 
