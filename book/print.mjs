@@ -96,7 +96,7 @@ try {
     sessionId,
   );
 
-  const { data } = await call(
+  const { stream } = await call(
     "Page.printToPDF",
     {
       printBackground: true,
@@ -104,6 +104,7 @@ try {
       ...(process.env.PAGE_RANGES ? { pageRanges: process.env.PAGE_RANGES } : {}),
       displayHeaderFooter: true,
       generateDocumentOutline: process.env.OUTLINE !== "false",
+      transferMode: "ReturnAsStream",
       headerTemplate: "<span></span>",
       footerTemplate: `<div style="width:100%;font-family:Georgia,serif;font-size:9px;color:#6b6459;text-align:center;">
         <span class="pageNumber"></span>
@@ -112,7 +113,22 @@ try {
     sessionId,
   );
 
-  await writeFile(resolve(pdfPath), Buffer.from(data, "base64"));
+  // The PDF comes back as a stream rather than one base64 string: a book is large enough
+  // that the single return stalls the browser's printer.
+  const parts = [];
+  let offset = 0;
+
+  while (true) {
+    const chunk = await call("IO.read", { handle: stream, offset, size: 1 << 20 }, sessionId);
+    if (chunk.data) {
+      const bytes = Buffer.from(chunk.data, chunk.base64Encoded ? "base64" : "utf8");
+      parts.push(bytes);
+      offset += bytes.length;
+    }
+    if (chunk.eof) break;
+  }
+
+  await writeFile(resolve(pdfPath), Buffer.concat(parts));
   console.log(`Wrote ${resolve(pdfPath)}`);
 } finally {
   if (socket && socket.readyState === WebSocket.OPEN) socket.close();

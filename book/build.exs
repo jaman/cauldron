@@ -357,23 +357,10 @@ File.mkdir_p!(out)
 html_path = Path.join(out, "cauldron.html")
 pdf_path = Path.join(out, "cauldron.pdf")
 
-# One print job of more than about sixty pages stalls the browser's printer, so the book
-# is printed in parts and joined. Each part's footer carries the page's number in the
-# whole book, so the join needs no renumbering.
-chunk_size = 50
-
-page_count = fn pdf ->
-  pdf
-  |> File.read!()
-  |> then(&Regex.scan(~r{/Count (\d+)}, &1))
-  |> Enum.map(fn [_, count] -> String.to_integer(count) end)
-  |> Enum.max(fn -> 0 end)
-end
-
 # The browser's outline names each heading and the page it is on; the page tree says
-# which page a destination points at. Read part by part, and moved by the pages before
-# it, the outline gives the contents numbers that match the printed pages.
-pages_of = fn pdf, offset ->
+# which page a destination points at. Read back, the outline gives the contents numbers
+# that match the printed pages.
+pages_of = fn pdf ->
   binary = File.read!(pdf)
 
   objects =
@@ -383,8 +370,11 @@ pages_of = fn pdf, offset ->
 
   kids = fn id ->
     case Regex.run(~r{/Kids \[([^\]]*)\]}, Map.get(objects, id, "")) do
-      [_, list] -> Regex.scan(~r{(\d+) 0 R}, list) |> Enum.map(fn [_, n] -> String.to_integer(n) end)
-      _none -> []
+      [_, list] ->
+        Regex.scan(~r{(\d+) 0 R}, list) |> Enum.map(fn [_, n] -> String.to_integer(n) end)
+
+      _none ->
+        []
     end
   end
 
@@ -398,9 +388,14 @@ pages_of = fn pdf, offset ->
     body = Map.get(objects, id, "")
 
     cond do
-      Regex.match?(~r{/Type /Page[^s]}, body) -> pages ++ [id]
-      String.contains?(body, "/Type /Pages") -> Enum.reduce(kids.(id), pages, fn kid, acc -> walk.(walk, kid, acc) end)
-      true -> pages
+      Regex.match?(~r{/Type /Page[^s]}, body) ->
+        pages ++ [id]
+
+      String.contains?(body, "/Type /Pages") ->
+        Enum.reduce(kids.(id), pages, fn kid, acc -> walk.(walk, kid, acc) end)
+
+      true ->
+        pages
     end
   end
 
@@ -413,17 +408,10 @@ pages_of = fn pdf, offset ->
   |> Regex.scan(binary)
   |> Enum.flat_map(fn [_, title, object] ->
     case Map.fetch(order, String.to_integer(object)) do
-      {:ok, page} -> [{title, page + offset}]
+      {:ok, page} -> [{title, page}]
       :error -> []
     end
   end)
-end
-
-print_part = fn html, range, path ->
-  System.cmd("node", [Path.join(__DIR__, "print.mjs"), html, path],
-    env: [{"PAGE_RANGES", range}],
-    stderr_to_stdout: true
-  )
 end
 
 print = fn pages ->
@@ -432,52 +420,24 @@ print = fn pages ->
   case System.find_executable("node") do
     nil ->
       IO.puts("Node.js is not on PATH: wrote the HTML only")
-      {:no_pdf, %{}}
+      {:no_pdf, []}
 
-    _node ->
-      parts =
-        0..40
-        |> Enum.reduce_while([], fn index, parts ->
-          first = index * chunk_size + 1
-          last = first + chunk_size - 1
-          path = Path.join(out, "part-#{first}.pdf")
+    node ->
+      {output, status} =
+        System.cmd(node, [Path.join(__DIR__, "print.mjs"), html_path, pdf_path],
+          stderr_to_stdout: true
+        )
 
-          case print_part.(html_path, "#{first}-#{last}", path) do
-            {_output, 0} ->
-              case page_count.(path) do
-                0 -> {:halt, parts}
-                count when count < chunk_size -> {:halt, parts ++ [{path, first, count}]}
-                count -> {:cont, parts ++ [{path, first, count}]}
-              end
-
-            {output, _status} ->
-              IO.puts("part #{first} was not printed:\n#{output}")
-              {:halt, parts}
-          end
-        end)
-
-      if parts == [] do
-        IO.puts("the PDF was not written")
-        {:failed, %{}}
+      if status == 0 do
+        {:ok, pages_of.(pdf_path)}
       else
-        {output, status} =
-          System.cmd("osascript", ["-l", "JavaScript", Path.join(__DIR__, "merge.js"), pdf_path] ++ Enum.map(parts, &elem(&1, 0)),
-            stderr_to_stdout: true
-          )
-
-        if status != 0 do
-          IO.puts("the parts were not joined:\n#{output}")
-        end
-
-        pages =
-          Enum.flat_map(parts, fn {path, first, _count} -> pages_of.(path, first - 1) end)
-
-        {:ok, pages}
+        IO.puts("the PDF was not written:\n#{output}")
+        {:failed, []}
       end
   end
 end
 
-case print.(%{}) do
+case print.([]) do
   {:ok, pages} when pages != [] -> print.(pages)
   _other -> :ok
 end
