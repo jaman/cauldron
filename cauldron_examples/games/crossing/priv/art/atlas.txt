@@ -1,0 +1,21 @@
+grass_a	░░	#1c5c2c	
+grass_b	░░	#1c5c2c	
+grass_c	░░	#1c5c2c	
+water_a	≈≈	#0a163c	3
+water_b	≈≈	#0a163c	3
+road	▓▓	#121218	
+log_left	▬▬	#966030	
+log_mid	▬▬	#966030	
+log_right	▬▬	#966030	
+car_l	▛▜	#e22c2c	
+car_r	▛▜	#e22c2c	
+truck_l	▛▜	#1e6ec8	
+truck_mid	▛▜	#dea02c	
+truck_r	▛▜	#1e6ec8	
+bus_l	▛▜	#288cc8	
+bus_mid	▛▜	#288cc8	
+bus_r	▛▜	#288cc8	
+frog	♞ 	#3cc850	
+frog_hop	♞ 	#3cc850	
+bank	○ 	#28905a	
+shadow	  	#000000	

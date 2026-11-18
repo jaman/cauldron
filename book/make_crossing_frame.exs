@@ -9,8 +9,8 @@
 alias Cauldron2D.{Atlas, Raster, Render}
 alias Crossing.{Art, Game, Lanes}
 
-scale = 4
-tile = 16 * scale
+scale = 2
+tile = 32 * scale
 
 Art.install()
 atlas = Atlas.fetch(Art.name())
@@ -26,7 +26,7 @@ lane = Enum.find(game.lanes, &(&1.row == 3))
 
 log =
   lane &&
-    (Enum.find(Lanes.items(lane), fn edge -> edge >= 8 and edge <= 12 end) ||
+    (Enum.find(Lanes.items(lane), fn edge -> edge >= 6 and edge <= 9 end) ||
        hd(Lanes.items(lane)))
 
 game = if log, do: %{game | frog: {log + 1.0, 3}}, else: game
