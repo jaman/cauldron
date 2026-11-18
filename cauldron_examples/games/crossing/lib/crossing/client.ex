@@ -45,14 +45,12 @@ defmodule Crossing.Client do
   def scene(view), do: scene(view, %{})
 
   @impl true
-  def scene(%{frog: frog, lanes: lanes, snake: snake, elapsed: elapsed}, _look) do
-    {width, height} = Game.size()
-
+  def scene(%{frog: {fx, fy}, lanes: lanes, snake: snake, elapsed: elapsed}, _look) do
     %{
-      focus: {width / 2, height / 2},
+      focus: {fx + 0.5, fy + 0.5},
       bounds: Game.size(),
       cell: &cell/1,
-      eye: {:frog, frog, :east},
+      eye: :frog,
       movers:
         Enum.flat_map(lanes, fn lane ->
           Enum.flat_map(Lanes.items(lane), fn edge ->
@@ -115,11 +113,13 @@ defmodule Crossing.Client do
   defp kind(10), do: :bus
   defp kind(11), do: :truck
 
-  defp cell({x, 0}), do: if(rem(x, 3) == 1, do: :bank, else: :water_a)
+  defp cell(position), do: {art(position), [], nil}
 
-  defp cell({x, row}) when row in 1..5,
+  defp art({x, 0}), do: if(rem(x, 3) == 1, do: :bank, else: :water_a)
+
+  defp art({x, row}) when row in 1..5,
     do: if(rem(x + row, 2) == 0, do: :water_a, else: :water_b)
 
-  defp cell({_x, row}) when row in 7..11, do: :road
-  defp cell({x, y}), do: Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
+  defp art({_x, row}) when row in 7..11, do: :road
+  defp art({x, y}), do: Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
 end
