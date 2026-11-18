@@ -1,114 +1,62 @@
-:root {
-  --ink: #1d1d1f;
-  --quiet: #6b6b70;
-  --rule: #d8d8dc;
-  --code: #f5f5f7;
-  --accent: #7a4b2a;
+@page {
+  size: A4;
+  margin: 20mm 19mm 18mm 19mm;
+}
+
+/* The cover is the whole sheet; the printer puts the page number in the footer of every
+   page, so the cover is the only page whose number is out of sight. */
+@page :first {
+  margin: 0;
+  background: #0b0e12;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 html {
-  font-size: 18px;
+  font-size: 10.5pt;
 }
 
 body {
-  margin: 0 auto;
-  max-width: 46rem;
-  padding: 3rem 1.5rem 6rem;
-  color: var(--ink);
-  background: #fff;
+  margin: 0;
   font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  color: #23272f;
   line-height: 1.55;
   text-rendering: optimizeLegibility;
 }
 
-h1, h2, h3, h4 {
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-
-h1 {
-  margin-top: 3.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--rule);
-  font-size: 2rem;
-}
-
-h2 {
-  margin-top: 2.5rem;
-  font-size: 1.35rem;
-}
-
-h3 {
-  margin-top: 2rem;
-  font-size: 1.1rem;
-}
-
-p, li {
-  hyphens: auto;
+p,
+li {
+  orphans: 2;
+  widows: 2;
 }
 
 a {
-  color: var(--accent);
-  text-decoration-thickness: 1px;
-  text-underline-offset: 2px;
+  color: #7a5a24;
+  text-decoration: none;
+  border-bottom: 0.5pt solid #d8c9a8;
 }
 
-blockquote {
-  margin: 1.5rem 0;
-  padding-left: 1rem;
-  border-left: 3px solid var(--rule);
-  color: var(--quiet);
+h1,
+h2,
+h3,
+h4 {
+  font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: #14181f;
+  line-height: 1.2;
+  break-after: avoid;
 }
 
-code, pre {
-  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
-  font-size: 0.85em;
-}
-
-code {
-  background: var(--code);
-  padding: 0.1em 0.25em;
-  border-radius: 3px;
-}
-
-pre {
-  background: var(--code);
-  padding: 0.9rem 1rem;
-  overflow-x: auto;
-  border-radius: 5px;
-}
-
-pre code {
-  background: none;
-  padding: 0;
-}
-
-table {
-  width: 100%;
-  margin: 1.5rem 0;
-  border-collapse: collapse;
-  font-size: 0.92em;
-}
-
-th, td {
-  padding: 0.45rem 0.6rem;
-  border-bottom: 1px solid var(--rule);
-  text-align: left;
-  vertical-align: top;
-}
-
-th {
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  font-weight: 600;
-}
+/* --- cover ------------------------------------------------------------------ */
 
 .cover {
   position: relative;
-  height: 24.5cm;
-  margin: -3rem -1.5rem 2rem;
+  width: 210mm;
+  height: 297mm;
   overflow: hidden;
-  page-break-after: always;
+  background: #0b0e12;
+  break-after: page;
 }
 
 .cover-art {
@@ -121,8 +69,6 @@ th {
   z-index: 0;
 }
 
-/* The scrim fades from the foot of the page up over the picture, so the panel has no
-   edge of its own to see. */
 .cover::after {
   content: "";
   position: absolute;
@@ -139,130 +85,284 @@ th {
 
 .cover-panel {
   position: absolute;
-  inset: auto 0 0 0;
-  padding: 2rem 2rem 2.6rem;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18mm 20mm 20mm;
   color: #fdf8ef;
   z-index: 2;
 }
 
-.cover-kicker {
-  margin: 0 0 0.7rem;
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  font-size: 0.9rem;
-  font-weight: 700;
-  letter-spacing: 0.24em;
-  text-transform: uppercase;
-  color: #fcefdb;
-  opacity: 1;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
-}
-
 .cover-title {
-  margin: 0 0 0.5rem;
-  padding: 0;
-  border: 0;
-  color: #fff;
-  font-size: 4.2rem;
-  line-height: 1;
+  margin: 0 0 2.5mm;
+  font-size: 38pt;
+  letter-spacing: -0.01em;
+  color: #ffffff;
 }
 
 .cover-sub {
   margin: 0;
-  font-size: 1.22rem;
+  font-size: 13pt;
   opacity: 0.96;
 }
 
-.blurb {
-  page-break-after: always;
+/* --- colophon --------------------------------------------------------------- */
+
+.colophon {
+  padding-top: 6mm;
+  break-after: page;
 }
 
-.blurb-mark {
+.colophon-mark {
   display: block;
-  width: 5.2cm;
+  width: 32mm;
   height: auto;
-  margin: 0 0 1.6rem;
+  margin: 0 0 10mm;
 }
 
-.blurb h1 {
+.colophon h1 {
+  margin: 0 0 6mm;
+  font-size: 30pt;
+}
+
+.colophon p {
+  max-width: 128mm;
+  margin: 0 0 4mm;
+  font-size: 11.5pt;
+  line-height: 1.5;
+}
+
+.colophon .colophon-note {
+  margin-top: 7mm;
+  font-size: 9pt;
+  line-height: 1.5;
+  color: #5a5d63;
+}
+
+/* --- contents --------------------------------------------------------------- */
+
+.contents {
+  break-after: page;
+}
+
+.contents h1 {
+  margin: 0 0 8mm;
+  font-size: 24pt;
+}
+
+.toc-chapters,
+.toc-sections {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc-part {
+  margin: 9mm 0 3mm;
+  font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #7a5a24;
+}
+
+.toc-part:first-child {
+  margin-top: 0;
+}
+
+.toc-chapter > a {
+  display: flex;
+  align-items: baseline;
+  gap: 2.5mm;
+  padding: 1.1mm 0;
+  color: #23272f;
   border: 0;
-  margin-top: 1rem;
+  font-size: 11pt;
 }
 
-figure {
-  margin: 2rem 0 2.25rem;
+.toc-number {
+  width: 7mm;
+  flex: none;
+  text-align: right;
+  color: #7a5a24;
+  font-variant-numeric: tabular-nums;
 }
 
-figure img {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  margin: 0 auto;
-  border-radius: 6px;
+.toc-fill {
+  flex: 1;
+  border-bottom: 0.5pt dotted #b9b3a6;
+  transform: translateY(-1.2mm);
 }
 
-figcaption {
-  margin-top: 0.55rem;
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  font-size: 0.8rem;
-  color: var(--quiet);
+.toc-page {
+  flex: none;
+  font-size: 9pt;
+  color: #5a5d63;
+  font-variant-numeric: tabular-nums;
+}
+
+.toc-sections {
+  margin: 0.5mm 0 1mm 9.5mm;
+  font-size: 9pt;
+}
+
+.toc-sections li {
+  margin: 0.7mm 0;
+}
+
+.toc-sections a {
+  color: #4a4d53;
+  border: 0;
+}
+
+/* --- parts ------------------------------------------------------------------ */
+
+.part {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 225mm;
+  break-before: page;
+  break-after: page;
+}
+
+.part h1 {
+  margin: 0;
+  font-size: 26pt;
   text-align: center;
 }
 
-hr {
-  margin: 3rem 0;
-  border: 0;
-  border-top: 1px solid var(--rule);
+/* --- chapters --------------------------------------------------------------- */
+
+.chapter {
+  break-before: page;
 }
 
-#TOC {
-  margin: 2rem 0 3rem;
-  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
-  font-size: 0.92rem;
+.chapter-title {
+  margin: 0 0 7mm;
+  padding-bottom: 3mm;
+  border-bottom: 0.8pt solid #d8c9a8;
+  font-size: 21pt;
 }
 
-#TOC ul {
-  list-style: none;
-  padding-left: 1rem;
+.chapter-number {
+  margin-right: 4mm;
+  color: #7a5a24;
 }
 
-#TOC > ul {
-  padding-left: 0;
+.chapter h2 {
+  margin: 7mm 0 2.5mm;
+  font-size: 14pt;
 }
 
-#TOC a {
-  text-decoration: none;
+.chapter h3 {
+  margin: 5mm 0 2mm;
+  font-size: 11.5pt;
 }
 
-@media print {
-  @page {
-    size: A4;
-    margin: 0;
-  }
+.chapter p {
+  margin: 0 0 3mm;
+}
 
-  html {
-    font-size: 11pt;
-  }
+.chapter ul,
+.chapter ol {
+  margin: 0 0 3mm;
+  padding-left: 6mm;
+}
 
+.chapter li {
+  margin: 0 0 1.2mm;
+}
+
+/* --- figures and code ------------------------------------------------------- */
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+figure {
+  margin: 6mm 0;
+  break-inside: avoid;
+}
+
+figcaption {
+  margin-top: 1.5mm;
+  font-size: 8.5pt;
+  font-style: italic;
+  color: #5a5d63;
+}
+
+pre {
+  margin: 0 0 4mm;
+  padding: 3mm 3.5mm;
+  background: #f7f3ea;
+  border-left: 2pt solid #d8c9a8;
+  break-inside: avoid;
+  font-size: 8.5pt;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+code {
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+pre code {
+  font-size: 1em;
+}
+
+table {
+  width: 100%;
+  margin: 4mm 0;
+  border-collapse: collapse;
+  break-inside: avoid;
+  font-size: 9pt;
+}
+
+th,
+td {
+  padding: 1.5mm 2mm;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 0.5pt solid #ddd6c6;
+}
+
+th {
+  font-family: "Avenir Next", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5a5d63;
+}
+
+blockquote {
+  margin: 4mm 0;
+  padding-left: 4mm;
+  border-left: 2pt solid #d8c9a8;
+  color: #4a4d53;
+}
+
+/* --- on screen -------------------------------------------------------------- */
+
+@media screen {
   body {
-    max-width: none;
-    padding: 0;
-  }
-
-  .pages {
-    padding: 2.2cm 1.8cm;
+    max-width: 170mm;
+    margin: 0 auto;
+    padding: 16mm 8mm 24mm;
   }
 
   .cover {
     width: 100%;
-    height: 100vh;
-    margin: 0;
+    height: 240mm;
+    margin-bottom: 16mm;
   }
 
-  h1 {
-    page-break-before: always;
-  }
-
-  h1:first-of-type {
-    page-break-before: avoid;
+  .part {
+    height: auto;
+    padding: 40mm 0;
   }
 }
