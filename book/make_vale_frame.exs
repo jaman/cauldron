@@ -2,7 +2,8 @@
 #
 #     cd cauldron_examples/3d/vale && mix run ../../../book/make_vale_frame.exs
 #
-# Writes book/assets/vale.png.
+# Writes book/assets/vale.png, or the cover's wide view with `SHOT=overview`
+# (book/assets/vale-overview.png).
 #
 # The walker is in the frame, so the game is started the way `mix vale` starts it:
 # `Vale.Game.prepared/0` loads her rig and clips from the cache (`mix vale.figure` puts
@@ -32,18 +33,23 @@ beach =
   |> Enum.min_by(fn {_point, distance} -> distance end)
   |> elem(0)
 
+overview? = System.get_env("SHOT") == "overview"
+
 game = Game.init(Game.prepared() ++ [tuning: [distance: 5.5, farthest: 120.0], map: map])
 {:ok, game} = Game.join(game, :walker, %{})
 
 viewer = Map.fetch!(game.viewers, :walker)
 
-viewer = %{
-  viewer
-  | mover: Mover.new(beach, map),
-    camera: %{viewer.camera | yaw: 1.6, pitch: -0.24, distance: 5.5}
-}
+camera =
+  if overview? do
+    %{viewer.camera | yaw: -0.6, pitch: -0.6, distance: 60.0}
+  else
+    %{viewer.camera | yaw: 1.6, pitch: -0.24, distance: 5.5}
+  end
 
-game = %{game | hour: 11.0, viewers: Map.put(game.viewers, :walker, viewer)}
+viewer = %{viewer | mover: Mover.new(beach, map), camera: camera}
+
+game = %{game | hour: if(overview?, do: 12.0, else: 11.0), viewers: Map.put(game.viewers, :walker, viewer)}
 
 # a second and a half of ticks, so the mixer has a clip and the pose is placed
 game = Enum.reduce(1..90, game, fn _, g -> Game.step(g, 1 / 60) end)
@@ -67,7 +73,8 @@ end)
 
 case CauldronGPU.capture(gpu, 20_000) do
   {:ok, %{width: width, height: height, pixels: pixels}} ->
-    path = Path.expand("assets/vale.png", __DIR__)
+    name = if overview?, do: "vale-overview.png", else: "vale.png"
+    path = Path.expand("assets/#{name}", __DIR__)
     File.write!(path, FrenchCurve.Png.encode(width, height, pixels))
     IO.puts("wrote #{path} (#{width}x#{height})")
 

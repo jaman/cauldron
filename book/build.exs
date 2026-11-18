@@ -35,8 +35,16 @@ copy_figures = fn pkg ->
 end
 
 rewrite_figures = fn text, pkg ->
-  Regex.replace(~r/\]\(assets\/([^)]+)\)/, text, fn _whole, file ->
-    "](assets/#{pkg}/#{file})"
+  text
+  |> then(fn text ->
+    Regex.replace(~r/\]\(assets\/([^)]+)\)/, text, fn _whole, file ->
+      "](assets/#{pkg}/#{file})"
+    end)
+  end)
+  |> then(fn text ->
+    Regex.replace(~r/src="assets\/([^"]+)"/, text, fn _whole, file ->
+      ~s(src="assets/#{pkg}/#{file}")
+    end)
   end)
 end
 
@@ -134,10 +142,6 @@ case System.find_executable("pandoc") do
           "cauldron.md",
           "--standalone",
           "--embed-resources",
-          "--toc",
-          "--toc-depth=2",
-          "--metadata",
-          "title=Cauldron",
           "--metadata",
           "lang=en",
           "--css",

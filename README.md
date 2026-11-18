@@ -1,3 +1,5 @@
+![Cauldron](logo.png)
+
 # Cauldron
 
 Cauldron is a family of Elixir packages for writing games on the BEAM. You write the game

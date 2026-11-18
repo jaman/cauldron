@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120" width="240" height="120" role="img" aria-label="The Cauldron mark: a pot on three legs with bubbles above it">
-  <title>The Cauldron mark</title>
-  <g fill="none" stroke="#7a4b2a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="120" cy="52" rx="52" ry="12"/>
-    <path d="M68 52c0 26 12 40 52 40s52-14 52-40"/>
-    <path d="M78 88l-10 18M120 92v16M162 88l10 18"/>
-    <path d="M96 44c-4-8 4-12 0-20M120 46c-4-10 4-14 0-24M144 44c-4-8 4-12 0-20" stroke-opacity="0.55"/>
-  </g>
-</svg>
