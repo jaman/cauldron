@@ -79,6 +79,10 @@ end
 
 front = File.read!(Path.join(__DIR__, "index.md")) |> rewrite_links.() |> rewrite_figures.("book")
 
+# The cover is one page and reaches the paper's edge, so it sits outside the padded
+# container every other page's text lives in.
+[cover, after_cover] = String.split(front, ~r/(?=<div class="blurb">)/, parts: 2)
+
 toc =
   parts
   |> Enum.map(fn {part, chapters} ->
@@ -115,13 +119,18 @@ chapters =
   |> Enum.join("\n\n")
 
 book = """
-#{front}
+#{cover}
+<div class="pages">
+
+#{after_cover}
 
 ## Contents
 
 #{toc}
 
 #{chapters}
+
+</div>
 """
 
 File.mkdir_p!(out)

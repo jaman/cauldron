@@ -245,13 +245,17 @@ hr {
 
   body {
     max-width: none;
+    padding: 0;
+  }
+
+  .pages {
     padding: 2.2cm 1.8cm;
   }
 
   .cover {
-    width: 21cm;
-    height: 29.7cm;
-    margin: -2.2cm -1.8cm 2rem;
+    width: 100%;
+    height: 100vh;
+    margin: 0;
   }
 
   h1 {
