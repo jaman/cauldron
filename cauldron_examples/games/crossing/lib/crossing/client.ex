@@ -48,7 +48,7 @@ defmodule Crossing.Client do
   def scene(%{frog: {fx, fy}, lanes: lanes, snake: snake, elapsed: elapsed}, _look) do
     %{
       focus: {fx + 0.5, fy + 0.5},
-      bounds: Game.size(),
+      bounds: bounds(),
       cell: &cell/1,
       eye: :frog,
       movers:
@@ -77,6 +77,13 @@ defmodule Crossing.Client do
       :over -> [first, [{"over: ctrl-c twice to leave", {230, 130, 120}}]]
     end
   end
+
+  # The camera follows the focus and keeps the board inside `bounds`; a board smaller
+  # than the pane makes it wrap, so the bounds are a field larger than any pane and the
+  # cells outside the board are void.
+  @bounds {64, 48}
+
+  defp bounds, do: @bounds
 
   defp visible_snake?(elapsed), do: :math.fmod(elapsed, 20.0) < 8.0
 
