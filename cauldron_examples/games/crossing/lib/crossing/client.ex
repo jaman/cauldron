@@ -55,10 +55,10 @@ defmodule Crossing.Client do
       eye: {:frog, frog, :east},
       movers:
         Enum.flat_map(lanes, fn lane ->
-          art = if wet?(lane.row), do: :log, else: :cart
-
           Enum.flat_map(Lanes.items(lane), fn edge ->
-            for step <- 0..(lane.length - 1), do: {art, {edge + step + 0.5, lane.row}, :east}
+            for step <- 0..(lane.length - 1) do
+              {segment(lane, step), {edge + step + 0.5, lane.row}, :east}
+            end
           end)
         end),
       labels: []
@@ -78,11 +78,24 @@ defmodule Crossing.Client do
     end
   end
 
-  defp wet?(row), do: row in 2..5
+  defp segment(lane, step) when lane.row in 2..5 do
+    cond do
+      step == 0 -> :log_left
+      step == lane.length - 1 -> :log_right
+      true -> :log_mid
+    end
+  end
 
-  defp cell({_x, 0}), do: :bank
-  defp cell({_x, row}) when row in 1..1, do: :grass
-  defp cell({_x, row}) when row in 2..5, do: :water
+  defp segment(lane, step) do
+    front = if lane.dir == 1, do: lane.length - 1, else: 0
+    if step == front, do: :cart_front, else: :cart_back
+  end
+
+  defp cell({x, 0}), do: if(rem(x, 3) == 1, do: :bank, else: :water_a)
+
+  defp cell({x, row}) when row in 2..5,
+    do: if(rem(x + row, 2) == 0, do: :water_a, else: :water_b)
+
   defp cell({_x, row}) when row in 7..10, do: :road
-  defp cell({_x, _row}), do: :grass
+  defp cell({x, y}), do: Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
 end

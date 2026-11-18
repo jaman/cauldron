@@ -2,14 +2,14 @@
 #
 #     cd cauldron_examples/games/crossing && mix run ../../../book/make_crossing_frame.exs
 #
-# Writes book/assets/crossing.png: the board a few seconds in, the frog half way across
-# the river on a log. The tiles are the game's own atlas, so the picture cannot drift
-# from the game it illustrates.
+# Writes book/assets/crossing.png: the board a few seconds in, the frog out on a log in
+# the river. Every tile is the game's own atlas, so the picture cannot drift from the
+# game it illustrates.
 
-alias Cauldron2D.{Atlas, Render}
+alias Cauldron2D.{Atlas, Raster, Render}
 alias Crossing.{Art, Game, Lanes}
 
-scale = 3
+scale = 4
 tile = 16 * scale
 
 Art.install()
@@ -34,41 +34,58 @@ game = if log, do: %{game | frog: {log + 1.0, 3}}, else: game
 view = Game.view(game, :frog)
 
 cell = fn
-  {_x, 0} -> :bank
-  {_x, row} when row in 2..5 -> :water
+  {x, 0} -> if(rem(x, 3) == 1, do: :bank, else: :water_a)
+  {x, row} when row in 2..5 -> if(rem(x + row, 2) == 0, do: :water_a, else: :water_b)
   {_x, row} when row in 7..10 -> :road
-  {_x, _row} -> :grass
+  {x, y} -> Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
 end
 
-background =
+place = fn art, x, y ->
+  {:sprite, picture.(art),
+   %{position: {round(x * tile), round(y * tile)}, origin: {0, 0}, scale: {scale, scale}}}
+end
+
+ground =
   for y <- 0..14, x <- 0..14 do
-    {:sprite, picture.(cell.({x, y})), %{position: {x * tile, y * tile}, origin: {0, 0}, scale: {scale, scale}}}
+    place.(cell.({x, y}), x, y)
   end
+
+segment = fn lane, step ->
+  cond do
+    lane.row in 2..5 and step == 0 -> :log_left
+    lane.row in 2..5 and step == lane.length - 1 -> :log_right
+    lane.row in 2..5 -> :log_mid
+    step == if(lane.dir == 1, do: lane.length - 1, else: 0) -> :cart_front
+    true -> :cart_back
+  end
+end
 
 movers =
   Enum.flat_map(view.lanes, fn lane ->
-    art = if lane.row in 2..5, do: :log, else: :cart
-
     Enum.flat_map(Lanes.items(lane), fn edge ->
-      for step <- 0..(lane.length - 1) do
-        {:sprite, picture.(art),
-         %{position: {round((edge + step) * tile), lane.row * tile}, origin: {0, 0}, scale: {scale, scale}}}
-      end
+      shadows =
+        for step <- 0..(lane.length - 1), do: place.(:shadow, edge + step, lane.row + 0.28)
+
+      body =
+        for step <- 0..(lane.length - 1), do: place.(segment.(lane, step), edge + step, lane.row)
+
+      shadows ++ body
     end)
   end)
 
 {fx, fy} = view.frog
 
-frog = [
-  {:sprite, picture.(:frog),
-   %{position: {round(fx * tile), round(fy * tile)}, origin: {0, 0}, scale: {scale, scale}}}
-]
+frog = [place.(:shadow, fx, fy + 0.28), place.(:frog, fx, fy)]
 
 size = {15 * tile, 15 * tile}
 
-frame =
-  Render.render(size, background ++ movers ++ frog, background: {16, 22, 20, 255})
+frame = Render.render(size, ground ++ movers ++ frog, background: {14, 20, 18, 255})
 
 path = Path.expand("assets/crossing.png", __DIR__)
-File.write!(path, FrenchCurve.Png.encode(elem(size, 0), elem(size, 1), Cauldron2D.Raster.to_rgba_binary(frame)))
+
+File.write!(
+  path,
+  FrenchCurve.Png.encode(elem(size, 0), elem(size, 1), Raster.to_rgba_binary(frame))
+)
+
 IO.puts("wrote #{path}")
