@@ -56,6 +56,7 @@ defmodule Cauldron2D.Wx.MixProject do
   defp docs do
     [
       main: "readme",
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_2d_wx/%{path}#L%{line}",
       extras: ["README.md", "CHANGELOG.md"]

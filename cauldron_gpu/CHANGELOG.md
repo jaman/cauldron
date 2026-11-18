@@ -54,6 +54,12 @@
   `decode/1`, `decode!/1` and `reduce_image/2` decode and shrink pictures, using the
   vendored stb_image libraries.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Fixed

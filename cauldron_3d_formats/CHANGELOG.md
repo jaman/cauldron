@@ -22,6 +22,12 @@
 - `Cauldron3D.Formats.Vrm`: the VRM 0.x avatar extension: humanoid bones, spring bone
   chains and colliders (`spring_bones/3`), and `lit/2` for its toon materials.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Changed

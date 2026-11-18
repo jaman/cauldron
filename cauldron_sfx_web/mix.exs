@@ -60,7 +60,7 @@ defmodule CauldronSFXWeb.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_sfx_web/%{path}#L\#{line}",
+      source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_sfx_web/%{path}#L%{line}",
       extras: ["README.md", "CHANGELOG.md"]
     ]
   end

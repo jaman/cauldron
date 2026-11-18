@@ -12,6 +12,12 @@
   cells built from triangles, with `free?/3`, `slide/4` and `reach/4`.
 - `Cauldron3D.Quat.axis_angle/2`, `multiply/2`, `conjugate/1` and `from_to/2`.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Changed

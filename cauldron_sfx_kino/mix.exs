@@ -55,8 +55,8 @@ defmodule CauldronSFXKino.MixProject do
     [
       main: "readme",
       source_ref: "v#{@version}",
-      source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_sfx_kino/%{path}#L\#{line}",
-      extras: ["README.md", "CHANGELOG.md"]
+      source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_sfx_kino/%{path}#L%{line}",
+      extras: ["README.md", "CHANGELOG.md", "notebooks/sfx.livemd"]
     ]
   end
 end

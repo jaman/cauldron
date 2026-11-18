@@ -63,6 +63,12 @@
   pointer, a click in the window captures the pointer, so turning never meets the
   window's edge; the window losing focus, or bindings without the pointer, let it go.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Changed

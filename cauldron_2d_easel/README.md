@@ -72,8 +72,8 @@ window in [`cauldron_2d_wx`](https://hexdocs.pm/cauldron_2d_wx) draw that sheet.
 
 ## License
 
-[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+[AGPL-3.0-only](https://github.com/jaman/cauldron/blob/main/LICENSE). You may use, study, change and share it under the AGPL at
 no cost.
 
 A game or service whose source you do not publish needs a
-[commercial license](COMMERCIAL.md).
+[commercial license](https://github.com/jaman/cauldron/blob/main/COMMERCIAL.md).

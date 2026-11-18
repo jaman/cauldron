@@ -30,6 +30,12 @@
 - PNG and JPEG textures (stream op 23) are decoded in the browser with
   `createImageBitmap`.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Changed

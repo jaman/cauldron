@@ -11,6 +11,12 @@
   keyed out from its edge, its pixel grid found (at fractional sizes too) and sampled, its
   colours held to a palette with optional ordered dithering, outlined, trimmed and fitted.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Changed

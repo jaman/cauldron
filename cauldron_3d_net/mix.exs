@@ -50,7 +50,7 @@ defmodule Cauldron3D.Net.MixProject do
     [
       licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv mix.exs README.md LICENSE COMMERCIAL.md)
+      files: ~w(lib priv mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
     ]
   end
 
@@ -59,7 +59,7 @@ defmodule Cauldron3D.Net.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_3d_net/%{path}#L%{line}",
-      extras: ["README.md"]
+      extras: ["README.md", "CHANGELOG.md"]
     ]
   end
 end

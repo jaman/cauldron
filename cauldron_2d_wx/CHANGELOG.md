@@ -40,6 +40,12 @@
   world chat in a game with chat.
 - The settings screen offers the frame rate (`frame_rates/1`) and the game's own options.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Changed

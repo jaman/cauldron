@@ -93,6 +93,12 @@
 - Music recorded at a rate other than the stage's no longer plays slow and flat: a
   recording given with its rate is fitted to the stage's.
 
+## [0.3.4]
+
+### Changed
+
+- No changes in this package; released with the rest of the cauldron packages.
+
 ## [0.3.3]
 
 ### Changed

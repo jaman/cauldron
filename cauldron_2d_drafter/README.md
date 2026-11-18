@@ -16,9 +16,10 @@ you two things:
 The same `Cauldron.Client.Game` module also runs in a browser through
 [`cauldron_2d_net`](https://hexdocs.pm/cauldron_2d_net) and in a window through
 [`cauldron_2d_wx`](https://hexdocs.pm/cauldron_2d_wx). All three draw the scene with
-`Cauldron2D.Draw` and read the game through the client modules of `cauldron_2d`
-(`Cauldron2D.Client.Look`, `Keys`, `Menus`, `Start`, `Fronts`, `Seats`, `Controllers`),
-and their chats share the rooms of `Cauldron.Chat`. A game's title, menu, `:screen` and
+`Cauldron2D.Draw` and read the game through the client modules: `Cauldron2D.Client.Look`
+here, and `Cauldron.Client.Keys`, `Menus`, `Start`, `Fronts`, `Seats` and `Controllers`
+in [`cauldron_core`](https://hexdocs.pm/cauldron_core), and their chats share the rooms of
+`Cauldron.Chat`. A game's title, menu, `:screen` and
 projections look and behave the same in each.
 
 ## Installation
@@ -387,8 +388,8 @@ trace that `mix cauldron.report` reads.
 
 ## License
 
-[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+[AGPL-3.0-only](https://github.com/jaman/cauldron/blob/main/LICENSE). You may use, study, change and share it under the AGPL at
 no cost.
 
 A game or service whose source you do not publish needs a
-[commercial license](COMMERCIAL.md).
+[commercial license](https://github.com/jaman/cauldron/blob/main/COMMERCIAL.md).
