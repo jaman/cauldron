@@ -108,82 +108,102 @@ def log(kind):
     return outline(im, (30, 16, 6, 255), 2)
 
 
-def car(side):
-    im = canvas()
+def mirror(im):
+    return im.transpose(Image.FLIP_LEFT_RIGHT)
+
+
+def wheel_at(dd, x, y):
+    dd.rectangle([x - 3, y - 2, x + 3, y + 2], fill=(16, 16, 20, 255))
+
+
+def draw_car(length=2):
+    """A car from above, drawn whole: body, roof, glass at both ends, four wheels."""
+    w, h = length * T, T
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     dd = ImageDraw.Draw(im)
-    red, light, dark = (226, 44, 44, 255), (255, 96, 88, 255), (150, 16, 28, 255)
-    dd.rectangle([0, 8, T - 1, 24], fill=red)
-    dd.rectangle([0, 8, T - 1, 10], fill=light)
-    dd.rectangle([0, 22, T - 1, 24], fill=dark)
-    if side == "left":
-        dd.rectangle([10, 2, T + 2, 9], fill=light)
-        dd.rectangle([13, 4, T - 1, 8], fill=(120, 220, 255, 255))
-        dd.rectangle([13, 4, T - 1, 5], fill=(220, 250, 255, 255))
-    else:
-        dd.rectangle([-2, 2, T - 11, 9], fill=light)
-        dd.rectangle([0, 4, T - 14, 8], fill=(120, 220, 255, 255))
-        dd.rectangle([0, 4, T - 14, 5], fill=(220, 250, 255, 255))
-    wheel(dd, 6 if side == "left" else T - 7, 26)
+    body, roof = (196, 34, 40, 255), (240, 72, 72, 255)
+
+    dd.rounded_rectangle([2, 5, w - 3, 27], radius=8, fill=(150, 16, 28, 255))
+    dd.rounded_rectangle([4, 7, w - 5, 25], radius=7, fill=body)
+    dd.rounded_rectangle([12, 9, w - 13, 23], radius=5, fill=roof)
+    # windscreen at the front, rear window at the back
+    dd.polygon([(w - 6, 10), (w - 18, 12), (w - 18, 20), (w - 6, 22)], fill=(120, 220, 255, 255))
+    dd.line([(w - 6, 10), (w - 6, 22)], fill=(210, 250, 255, 255))
+    dd.polygon([(6, 11), (16, 12), (16, 20), (6, 21)], fill=(96, 160, 200, 255))
+
+    for y in (3, 29):
+        wheel_at(dd, 12, y)
+        wheel_at(dd, w - 13, y)
+
+    for y in (6, 26):
+        dd.rectangle([w - 5, y - 2, w - 2, y + 2], fill=(252, 236, 150, 255))
+        dd.rectangle([2, y - 2, 5, y + 2], fill=(226, 60, 60, 255))
+
     return outline(im)
 
 
-def wheel(dd, x, y):
-    dd.ellipse([x - 5, y - 5, x + 5, y + 5], fill=(12, 12, 16, 255))
-    dd.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(90, 90, 108, 255))
-    dd.ellipse([x - 1, y - 1, x + 1, y + 1], fill=(200, 200, 220, 255))
-
-
-def cab():
-    im = canvas()
+def draw_truck(length=3):
+    """A truck from above: a cab at the front and a ribbed box behind it."""
+    w, h = length * T, T
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     dd = ImageDraw.Draw(im)
-    dd.rectangle([0, 6, T - 1, 24], fill=(30, 110, 200, 255))
-    dd.rectangle([0, 6, T - 1, 8], fill=(80, 180, 245, 255))
-    dd.rectangle([0, 22, T - 1, 24], fill=(16, 70, 140, 255))
-    dd.rectangle([3, 9, T - 4, 16], fill=(150, 230, 255, 255))
-    dd.rectangle([3, 9, T - 4, 10], fill=(220, 250, 255, 255))
-    return im
+    amber, amber_light, amber_dark = (222, 160, 44, 255), (255, 206, 96, 255), (150, 98, 20, 255)
 
+    cab = T
+    dd.rounded_rectangle([2, 5, w - 3, 27], radius=6, fill=amber_dark)
+    dd.rectangle([2, 6, w - cab - 2, 26], fill=amber)
+    dd.rectangle([4, 9, w - cab - 4, 23], fill=amber_light)
+    for x in range(10, w - cab - 6, 10):
+        dd.line([(x, 9), (x, 23)], fill=(198, 138, 34, 255))
 
-def truck(side):
-    im = cab()
-    dd = ImageDraw.Draw(im)
-    wheel(dd, 6 if side == "left" else T - 7, 26)
-    return outline(im)
+    dd.rounded_rectangle([w - cab - 2, 5, w - 3, 27], radius=6, fill=(16, 70, 140, 255))
+    dd.rounded_rectangle([w - cab, 7, w - 5, 25], radius=4, fill=(30, 110, 200, 255))
+    dd.polygon([(w - 6, 11), (w - 15, 12), (w - 15, 20), (w - 6, 21)], fill=(150, 230, 255, 255))
 
+    for y in (3, 29):
+        wheel_at(dd, 12, y)
+        wheel_at(dd, w - cab - 6, y)
+        wheel_at(dd, w - 14, y)
 
-def cargo():
-    im = canvas()
-    dd = ImageDraw.Draw(im)
-    dd.rectangle([0, 5, T - 1, 24], fill=(222, 160, 44, 255))
-    dd.rectangle([0, 5, T - 1, 7], fill=(255, 206, 96, 255))
-    dd.rectangle([0, 22, T - 1, 24], fill=(150, 98, 20, 255))
-    for y in (10, 15, 20):
-        dd.line([(0, y), (T - 1, y)], fill=(180, 120, 30, 255))
+    for y in (6, 26):
+        dd.rectangle([w - 5, y - 2, w - 2, y + 2], fill=(252, 236, 150, 255))
+
     return outline(im, (40, 24, 4, 255))
 
 
-def bus(side):
-    im = canvas()
+def draw_bus(length=4):
+    """A bus from above: a long roof with hatches, a windscreen and a door."""
+    w, h = length * T, T
+    im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     dd = ImageDraw.Draw(im)
-    dd.rectangle([0, 4, T - 1, 26], fill=(40, 140, 200, 255))
-    dd.rectangle([0, 4, T - 1, 6], fill=(110, 210, 250, 255))
-    dd.rectangle([0, 24, T - 1, 26], fill=(20, 84, 130, 255))
-    dd.rectangle([3, 8, T - 4, 16], fill=(170, 236, 255, 255))
-    dd.rectangle([3, 8, T - 4, 9], fill=(230, 252, 255, 255))
-    wheel(dd, 6 if side == "left" else T - 7, 28)
+    body, light, dark = (40, 140, 200, 255), (110, 210, 250, 255), (20, 84, 130, 255)
+
+    dd.rounded_rectangle([2, 4, w - 3, 28], radius=7, fill=dark)
+    dd.rounded_rectangle([4, 6, w - 5, 26], radius=6, fill=body)
+    dd.rectangle([8, 8, w - 9, 24], fill=light)
+    dd.polygon([(w - 6, 9), (w - 16, 10), (w - 16, 22), (w - 6, 23)], fill=(170, 236, 255, 255))
+    dd.line([(w - 6, 9), (w - 6, 23)], fill=(216, 248, 255, 255))
+    dd.rectangle([8, 9, 12, 15], fill=(30, 90, 140, 255))
+
+    for x in range(18, w - 20, 24):
+        dd.rectangle([x, 10, x + 11, 22], fill=(190, 238, 255, 255))
+        dd.rectangle([x + 2, 12, x + 9, 20], fill=(150, 214, 244, 255))
+
+    for y in (3, 29):
+        wheel_at(dd, 14, y)
+        wheel_at(dd, w - 15, y)
+
     return outline(im)
 
 
-def bus_mid():
-    im = canvas()
-    dd = ImageDraw.Draw(im)
-    dd.rectangle([0, 4, T - 1, 26], fill=(40, 140, 200, 255))
-    dd.rectangle([0, 4, T - 1, 6], fill=(110, 210, 250, 255))
-    dd.rectangle([0, 24, T - 1, 26], fill=(20, 84, 130, 255))
-    for x in (2, 12, 22):
-        dd.rectangle([x, 8, x + 7, 16], fill=(170, 236, 255, 255))
-        dd.rectangle([x, 8, x + 7, 9], fill=(230, 252, 255, 255))
-    return im
+def vehicle_parts(kind, length):
+    """The parts of a vehicle, left to right, in both directions of travel."""
+    whole = {"car": draw_car, "truck": draw_truck, "bus": draw_bus}[kind]
+    image = whole(length)
+    parts = [image.crop((i * T, 0, (i + 1) * T, T)) for i in range(length)]
+    flipped = mirror(image)
+    flipped_parts = [flipped.crop((i * T, 0, (i + 1) * T, T)) for i in range(length)]
+    return parts, flipped_parts
 
 
 def frog(hop=False):
@@ -243,19 +263,18 @@ def main():
         "log_left": log("left"),
         "log_mid": log("mid"),
         "log_right": log("right"),
-        "car_l": car("left"),
-        "car_r": car("right"),
-        "truck_l": truck("left"),
-        "truck_mid": cargo(),
-        "truck_r": truck("right"),
-        "bus_l": bus("left"),
-        "bus_mid": bus_mid(),
-        "bus_r": bus("right"),
         "frog": frog(False),
         "frog_hop": frog(True),
         "bank": pad(),
         "shadow": shadow(),
     }
+    for kind, length in (("car", 2), ("truck", 3), ("bus", 4)):
+        east, west = vehicle_parts(kind, length)
+        for index, part in enumerate(east):
+            arts[f"{kind}_{index}"] = part
+        for index, part in enumerate(west):
+            arts[f"{kind}_{index}_w"] = part
+
     for name, image in arts.items():
         image.save(os.path.join(OUT, f"{name}.png"))
 
@@ -269,19 +288,19 @@ def main():
         "log_left": ("▬▬", "#966030"),
         "log_mid": ("▬▬", "#966030"),
         "log_right": ("▬▬", "#966030"),
-        "car_l": ("▛▜", "#e22c2c"),
-        "car_r": ("▛▜", "#e22c2c"),
-        "truck_l": ("▛▜", "#1e6ec8"),
-        "truck_mid": ("▛▜", "#dea02c"),
-        "truck_r": ("▛▜", "#1e6ec8"),
-        "bus_l": ("▛▜", "#288cc8"),
-        "bus_mid": ("▛▜", "#288cc8"),
-        "bus_r": ("▛▜", "#288cc8"),
+
         "frog": ("♞ ", "#3cc850"),
         "frog_hop": ("♞ ", "#3cc850"),
         "bank": ("○ ", "#28905a"),
         "shadow": ("  ", "#000000"),
     }
+
+    for kind, colour in (("car", "#e22c2c"), ("truck", "#dea02c"), ("bus", "#288cc8")):
+        for index in range(4):
+            for suffix, glyph in (("", "▛▜"), ("_w", "▜▛")):
+                name = f"{kind}_{index}{suffix}"
+                if name in arts:
+                    glyphs[name] = (glyph, colour)
 
     lines = []
     for name in arts:

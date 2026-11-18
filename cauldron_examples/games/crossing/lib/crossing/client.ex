@@ -86,11 +86,14 @@ defmodule Crossing.Client do
     end
   end
 
-  defp segment(lane, step), do: Enum.at(parts(kind(lane.row), lane.length), step)
+  defp segment(lane, step), do: Enum.at(parts(kind(lane.row), lane.length, lane.dir), step)
 
-  defp parts(:car, 2), do: [:car_l, :car_r]
-  defp parts(:truck, 3), do: [:truck_l, :truck_mid, :truck_r]
-  defp parts(:bus, 4), do: [:bus_l, :bus_mid, :bus_mid, :bus_r]
+  defp parts(kind, length, dir) do
+    for step <- 0..(length - 1) do
+      name = :"#{kind}_#{step}"
+      if dir == 1, do: name, else: :"#{name}_w"
+    end
+  end
 
   defp kind(7), do: :car
   defp kind(8), do: :truck

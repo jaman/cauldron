@@ -58,10 +58,11 @@ kind = fn
   11 -> :truck
 end
 
-parts = fn
-  :car, 2 -> [:car_l, :car_r]
-  :truck, 3 -> [:truck_l, :truck_mid, :truck_r]
-  :bus, 4 -> [:bus_l, :bus_mid, :bus_mid, :bus_r]
+parts = fn kind, length, dir ->
+  for step <- 0..(length - 1) do
+    name = :"#{kind}_#{step}"
+    if dir == 1, do: name, else: :"#{name}_w"
+  end
 end
 
 segment = fn lane, step ->
@@ -72,7 +73,7 @@ segment = fn lane, step ->
       true -> :log_mid
     end
   else
-    Enum.at(parts.(kind.(lane.row), lane.length), step)
+    Enum.at(parts.(kind.(lane.row), lane.length, lane.dir), step)
   end
 end
 
