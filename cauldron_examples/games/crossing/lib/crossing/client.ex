@@ -1,0 +1,88 @@
+defmodule Crossing.Client do
+  @moduledoc """
+  The terminal client for Crossing: the board, the frog and the hud.
+
+      mix crossing
+  """
+
+  use Cauldron2D.Client.Game
+
+  alias Crossing.{Art, Game, Lanes}
+
+  @impl true
+  def title, do: %{name: "CROSSING", tagline: "get to the far bank"}
+
+  @impl true
+  def atlas, do: Art.install()
+
+  @impl true
+  def actions, do: [:up, :down, :left, :right]
+
+  @impl true
+  def keymaps do
+    [
+      arrows: %{
+        up: [:up, :w],
+        down: [:down, :s],
+        left: [:left, :a],
+        right: [:right, :d]
+      }
+    ]
+  end
+
+  @impl true
+  def worlds(_props) do
+    [%{id: :crossing, name: "The crossing", world: {Game, []}, players: 0, humans: []}]
+  end
+
+  @impl true
+  def start, do: {:play, :crossing}
+
+  @impl true
+  def look, do: %{projection: :top}
+
+  @impl true
+  def scene(view), do: scene(view, %{})
+
+  @impl true
+  def scene(%{frog: frog, lanes: lanes}, _look) do
+    {width, height} = Game.size()
+
+    %{
+      focus: {width / 2, height / 2},
+      bounds: Game.size(),
+      cell: &cell/1,
+      eye: {:frog, frog, :east},
+      movers:
+        Enum.flat_map(lanes, fn lane ->
+          art = if wet?(lane.row), do: :log, else: :cart
+
+          Enum.flat_map(Lanes.items(lane), fn edge ->
+            for step <- 0..(lane.length - 1), do: {art, {edge + step + 0.5, lane.row}, :east}
+          end)
+        end),
+      labels: []
+    }
+  end
+
+  @impl true
+  def hud(%{score: score, lives: lives, status: status}) do
+    first = [
+      {"score #{score}", {246, 238, 214}},
+      {"   lives #{lives}", {150, 210, 150}}
+    ]
+
+    case status do
+      :playing -> [first, [{"arrows or WASD to hop", {140, 150, 140}}]]
+      :over -> [first, [{"over: ctrl-c twice to leave", {230, 130, 120}}]]
+    end
+  end
+
+  defp wet?(row), do: row in 2..5
+
+  defp cell({_x, 0}), do: :bank
+  defp cell({_x, row}) when row in 1..1, do: :grass
+  defp cell({_x, row}) when row in 2..5, do: :water
+  defp cell({_x, row}) when row in 7..10, do: :road
+  defp cell({_x, _row}), do: :grass
+end
