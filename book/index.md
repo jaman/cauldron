@@ -4,6 +4,8 @@ A family of Elixir packages for writing games on the BEAM. You write the game on
 plain data and pure functions, and Cauldron runs it for one player or many and puts it on
 a terminal, in a browser, in a desktop window, or on a phone.
 
+![The Cauldron mark](assets/mark.svg)
+
 ## How to read this book
 
 The book has two parts.
@@ -48,5 +50,8 @@ their own repositories — are MIT.
 ## Building this book
 
 ```sh
-elixir book/build.exs          # book/build/cauldron.md and, with Pandoc, .html
+elixir book/build.exs          # book/build/cauldron.md, .html and .pdf
 ```
+
+The figures are drawn by the engine itself: `book/make_figures.exs` writes the tile
+world, and the diagrams are SVGs beside it in `book/assets/`.

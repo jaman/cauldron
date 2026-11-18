@@ -5,6 +5,9 @@ same VM: a browser through a Phoenix channel, an Elixir program through a WebSoc
 local link. It carries the world and the player's input; what a client is sent to *show*
 is a drawer's business, and `cauldron_2d_net` supplies the drawer for 2D games.
 
+![Who talks to whom](assets/network.svg)
+
+
 Most games use `cauldron_2d_net`; read this when writing a drawer or an Elixir client.
 
 ## A player on another machine

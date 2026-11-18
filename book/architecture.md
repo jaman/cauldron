@@ -6,6 +6,8 @@ point. It does not describe how any of it came to be — only what is true now.
 
 ## The shape of the family
 
+![The packages by layer](assets/packages.svg)
+
 | Package | Owns | May depend on |
 | --- | --- | --- |
 | `cauldron_core` | Worlds, players, input, menus, the client contract, sound, saving, scores, ledger, networking | `tuning_fork`, `tuning_fork_speaker` |
@@ -48,16 +50,8 @@ module and get the same sequence of title, lobby, world and summary.
 
 The path from a key press to a pixel is the same in every front end.
 
-```
-input ──▶ Cauldron.World ──▶ Cauldron.Game.step/2
-                  │
-                  └──▶ Cauldron.Game.view/2 ──▶ Cauldron.Client.Game.scene/2 + hud/1
-                                                        │
-                          Cauldron.Client.View ─────────┘
-                          (look, zoom, props)
-                                                        │
-                               front end draws ◀────────┘
-```
+![How a frame is made](assets/pipeline.svg)
+
 
 1. **Input** arrives as actions held or pressed. `Cauldron.Input` turns a keymap or a
    controller map into actions; `Cauldron.Presses` separates a press from a hold.

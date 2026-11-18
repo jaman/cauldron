@@ -4,6 +4,11 @@ A Cauldron2D game draws from an atlas: a named catalogue of tiles, each with a p
 or a run of frames, and a glyph and a colour for terminals that draw characters. Art is
 data. The renderer is given an atlas and a scene, and asks for nothing else.
 
+![From art to a frame](assets/atlas.svg)
+
+![A frame from an example game: the workshop, the cup and the cat are a game's own art, drawn from an atlas](assets/greenware-detail.png)
+
+
 This guide covers how the art is made and assembled. [Projections](projections.html) is
 how the atlas is drawn into a world; the [tutorial](tutorial.html) builds one atlas for a
 whole game.

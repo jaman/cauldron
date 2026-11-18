@@ -6,6 +6,9 @@ renderer implements. The package needs no native code; its renderers are other p
 except for `Cauldron3D.Scene.Software` here, which draws on the CPU when `cauldron_3d` is
 in the build.
 
+![One scene, several renderers](assets/target.svg)
+
+
 A game uploads its resources — meshes, textures, materials — and gets handles back. Each
 tick it sends the target a list of changes: what moved, what appeared, what the camera
 sees. The renderer keeps its own copy.

@@ -55,6 +55,7 @@ defmodule Cauldron.MixProject do
   defp docs do
     [
       main: "introduction",
+      assets: %{"guides/assets" => "assets"},
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_core/%{path}#L%{line}",
       extras: [

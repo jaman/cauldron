@@ -401,6 +401,9 @@ The game does not know it is being drawn. What a front end needs is a second mod
 `Cauldron.Client.Game`, that says how to show the game: its title, its atlas, its
 actions and keys, its worlds, and how a view becomes a scene and a hud.
 
+![The same tile world with art: textured ground, trees with shadows, a river and a figure](assets/stage-art.png)
+
+
 ```elixir
 defmodule Cistern.Client do
   use Cauldron2D.Client.Game

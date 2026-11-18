@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 250" width="840" height="250" role="img" aria-label="The five projections: top-down, isometric, oblique, first person and mode 7, each drawn as a small grid seen differently">
+  <title>The five projections</title>
+  <defs>
+    <style>
+      .p{fill:#f7f7f9;stroke:#c9c9cf;stroke-width:1.5;rx:6}
+      .g{stroke:#c2c2c8;stroke-width:1;fill:none}
+      .w{stroke:#8a8a90;stroke-width:1.4;fill:none}
+      .dot{fill:#7a4b2a}
+      .t{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:13px;fill:#1d1d1f}
+      .m{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:11px;fill:#5c5c63}
+    </style>
+  </defs>
+
+  <!-- top down -->
+  <rect class="p" x="20" y="40" width="140" height="110"/>
+  <path class="g" d="M55 40v110M90 40v110M125 40v110M20 76h140M20 112h140"/>
+  <circle class="dot" cx="90" cy="94" r="6"/>
+  <path class="w" d="M90 60v-12M84 54l6-8 6 8"/>
+  <text class="t" x="90" y="176" text-anchor="middle">top-down</text>
+  <text class="m" x="90" y="194" text-anchor="middle">a grid, read straight on</text>
+
+  <!-- isometric -->
+  <rect class="p" x="182" y="40" width="140" height="110"/>
+  <path class="g" d="M252 50l60 30-60 30-60-30zM192 110l60 30 60-30M252 110v30M222 80l60 30M282 80l-60 30"/>
+  <circle class="dot" cx="252" cy="110" r="6"/>
+  <text class="t" x="252" y="176" text-anchor="middle">isometric</text>
+  <text class="m" x="252" y="194" text-anchor="middle">tiles as diamonds</text>
+
+  <!-- oblique -->
+  <rect class="p" x="344" y="40" width="140" height="110"/>
+  <path class="g" d="M364 100l40-20 40 20-40 20zM404 80l40-20 40 20-40 20zM364 100l40 20v30l-40-20zM444 100l40 20v30l-40-20z"/>
+  <circle class="dot" cx="424" cy="110" r="6"/>
+  <text class="t" x="424" y="176" text-anchor="middle">oblique</text>
+  <text class="m" x="424" y="194" text-anchor="middle">depth at an angle</text>
+
+  <!-- first person -->
+  <rect class="p" x="506" y="40" width="140" height="110"/>
+  <path class="w" d="M506 86h140"/>
+  <path class="g" d="M556 40v46M596 40v46M536 86l-20 64M656 86l-20 64M576 86l-6 64M616 86l6 64"/>
+  <text class="t" x="576" y="176" text-anchor="middle">first person</text>
+  <text class="m" x="576" y="194" text-anchor="middle">a horizon ahead</text>
+
+  <!-- mode 7 -->
+  <rect class="p" x="668" y="40" width="140" height="110"/>
+  <path class="g" d="M700 150h76M690 130h96M680 110h116M668 86h140M668 40h140M738 40v46M698 86l14 64M778 86l-14 64M718 86l4 64M758 86l-4 64"/>
+  <text class="t" x="738" y="176" text-anchor="middle">mode 7</text>
+  <text class="m" x="738" y="194" text-anchor="middle">a plane turned away</text>
+</svg>

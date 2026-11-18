@@ -4,6 +4,9 @@ A Cauldron2D world is a grid of tiles. A projection is how that grid becomes a p
 straight down, from an angle, from the ground, or from inside it. The game writes the
 same scene for all five; only the look changes.
 
+![The five projections](assets/projections.svg)
+
+
 `Cauldron2D.Draw.projections/0` answers the five: `:top`, `:oblique`, `:iso`, `:mode7`
 and `:first_person`. `Cauldron2D.Draw.picture/3` draws a scene in whichever the client's
 look names.

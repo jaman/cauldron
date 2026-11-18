@@ -113,6 +113,7 @@ defmodule CauldronGPU.MixProject do
   defp docs do
     [
       main: "readme",
+      assets: %{"guides/assets" => "assets"},
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_gpu/%{path}#L%{line}",
       extras: ["README.md", "CHANGELOG.md"]

@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 250" width="840" height="250" role="img" aria-label="Artwork flows from .pic and .png files and from code into an atlas, whose manifest derives one art from another, and from the atlas a picture is drawn to a surface and then to frames">
+  <title>From art to a frame</title>
+  <defs>
+    <marker id="u" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#8a8a90"/>
+    </marker>
+    <style>
+      .s{fill:#f7f7f9;stroke:#c9c9cf;stroke-width:1.5;rx:8}
+      .hot{fill:#fdf3ec;stroke:#c98a5f}
+      .t{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:14px;fill:#1d1d1f}
+      .m{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:11.5px;fill:#5c5c63}
+      .h{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:11px;letter-spacing:.07em;fill:#8a8a90}
+      .e{stroke:#8a8a90;stroke-width:1.6;fill:none;marker-end:url(#u)}
+    </style>
+  </defs>
+
+  <text class="h" x="18" y="28">ART</text>
+  <rect class="s" x="18" y="40" width="170" height="70"/>
+  <text class="t" x="103" y="66" text-anchor="middle">.pic and .png</text>
+  <text class="m" x="103" y="88" text-anchor="middle">Cauldron2D.Picture</text>
+
+  <rect class="s" x="18" y="126" width="170" height="70"/>
+  <text class="t" x="103" y="152" text-anchor="middle">code</text>
+  <text class="m" x="103" y="174" text-anchor="middle">sprite/3, shapes/2</text>
+
+  <text class="h" x="240" y="28">THE ATLAS</text>
+  <rect class="s hot" x="240" y="40" width="200" height="156"/>
+  <text class="t" x="340" y="68" text-anchor="middle">Cauldron2D.Atlas</text>
+  <text class="m" x="340" y="92" text-anchor="middle">one picture per name</text>
+  <text class="m" x="340" y="110" text-anchor="middle">frames, tints, facings</text>
+  <text class="m" x="340" y="128" text-anchor="middle">layers, fonts, palettes</text>
+  <text class="m" x="340" y="154" text-anchor="middle">Manifest: one art</text>
+  <text class="m" x="340" y="170" text-anchor="middle">derived from another</text>
+
+  <text class="h" x="490" y="28">DRAWING</text>
+  <rect class="s" x="490" y="40" width="160" height="70"/>
+  <text class="t" x="570" y="66" text-anchor="middle">surface</text>
+  <text class="m" x="570" y="88" text-anchor="middle">Cauldron2D.Surface</text>
+
+  <rect class="s" x="490" y="126" width="160" height="70"/>
+  <text class="t" x="570" y="152" text-anchor="middle">frames</text>
+  <text class="m" x="570" y="174" text-anchor="middle">glyphs or pixels</text>
+
+  <text class="h" x="700" y="28">TO A SCREEN</text>
+  <rect class="s" x="700" y="82" width="122" height="70"/>
+  <text class="t" x="761" y="108" text-anchor="middle">a front end</text>
+  <text class="m" x="761" y="130" text-anchor="middle">terminal, browser</text>
+  <text class="m" x="761" y="146" text-anchor="middle">window, phone</text>
+
+  <path class="e" d="M188 75h44"/>
+  <path class="e" d="M188 161h44"/>
+  <path class="e" d="M440 118h42"/>
+  <path class="e" d="M650 75v34"/>
+  <path class="e" d="M650 161v-40"/>
+  <path class="e" d="M650 118h42"/>
+</svg>

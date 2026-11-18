@@ -20,6 +20,7 @@
      {"Projections", "cauldron_2d/guides/projections.md"},
      {"Maps and grids", "cauldron_2d/guides/maps-and-grids.md"},
      {"Physics", "cauldron_2d/guides/physics.md"},
+     {"From tiles to an open world", "book/from-tiles-to-open-world.md"},
      {"A terminal", "cauldron_2d_drafter/guides/terminal.md"},
      {"Serving over SSH and telnet", "cauldron_2d_drafter/guides/serving.md"},
      {"A browser", "cauldron_2d_net/guides/browser.md"},

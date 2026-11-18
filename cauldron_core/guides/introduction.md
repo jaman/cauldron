@@ -9,6 +9,7 @@ everything with no way of drawing in it; the 2D and 3D packages hold the drawing
 the front ends — terminal, browser, window, phone — are separate packages that take the
 same game.
 
+
 ## What a game is
 
 A Cauldron game is two modules.
@@ -51,6 +52,8 @@ reaches the terminal with the `:picture` mount prop, the `CAULDRON_PICTURE` envi
 variable, or the game's `look/0`.
 
 ## The packages
+
+![The packages by layer](assets/packages.svg)
 
 | Package | Holds |
 | --- | --- |

@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 320" width="840" height="320" role="img" aria-label="Worlds across the network: a browser or a terminal reaches a session through a socket and channel, the session asks a drawer for pushes, and a link stands in for a world on another node">
+  <title>Worlds across the network</title>
+  <defs>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#8a8a90"/>
+    </marker>
+    <style>
+      .s{fill:#f7f7f9;stroke:#c9c9cf;stroke-width:1.5;rx:8}
+      .hot{fill:#fdf3ec;stroke:#c98a5f}
+      .core{fill:#eef3f8;stroke:#8aa6bd}
+      .t{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:14px;fill:#1d1d1f}
+      .m{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:11.5px;fill:#5c5c63}
+      .h{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:11px;letter-spacing:.07em;fill:#8a8a90}
+      .e{stroke:#8a8a90;stroke-width:1.6;fill:none;marker-end:url(#c)}
+      .both{stroke:#8a8a90;stroke-width:1.6;fill:none;marker-start:url(#c);marker-end:url(#c)}
+    </style>
+  </defs>
+
+  <text class="h" x="18" y="28">On the player's machine</text>
+  <rect class="s" x="18" y="40" width="150" height="56"/>
+  <text class="t" x="93" y="64" text-anchor="middle">browser</text>
+  <text class="m" x="93" y="82" text-anchor="middle">socket, channel</text>
+
+  <rect class="s" x="18" y="112" width="150" height="56"/>
+  <text class="t" x="93" y="136" text-anchor="middle">terminal</text>
+  <text class="m" x="93" y="154" text-anchor="middle">SSH or telnet</text>
+
+  <text class="h" x="230" y="28">The server</text>
+  <rect class="s" x="230" y="40" width="180" height="56"/>
+  <text class="t" x="320" y="64" text-anchor="middle">Cauldron.Net.Channel</text>
+  <text class="m" x="320" y="82" text-anchor="middle">one per client</text>
+
+  <rect class="s" x="230" y="112" width="180" height="72"/>
+  <text class="t" x="320" y="138" text-anchor="middle">Cauldron.Net.Session</text>
+  <text class="m" x="320" y="158" text-anchor="middle">pane, rate, sound policy</text>
+  <text class="m" x="320" y="174" text-anchor="middle">asks the drawer for pushes</text>
+
+  <rect class="s hot" x="230" y="212" width="180" height="72"/>
+  <text class="t" x="320" y="238" text-anchor="middle">Cauldron.Net.Drawer</text>
+  <text class="m" x="320" y="258" text-anchor="middle">open, draw, pane, world_at</text>
+  <text class="m" x="320" y="274" text-anchor="middle">what a frame is on the wire</text>
+
+  <rect class="s core" x="500" y="112" width="150" height="72"/>
+  <text class="t" x="575" y="138" text-anchor="middle">the world</text>
+  <text class="m" x="575" y="158" text-anchor="middle">Cauldron.World</text>
+  <text class="m" x="575" y="174" text-anchor="middle">ticking here</text>
+
+  <rect class="s" x="700" y="40" width="122" height="56"/>
+  <text class="t" x="761" y="64" text-anchor="middle">socket</text>
+  <text class="m" x="761" y="82" text-anchor="middle">Cauldron.Net.Socket</text>
+
+  <rect class="s" x="700" y="196" width="122" height="72"/>
+  <text class="t" x="761" y="222" text-anchor="middle">link</text>
+  <text class="m" x="761" y="242" text-anchor="middle">Cauldron.Net.Link</text>
+  <text class="m" x="761" y="258" text-anchor="middle">a world, elsewhere</text>
+
+  <path class="both" d="M168 68h56"/>
+  <path class="both" d="M168 140h56"/>
+  <path class="e" d="M320 96v12"/>
+  <path class="e" d="M320 184v24"/>
+  <path class="e" d="M410 148h84"/>
+  <path class="both" d="M650 140l46 -66"/>
+  <path class="both" d="M650 160l46 68"/>
+</svg>

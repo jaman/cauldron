@@ -103,6 +103,26 @@ th {
   font-weight: 600;
 }
 
+figure {
+  margin: 2rem 0 2.25rem;
+}
+
+figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  border-radius: 6px;
+}
+
+figcaption {
+  margin-top: 0.55rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.8rem;
+  color: var(--quiet);
+  text-align: center;
+}
+
 hr {
   margin: 3rem 0;
   border: 0;

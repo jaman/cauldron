@@ -7,8 +7,38 @@
 
 root = Path.expand("..", __DIR__)
 parts = Code.eval_file(Path.join(__DIR__, "contents.exs")) |> elem(0)
+out = Path.join(__DIR__, "build")
 
 slug = fn path -> Path.basename(path, ".md") end
+
+# A chapter's figures live beside the guide that uses them: `pkg/guides/assets`, or
+# `book/assets` for the chapters written here. They are copied under the chapter's own
+# name so two packages may use the same file name.
+chapter_package = fn path ->
+  case Path.split(path) do
+    ["book" | _rest] -> "book"
+    [pkg | _rest] -> pkg
+  end
+end
+
+figure_dir = fn pkg ->
+  if pkg == "book", do: Path.join(__DIR__, "assets"), else: Path.join([root, pkg, "guides", "assets"])
+end
+
+copy_figures = fn pkg ->
+  source = figure_dir.(pkg)
+  target = Path.join([out, "assets", pkg])
+  if File.dir?(source) do
+    File.mkdir_p!(Path.dirname(target))
+    File.cp_r!(source, target)
+  end
+end
+
+rewrite_figures = fn text, pkg ->
+  Regex.replace(~r/\]\(assets\/([^)]+)\)/, text, fn _whole, file ->
+    "](assets/#{pkg}/#{file})"
+  end)
+end
 
 # A link to another chapter of this book becomes a link to that chapter in the assembled
 # file. A link anywhere else is left alone.
@@ -39,7 +69,7 @@ demote = fn text ->
   Enum.join(lines, "\n")
 end
 
-front = File.read!(Path.join(__DIR__, "index.md")) |> rewrite_links.()
+front = File.read!(Path.join(__DIR__, "index.md")) |> rewrite_links.() |> rewrite_figures.("book")
 
 toc =
   parts
@@ -59,7 +89,15 @@ chapters =
     body =
       chapters
       |> Enum.map(fn {_title, path} ->
-        text = File.read!(Path.join(root, path)) |> rewrite_links.() |> demote.()
+        pkg = chapter_package.(path)
+        copy_figures.(pkg)
+
+        text =
+          File.read!(Path.join(root, path))
+          |> rewrite_links.()
+          |> rewrite_figures.(pkg)
+          |> demote.()
+
         "<a id=\"#{slug.(path)}\"></a>\n\n" <> text
       end)
       |> Enum.join("\n\n---\n\n")
@@ -78,7 +116,6 @@ book = """
 #{chapters}
 """
 
-out = Path.join([__DIR__, "build"])
 File.mkdir_p!(out)
 File.write!(Path.join(out, "cauldron.md"), book)
 IO.puts("wrote book/build/cauldron.md (#{length(String.split(book, "\n"))} lines)")
@@ -94,8 +131,9 @@ case System.find_executable("pandoc") do
       System.cmd(
         pandoc,
         [
-          Path.join(out, "cauldron.md"),
+          "cauldron.md",
           "--standalone",
+          "--embed-resources",
           "--toc",
           "--toc-depth=2",
           "--metadata",
@@ -105,8 +143,9 @@ case System.find_executable("pandoc") do
           "--css",
           css,
           "-o",
-          Path.join(out, "cauldron.html")
+          "cauldron.html"
         ],
+        cd: out,
         stderr_to_stdout: true
       )
 

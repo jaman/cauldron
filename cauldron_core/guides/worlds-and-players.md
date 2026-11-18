@@ -4,6 +4,9 @@ A world is a process that runs one game at a fixed tick and keeps its players su
 with views. The game is a module implementing `Cauldron.Game`; the world is
 `Cauldron.World`.
 
+![How a frame is made](assets/pipeline.svg)
+
+
 ## The world module
 
 Seven callbacks, and four more a game may add:

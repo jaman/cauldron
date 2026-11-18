@@ -63,6 +63,7 @@ defmodule Cauldron2D.MixProject do
   defp docs do
     [
       main: "readme",
+      assets: %{"guides/assets" => "assets"},
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_2d/%{path}#L%{line}",

@@ -4,6 +4,9 @@
 and Windows. Elixir keeps the game world and sends what changed; a native render thread
 draws at the display's rate from its own copy of the scene, interpolating between ticks.
 
+![A frame drawn on the card: a cube, a camera above it, one directional light](assets/gpu-frame.png)
+
+
 The structs, the change stream and the `Cauldron3D.Scene.Target` protocol are in
 `cauldron_3d_scene`. This package is the renderer, and code that only describes scenes
 does not need it.

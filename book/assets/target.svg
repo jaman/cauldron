@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 270" width="840" height="270" role="img" aria-label="A scene is uploaded through the Target protocol to any renderer: the graphics card, a host process, a browser, a Livebook cell, or the CPU">
+  <title>One scene, several renderers</title>
+  <defs>
+    <marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#8a8a90"/>
+    </marker>
+    <style>
+      .s{fill:#f7f7f9;stroke:#c9c9cf;stroke-width:1.5;rx:8}
+      .hot{fill:#fdf3ec;stroke:#c98a5f}
+      .t{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:14px;fill:#1d1d1f}
+      .m{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:11.5px;fill:#5c5c63}
+      .h{font-family:-apple-system,"Helvetica Neue",Arial,sans-serif;font-size:11px;letter-spacing:.07em;fill:#8a8a90}
+      .e{stroke:#8a8a90;stroke-width:1.6;fill:none;marker-end:url(#t)}
+    </style>
+  </defs>
+
+  <text class="h" x="18" y="28">WHAT A GAME DESCRIBES</text>
+  <rect class="s" x="18" y="40" width="190" height="150"/>
+  <text class="t" x="113" y="66" text-anchor="middle">Cauldron3D.Scene</text>
+  <text class="m" x="113" y="90" text-anchor="middle">meshes, materials</text>
+  <text class="m" x="113" y="108" text-anchor="middle">lights, cameras</text>
+  <text class="m" x="113" y="126" text-anchor="middle">sprites, canvases</text>
+  <text class="m" x="113" y="144" text-anchor="middle">a change stream</text>
+  <text class="m" x="113" y="170" text-anchor="middle">plain data, no drawing</text>
+
+  <rect class="s hot" x="300" y="70" width="170" height="90"/>
+  <text class="t" x="385" y="100" text-anchor="middle">Target</text>
+  <text class="m" x="385" y="122" text-anchor="middle">submit, mesh, texture,</text>
+  <text class="m" x="385" y="138" text-anchor="middle">material, canvas, scatter</text>
+
+  <path class="e" d="M208 115h84"/>
+
+  <text class="h" x="560" y="28">WHO DRAWS IT</text>
+  <rect class="s" x="560" y="38" width="262" height="40"/>
+  <text class="m" x="574" y="63">CauldronGPU — the card, in this VM</text>
+  <rect class="s" x="560" y="88" width="262" height="40"/>
+  <text class="m" x="574" y="113">CauldronGPU.Host — the card, its own process</text>
+  <rect class="s" x="560" y="138" width="262" height="40"/>
+  <text class="m" x="574" y="163">Cauldron3D.Net.Scene — a browser</text>
+  <rect class="s" x="560" y="188" width="262" height="40"/>
+  <text class="m" x="574" y="213">Cauldron3D.Scene.Software — the CPU</text>
+
+  <path class="e" d="M470 100l84 0"/>
+  <path class="e" d="M470 115l84 -22"/>
+  <path class="e" d="M470 130l84 28"/>
+  <path class="e" d="M470 145l84 78"/>
+</svg>

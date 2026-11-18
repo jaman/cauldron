@@ -5,6 +5,7 @@ game in a terminal, through [drafter](https://hexdocs.pm/drafter). The
 game is written once, as a `Cauldron.Client.Game`, and this package runs it through the
 screens a player sees: the title, the lobby, the settings, the world and the summary.
 
+
 The whole front end is `Cauldron2D.Drafter.Client`, a drafter application. Starting it is
 one call.
 
