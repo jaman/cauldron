@@ -2,34 +2,54 @@
 #
 #     cd cauldron_examples/3d/vale && mix run ../../../book/make_vale_frame.exs
 #
-# Writes book/assets/vale.png. `SHOT=lake` takes the other vantage point (morning light
-# over the shore). The camera is the game's own, moved back for the picture; the scene is
-# `Vale.Picture`'s, drawn on the card and read back with `CauldronGPU.capture/3`.
+# Writes book/assets/vale.png.
+#
+# The walker is in the frame, so the game is started the way `mix vale` starts it:
+# `Vale.Game.prepared/0` loads her rig and clips from the cache (`mix vale.figure` puts
+# them there). Without them `posed` is nil and she is never placed.
+#
+# The camera is the game's own, moved back and turned for the picture. On macOS the
+# first `CauldronGPU.open/1` takes the main thread for the VM's life, so this takes one
+# picture per run.
+
+alias Cauldron.OpenWorld.Map, as: World
+alias Cauldron.OpenWorld.Mover
 
 alias Vale.{Game, Picture}
 
-{name, yaw, pitch, distance, hour} =
-  case System.get_env("SHOT", "vista") do
-    "lake" -> {"lake", 1.9, -0.35, 25.0, 8.0}
-    _ -> {"vista", -0.6, -0.6, 60.0, 12.0}
-  end
+# The walker starts in the woods. This finds the nearest point of dry beach — ground
+# just above the lake's surface — so she stands where the dune meets the sand.
+map = Vale.Land.map()
+start = Vale.Land.start()
 
-game = Game.init([])
+beach =
+  for x <- 200..320//2,
+      y <- 300..420//2,
+      height = World.height(map, {x / 1, y / 1}),
+      is_number(height) and height > 0.35 and height < 1.1 do
+    {{x / 1, y / 1}, abs(x - elem(start, 0)) + abs(y - elem(start, 1))}
+  end
+  |> Enum.min_by(fn {_point, distance} -> distance end)
+  |> elem(0)
+
+game = Game.init(Game.prepared() ++ [tuning: [distance: 5.5, farthest: 120.0], map: map])
 {:ok, game} = Game.join(game, :walker, %{})
 
-game = %{
-  game
-  | hour: hour,
-    tuning: %{game.tuning | distance: distance, farthest: 120.0, nearest: 2.0}
+viewer = Map.fetch!(game.viewers, :walker)
+
+viewer = %{
+  viewer
+  | mover: Mover.new(beach, map),
+    camera: %{viewer.camera | yaw: 1.6, pitch: -0.24, distance: 5.5}
 }
 
-viewer = Map.fetch!(game.viewers, :walker)
-camera = %{viewer.camera | yaw: yaw, pitch: pitch, distance: distance}
-game = %{game | viewers: Map.put(game.viewers, :walker, %{viewer | camera: camera})}
+game = %{game | hour: 11.0, viewers: Map.put(game.viewers, :walker, viewer)}
 
-# a couple of seconds of ticks, so the view has settled and the hour has moved on
-game = Enum.reduce(1..120, game, fn _, g -> Game.step(g, 1 / 60) end)
+# a second and a half of ticks, so the mixer has a clip and the pose is placed
+game = Enum.reduce(1..90, game, fn _, g -> Game.step(g, 1 / 60) end)
 view = Game.view(game, :walker)
+
+IO.inspect(view.posed && view.posed.position, label: "walker at")
 
 {:ok, gpu} = CauldronGPU.open(window: false, width: 960, height: 540)
 scene = Picture.gpu(view)
@@ -39,7 +59,7 @@ scene = Picture.gpu(view)
 {changes, cache} = scene.(gpu, nil, {960, 540}, 960 / 540)
 CauldronGPU.submit(gpu, changes)
 
-Enum.reduce(1..40, cache, fn _, cache ->
+Enum.reduce(1..20, cache, fn _, cache ->
   {changes, cache} = scene.(gpu, cache, {960, 540}, 960 / 540)
   CauldronGPU.submit(gpu, changes)
   cache
