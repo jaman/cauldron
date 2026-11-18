@@ -52,15 +52,15 @@ defmodule Crossing.Art do
     if Atlas.installed?(@name) do
       @name
     else
-      Enum.reduce(@catalogue, Atlas.new(@name, tile: @tile, void: @void), fn {art, glyph, colour},
-                                                                             atlas ->
-        opts =
-          [glyph: glyph, color: colour] ++ if(art in [:water_a, :water_b], do: [fps: 3], else: [])
-
-        Atlas.put(atlas, art, rasters(art), opts)
-      end)
+      @catalogue
+      |> Enum.reduce(Atlas.new(@name, tile: @tile, void: @void), &add/2)
       |> Atlas.install()
     end
+  end
+
+  defp add({art, glyph, colour}, atlas) do
+    frames = if art in [:water_a, :water_b], do: [fps: 3], else: []
+    Atlas.put(atlas, art, rasters(art), [glyph: glyph, color: colour] ++ frames)
   end
 
   # --- pieces ---------------------------------------------------------------------
@@ -337,14 +337,16 @@ defmodule Crossing.Art do
 
   defp outline(raster, colour) do
     Enum.reduce(0..(@tile - 1), raster, fn y, raster ->
-      Enum.reduce(0..(@tile - 1), raster, fn x, raster ->
-        if Raster.get_pixel(raster, x, y) |> alpha == 0 and edge?(raster, x, y) do
-          Raster.put_pixel(raster, x, y, colour)
-        else
-          raster
-        end
-      end)
+      Enum.reduce(0..(@tile - 1), raster, fn x, raster -> outline_pixel(raster, x, y, colour) end)
     end)
+  end
+
+  defp outline_pixel(raster, x, y, colour) do
+    if alpha(Raster.get_pixel(raster, x, y)) == 0 and edge?(raster, x, y) do
+      Raster.put_pixel(raster, x, y, colour)
+    else
+      raster
+    end
   end
 
   defp edge?(raster, x, y) do
