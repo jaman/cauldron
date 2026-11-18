@@ -117,7 +117,9 @@ defmodule Cauldron.WorldTest do
     assert_receive {:cauldron_players, ^world, :left, :alice}
     Presence.unsubscribe()
     :ok = Player.join(world, :bob, %{})
-    refute_receive {:cauldron_players, _, _, _}, 50
+    # Presence is one registry for every world, and other tests run their own worlds;
+    # only this world going quiet is the thing being tested.
+    refute_receive {:cauldron_players, ^world, _, _}, 50
   end
 
   test "leaving stops the frames" do
