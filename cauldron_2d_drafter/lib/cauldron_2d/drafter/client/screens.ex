@@ -48,7 +48,12 @@ defmodule Cauldron2D.Drafter.Client.Screens do
   defp title_button(text, choice) do
     horizontal([
       label("", flex: 1),
-      button(text, id: :"title_#{choice}", on_click: {:title, choice}, compact: true, width: String.length(text) + 4),
+      button(text,
+        id: :"title_#{choice}",
+        on_click: {:title, choice},
+        compact: true,
+        width: String.length(text) + 4
+      ),
       label("", flex: 1)
     ])
   end

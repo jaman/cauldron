@@ -9,7 +9,10 @@ defmodule Cauldron.OpenWorldTest do
   end
 
   test "the ground between samples lies on the sampled plane, in cells either side of zero" do
-    map = World.new(cell_size: 64.0, samples: 8) |> World.put(sloped({0, 0})) |> World.put(sloped({-1, -1}))
+    map =
+      World.new(cell_size: 64.0, samples: 8)
+      |> World.put(sloped({0, 0}))
+      |> World.put(sloped({-1, -1}))
 
     assert_in_delta World.height(map, {10.3, 20.7}), 82.7, 1.0e-3
     assert_in_delta World.height(map, {-0.5, -0.5}), -2.5, 1.0e-3
@@ -20,7 +23,9 @@ defmodule Cauldron.OpenWorldTest do
 
   test "a grid square is two triangles split from its x corner to its y corner" do
     heights = for height <- [0.0, 0.0, 0.0, 4.0], into: <<>>, do: <<height::little-float-32>>
-    map = World.new(cell_size: 1.0, samples: 1) |> World.put(%Cell{address: {0, 0}, heights: heights})
+
+    map =
+      World.new(cell_size: 1.0, samples: 1) |> World.put(%Cell{address: {0, 0}, heights: heights})
 
     assert World.height(map, {0.25, 0.25}) == 0.0
     assert World.height(map, {0.75, 0.75}) == 2.0
@@ -39,7 +44,14 @@ defmodule Cauldron.OpenWorldTest do
 
   test "a mover stops a margin in front of a panel, from either side" do
     panel = %Panel{from: {0.0, 10.0}, to: {100.0, 10.0}, height: 50.0, picture: :hills}
-    map = World.new(cell_size: 64.0, samples: 8, edges: [{Edge.Backdrop, margin: 1.0}], panels: [panel])
+
+    map =
+      World.new(
+        cell_size: 64.0,
+        samples: 8,
+        edges: [{Edge.Backdrop, margin: 1.0}],
+        panels: [panel]
+      )
 
     assert World.travel(map, {50.0, 5.0}, {50.0, 12.0}) == {{50.0, 9.0}, [Edge.Backdrop]}
     assert World.travel(map, {50.0, 15.0}, {50.0, 8.0}) == {{50.0, 11.0}, [Edge.Backdrop]}
@@ -57,6 +69,10 @@ defmodule Cauldron.OpenWorldTest do
 
     assert Enum.sort(step.load) == [{-1, 0}, {0, -1}, {0, 1}, {1, 0}]
     assert step.drop == [{9, 9}]
-    assert Window.levels(map, [{0, 0}, {3, 0}], [{5.0, 5.0}], [10.0, 40.0]) == %{{0, 0} => 0, {3, 0} => 1}
+
+    assert Window.levels(map, [{0, 0}, {3, 0}], [{5.0, 5.0}], [10.0, 40.0]) == %{
+             {0, 0} => 0,
+             {3, 0} => 1
+           }
   end
 end

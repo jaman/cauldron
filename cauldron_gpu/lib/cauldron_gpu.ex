@@ -191,7 +191,8 @@ defmodule CauldronGPU do
 
   @doc "Uploads a scatter, the places an instance draws its mesh at, and returns its handle."
   @spec scatter(t(), Scatter.t()) :: Handle.t()
-  def scatter(gpu, %Scatter{} = scatter), do: put(gpu, :scatter, fn id -> {:scatter, id, scatter} end, [])
+  def scatter(gpu, %Scatter{} = scatter),
+    do: put(gpu, :scatter, fn id -> {:scatter, id, scatter} end, [])
 
   @doc "Hides the pointer and reports only relative motion while `enabled`."
   @spec relative_mouse(t(), boolean()) :: :ok | {:error, String.t()}

@@ -37,5 +37,17 @@ defmodule Cauldron3D.Scene.PriorityLayer do
         }
 
   @enforce_keys [:atlas, :palette, :coverage]
-  defstruct [:atlas, :palette, :coverage, shadows: 0, target: :frame, clear: nil, port: nil, view: nil, transparent: nil, pens: 0xFFFF, tiles: []]
+  defstruct [
+    :atlas,
+    :palette,
+    :coverage,
+    shadows: 0,
+    target: :frame,
+    clear: nil,
+    port: nil,
+    view: nil,
+    transparent: nil,
+    pens: 0xFFFF,
+    tiles: []
+  ]
 end

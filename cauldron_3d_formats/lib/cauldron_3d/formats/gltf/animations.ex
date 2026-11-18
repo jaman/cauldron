@@ -64,7 +64,11 @@ defmodule Cauldron3D.Formats.Gltf.Animations do
 
   defp elements(values, path, width, target_count, keyframes, interpolation) do
     per_keyframe = if interpolation == :cubic, do: 3, else: 1
-    size = if path == :weights, do: weights_size(values, target_count, keyframes, per_keyframe), else: width
+
+    size =
+      if path == :weights,
+        do: weights_size(values, target_count, keyframes, per_keyframe),
+        else: width
 
     floats = for <<value::little-float-32 <- values>>, do: value
 
@@ -93,7 +97,9 @@ defmodule Cauldron3D.Formats.Gltf.Animations do
 
   defp duration(channels) do
     channels
-    |> Enum.map(fn %{times: times} -> if tuple_size(times) == 0, do: 0.0, else: elem(times, tuple_size(times) - 1) end)
+    |> Enum.map(fn %{times: times} ->
+      if tuple_size(times) == 0, do: 0.0, else: elem(times, tuple_size(times) - 1)
+    end)
     |> Enum.max()
   end
 end

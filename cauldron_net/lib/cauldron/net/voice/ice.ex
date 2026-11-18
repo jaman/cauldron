@@ -23,7 +23,11 @@ defmodule Cauldron.Net.Voice.Ice do
 
   require Logger
 
-  @type server :: %{required(:urls) => [String.t()], optional(:username) => String.t(), optional(:credential) => String.t()}
+  @type server :: %{
+          required(:urls) => [String.t()],
+          optional(:username) => String.t(),
+          optional(:credential) => String.t()
+        }
   @type turn ::
           nil
           | {:cloudflare, String.t(), String.t()}
@@ -72,17 +76,35 @@ defmodule Cauldron.Net.Voice.Ice do
     url = String.to_charlist(@cloudflare <> key_id <> "/credentials/generate-ice-servers")
     headers = [{~c"authorization", String.to_charlist("Bearer " <> api_token)}]
     body = Jason.encode!(%{ttl: @day})
-    ssl = [verify: :verify_peer, cacerts: :public_key.cacerts_get(), customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]]
+
+    ssl = [
+      verify: :verify_peer,
+      cacerts: :public_key.cacerts_get(),
+      customize_hostname_check: [match_fun: :public_key.pkix_verify_hostname_match_fun(:https)]
+    ]
 
     with {:ok, {{_version, status, _reason}, _headers, reply}} when status in 200..299 <-
-           :httpc.request(:post, {url, headers, ~c"application/json", body}, [ssl: ssl, timeout: 5_000], body_format: :binary),
+           :httpc.request(
+             :post,
+             {url, headers, ~c"application/json", body},
+             [ssl: ssl, timeout: 5_000],
+             body_format: :binary
+           ),
          {:ok, %{"iceServers" => servers}} <- Jason.decode(reply) do
       servers = Enum.map(servers, &server/1) |> Enum.filter(&Map.has_key?(&1, :username))
-      :persistent_term.put({__MODULE__, key_id}, {servers, System.system_time(:second) + div(@day * 9, 10)})
+
+      :persistent_term.put(
+        {__MODULE__, key_id},
+        {servers, System.system_time(:second) + div(@day * 9, 10)}
+      )
+
       servers
     else
       failure ->
-        Logger.warning("voice: Cloudflare TURN credentials could not be fetched: #{inspect(failure)}")
+        Logger.warning(
+          "voice: Cloudflare TURN credentials could not be fetched: #{inspect(failure)}"
+        )
+
         []
     end
   end
@@ -91,8 +113,11 @@ defmodule Cauldron.Net.Voice.Ice do
     base = %{urls: List.wrap(urls)}
 
     case entry do
-      %{"username" => username, "credential" => credential} -> Map.merge(base, %{username: username, credential: credential})
-      _no_login -> base
+      %{"username" => username, "credential" => credential} ->
+        Map.merge(base, %{username: username, credential: credential})
+
+      _no_login ->
+        base
     end
   end
 

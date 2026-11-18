@@ -35,7 +35,17 @@ if Code.ensure_loaded?(Cauldron3D.Render) do
 
     use GenServer
 
-    alias Cauldron3D.Scene.{Canvas, Capabilities, Handle, Material, Mesh, Scatter, Stream, Texture}
+    alias Cauldron3D.Scene.{
+      Canvas,
+      Capabilities,
+      Handle,
+      Material,
+      Mesh,
+      Scatter,
+      Stream,
+      Texture
+    }
+
     alias Cauldron3D.Scene.Host.Record
     alias Cauldron3D.Scene.Software.{Picture, Resources}
 

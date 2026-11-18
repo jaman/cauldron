@@ -48,7 +48,11 @@ defmodule Cauldron.OpenWorld.Window do
       |> MapSet.difference(held)
       |> Enum.sort_by(&nearest(map, &1, points))
 
-    %{load: load, drop: MapSet.to_list(drop), held: held |> MapSet.difference(drop) |> MapSet.union(near)}
+    %{
+      load: load,
+      drop: MapSet.to_list(drop),
+      held: held |> MapSet.difference(drop) |> MapSet.union(near)
+    }
   end
 
   @doc """

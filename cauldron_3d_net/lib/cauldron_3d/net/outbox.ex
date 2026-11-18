@@ -47,7 +47,11 @@ defmodule Cauldron3D.Net.Outbox do
   def submit(%__MODULE__{server: server}, changes), do: GenServer.call(server, {:submit, changes})
 
   @doc "Adds a mesh, texture, canvas, material or scatter, answering its handle."
-  @spec put(t(), SceneState.kind(), Mesh.t() | Texture.t() | Canvas.t() | Material.t() | Scatter.t()) ::
+  @spec put(
+          t(),
+          SceneState.kind(),
+          Mesh.t() | Texture.t() | Canvas.t() | Material.t() | Scatter.t()
+        ) ::
           Handle.t()
   def put(%__MODULE__{server: server}, kind, value),
     do: GenServer.call(server, {:put, kind, value})

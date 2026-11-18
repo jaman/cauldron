@@ -30,7 +30,9 @@ defmodule Cauldron.OpenWorldMoverTest do
   end
 
   defp run(mover, map, intent, steps) do
-    Enum.reduce(1..steps, mover, fn _step, mover -> Mover.step(mover, map, intent, @pace, 1 / 60) end)
+    Enum.reduce(1..steps, mover, fn _step, mover ->
+      Mover.step(mover, map, intent, @pace, 1 / 60)
+    end)
   end
 
   defp east, do: %{toward: {1.0, 0.0}, dash: false, leap: false}

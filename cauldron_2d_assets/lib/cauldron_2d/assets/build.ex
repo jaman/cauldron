@@ -198,15 +198,16 @@ defmodule Cauldron2D.Assets.Build do
   end
 
   defp job(spec, batch, {tool, arguments}, context) do
-    with {:ok, nil} <- earlier_job(spec, batch, context) do
-      context.log.("#{spec.name}: asking with #{tool} (#{batch})")
+    case earlier_job(spec, batch, context) do
+      {:ok, nil} ->
+        context.log.("#{spec.name}: asking with #{tool} (#{batch})")
 
-      case context.studio.call(tool, Map.put(arguments, :batch, batch)) do
-        {:ok, %{"job_id" => job}} -> {:ok, job}
-        {:ok, unexpected} -> {:error, {:studio, unexpected}}
-        {:error, reason} -> {:error, reason}
-      end
-    else
+        case context.studio.call(tool, Map.put(arguments, :batch, batch)) do
+          {:ok, %{"job_id" => job}} -> {:ok, job}
+          {:ok, unexpected} -> {:error, {:studio, unexpected}}
+          {:error, reason} -> {:error, reason}
+        end
+
       {:ok, job} ->
         context.log.("#{spec.name}: the Studio already has it, as job #{job}")
         {:ok, job}

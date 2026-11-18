@@ -63,7 +63,8 @@ if Code.ensure_loaded?(Cauldron3D.Render) do
       |> List.to_tuple()
     end
 
-    defp add({x, y, z}, {dx, dy, dz}, weight), do: {x + dx * weight, y + dy * weight, z + dz * weight}
+    defp add({x, y, z}, {dx, dy, dz}, weight),
+      do: {x + dx * weight, y + dy * weight, z + dz * weight}
 
     defp skinned(vertices, %Pose{bones: [_ | _] = bones}, skin) when skin != nil do
       matrices = bones |> Enum.map(&List.to_tuple/1) |> List.to_tuple()

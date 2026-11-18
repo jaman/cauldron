@@ -41,26 +41,39 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
     @spec ground(World.t(), Cell.address(), keyword()) :: Mesh.t() | nil
     def ground(%World{samples: samples, cell_size: size} = map, address, opts \\ []) do
       with %Cell{} = cell <- World.cell(map, address) do
-        kinds = if cell.kinds, do: fn across, along -> Cell.kind(cell, samples, across, along) end
-        Terrain.mesh(samples, size, &height(map, cell, &1, &2), Keyword.put(opts, :kinds, kinds))
+        Terrain.mesh(
+          samples,
+          size,
+          &height(map, cell, &1, &2),
+          Keyword.put(opts, :kinds, kinds(cell, samples))
+        )
       end
+    end
+
+    # A cell with no kinds of its own leaves terrain to the default.
+    defp kinds(%Cell{kinds: nil}, _samples), do: nil
+
+    defp kinds(%Cell{} = cell, samples) do
+      fn across, along -> Cell.kind(cell, samples, across, along) end
     end
 
     @doc "A level square over the cell at `address` at its water height, or `nil` for a cell without water."
     @spec water(World.t(), Cell.address()) :: Mesh.t() | nil
     def water(%World{cell_size: size} = map, address) do
-      with %Cell{water: level} when is_number(level) <- World.cell(map, address) do
-        Mesh.new(
-          [
-            %{position: {0.0, level, 0.0}, uv: {0.0, 0.0}},
-            %{position: {0.0, level, size}, uv: {0.0, 1.0}},
-            %{position: {size, level, size}, uv: {1.0, 1.0}},
-            %{position: {size, level, 0.0}, uv: {1.0, 0.0}}
-          ],
-          [0, 1, 2, 0, 2, 3]
-        )
-      else
-        _none -> nil
+      case World.cell(map, address) do
+        %Cell{water: level} when is_number(level) ->
+          Mesh.new(
+            [
+              %{position: {0.0, level, 0.0}, uv: {0.0, 0.0}},
+              %{position: {0.0, level, size}, uv: {0.0, 1.0}},
+              %{position: {size, level, size}, uv: {1.0, 1.0}},
+              %{position: {size, level, 0.0}, uv: {1.0, 0.0}}
+            ],
+            [0, 1, 2, 0, 2, 3]
+          )
+
+        _none ->
+          nil
       end
     end
 
@@ -113,7 +126,13 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
 
     @doc "A map panel as an upright rectangle in the scene's space, its picture's `span` across it."
     @spec panel(Panel.t()) :: Mesh.t()
-    def panel(%Panel{from: {from_x, from_y}, to: {to_x, to_y}, base: base, height: height, span: {left, right}}) do
+    def panel(%Panel{
+          from: {from_x, from_y},
+          to: {to_x, to_y},
+          base: base,
+          height: height,
+          span: {left, right}
+        }) do
       Mesh.new(
         [
           %{position: {from_x, base, from_y}, uv: {left, 1.0}},
@@ -134,12 +153,22 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
          when across in 0..samples//1 and along in 0..samples//1,
          do: Cell.height(cell, samples, across, along)
 
-    defp height(%World{samples: samples, cell_size: size} = map, %Cell{address: address} = cell, across, along) do
+    defp height(
+           %World{samples: samples, cell_size: size} = map,
+           %Cell{address: address} = cell,
+           across,
+           along
+         ) do
       {origin_x, origin_y} = World.origin(map, address)
       step = size / samples
 
       World.height(map, {origin_x + across * step, origin_y + along * step}) ||
-        Cell.height(cell, samples, across |> max(0) |> min(samples), along |> max(0) |> min(samples))
+        Cell.height(
+          cell,
+          samples,
+          across |> max(0) |> min(samples),
+          along |> max(0) |> min(samples)
+        )
     end
 
     defp chance(key), do: :erlang.phash2(key, 1_000_000) / 1_000_000

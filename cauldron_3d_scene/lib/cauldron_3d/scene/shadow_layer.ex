@@ -35,5 +35,16 @@ defmodule Cauldron3D.Scene.ShadowLayer do
         }
 
   @enforce_keys [:atlas, :table, :count]
-  defstruct [:atlas, :table, :count, target: :frame, clear: nil, port: nil, view: nil, transparent: nil, pens: 0xFFFF, tiles: []]
+  defstruct [
+    :atlas,
+    :table,
+    :count,
+    target: :frame,
+    clear: nil,
+    port: nil,
+    view: nil,
+    transparent: nil,
+    pens: 0xFFFF,
+    tiles: []
+  ]
 end

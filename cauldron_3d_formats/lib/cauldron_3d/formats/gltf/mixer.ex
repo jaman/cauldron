@@ -26,7 +26,12 @@ defmodule Cauldron3D.Formats.Gltf.Mixer do
 
   @type mix :: [{term(), number()}]
   @type playing :: %{mix: mix(), loop: boolean(), at: float()}
-  @type t :: %__MODULE__{now: playing() | nil, before: playing() | nil, fade: float(), faded: float()}
+  @type t :: %__MODULE__{
+          now: playing() | nil,
+          before: playing() | nil,
+          fade: float(),
+          faded: float()
+        }
 
   defstruct now: nil, before: nil, fade: 0.0, faded: 0.0
 
@@ -43,7 +48,14 @@ defmodule Cauldron3D.Formats.Gltf.Mixer do
       %{mixer | now: %{now | mix: mix}}
     else
       start = Keyword.get(opts, :at, carried(now, loop))
-      %{mixer | now: %{mix: mix, loop: loop, at: start / 1}, before: now, fade: Keyword.get(opts, :fade, 0.2) / 1, faded: 0.0}
+
+      %{
+        mixer
+        | now: %{mix: mix, loop: loop, at: start / 1},
+          before: now,
+          fade: Keyword.get(opts, :fade, 0.2) / 1,
+          faded: 0.0
+      }
     end
   end
 
@@ -76,7 +88,10 @@ defmodule Cauldron3D.Formats.Gltf.Mixer do
   def at(%__MODULE__{now: %{at: at}}), do: at
 
   defp same?(nil, _mix, _loop), do: false
-  defp same?(%{mix: playing, loop: loop}, mix, loop), do: Keyword.keys(playing) == Keyword.keys(mix)
+
+  defp same?(%{mix: playing, loop: loop}, mix, loop),
+    do: Keyword.keys(playing) == Keyword.keys(mix)
+
   defp same?(_now, _mix, _loop), do: false
 
   defp carried(%{loop: true, at: at}, true), do: at
@@ -103,7 +118,10 @@ defmodule Cauldron3D.Formats.Gltf.Mixer do
   end
 
   defp longest(%{mix: mix}, clips),
-    do: mix |> Enum.map(fn {name, _weight} -> Map.fetch!(clips, name).duration end) |> Enum.max(fn -> 0.0 end)
+    do:
+      mix
+      |> Enum.map(fn {name, _weight} -> Map.fetch!(clips, name).duration end)
+      |> Enum.max(fn -> 0.0 end)
 
   defp read(%{mix: mix, loop: loop, at: at}, clips) do
     {sample, _weight} =

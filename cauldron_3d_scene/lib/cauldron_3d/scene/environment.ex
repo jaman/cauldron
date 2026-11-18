@@ -99,6 +99,9 @@ defmodule Cauldron3D.Scene.Environment do
           | {:layers, Cauldron3D.Scene.Handle.t(), Cauldron3D.Scene.Handle.t()}
           | {:box, %{atom() => Cauldron3D.Scene.Handle.t()}}
 
+  # One flat bag of renderer settings on purpose: a game sets a few of them and the rest
+  # keep their defaults, and grouping them would deepen every call site for no gain.
+  # credo:disable-for-next-line Credo.Check.Warning.StructFieldAmount
   defstruct sky_top: {0.25, 0.45, 0.85},
             sky_horizon: {0.75, 0.85, 0.95},
             sky_ground: {0.25, 0.22, 0.2},

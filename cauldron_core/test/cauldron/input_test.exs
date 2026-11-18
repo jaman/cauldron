@@ -205,7 +205,9 @@ defmodule Cauldron.InputTest do
     end
 
     test "the pointer's travel while a button is down adds up, and plain moves add nothing" do
-      event = fn type, x, y -> {:mouse, %{type: type, button: :right, x: x, y: y, modifiers: []}} end
+      event = fn type, x, y ->
+        {:mouse, %{type: type, button: :right, x: x, y: y, modifiers: []}}
+      end
 
       input =
         Input.new(@mouse_keymap)

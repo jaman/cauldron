@@ -53,7 +53,14 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
           }
     @type t :: %__MODULE__{
             settings: map(),
-            cells: %{Cell.address() => %{slot: non_neg_integer(), level: non_neg_integer(), handles: [Handle.t()], ids: [Stream.id()]}},
+            cells: %{
+              Cell.address() => %{
+                slot: non_neg_integer(),
+                level: non_neg_integer(),
+                handles: [Handle.t()],
+                ids: [Stream.id()]
+              }
+            },
             free: [non_neg_integer()],
             slots: non_neg_integer()
           }
@@ -86,7 +93,10 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
     What to do for viewers at `eyes`: `build`, the cells to build with the level each is
     drawn at, nearest first, and `drop`, the cells to remove.
     """
-    @spec due(t(), World.t(), [World.point()]) :: %{build: [{Cell.address(), non_neg_integer()}], drop: [Cell.address()]}
+    @spec due(t(), World.t(), [World.point()]) :: %{
+            build: [{Cell.address(), non_neg_integer()}],
+            drop: [Cell.address()]
+          }
     def due(%__MODULE__{settings: settings, cells: cells}, %World{} = map, eyes) do
       held = cells |> Map.keys() |> MapSet.new()
       step = Window.step(held, map, eyes, load: settings.load, keep: settings.keep)
@@ -116,8 +126,10 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
         level: level,
         ground: OpenWorld.ground(map, address, step: step, skirt: settings.skirt),
         water: settings.water && OpenWorld.water(map, address),
-        things: if(level <= settings.things_within, do: OpenWorld.things(map, address), else: %{}),
-        cover: if(level <= settings.cover_within, do: covers(settings.cover, map, address), else: [])
+        things:
+          if(level <= settings.things_within, do: OpenWorld.things(map, address), else: %{}),
+        cover:
+          if(level <= settings.cover_within, do: covers(settings.cover, map, address), else: [])
       }
     end
 
@@ -129,16 +141,28 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
       before = Map.get(shown.cells, built.address, %{handles: [], ids: []})
 
       placed =
-        [ground(settings, target, built, transform, slot), water(settings, target, built, transform, slot)] ++
-          things(settings, target, built, transform, slot) ++ cover(settings, target, built, transform, slot)
+        [
+          ground(settings, target, built, transform, slot),
+          water(settings, target, built, transform, slot)
+        ] ++
+          things(settings, target, built, transform, slot) ++
+          cover(settings, target, built, transform, slot)
 
       placed = Enum.reject(placed, &is_nil/1)
       ids = Enum.map(placed, fn {id, _instance, _handles} -> id end)
       gone = for id <- before.ids, id not in ids, do: {:remove_instance, id}
       Enum.each(before.handles, &Target.release(target, &1))
 
-      cell = %{slot: slot, level: built.level, handles: Enum.flat_map(placed, &elem(&1, 2)), ids: ids}
-      changes = gone ++ Enum.map(placed, fn {id, instance, _handles} -> {:instance, id, instance} end)
+      cell = %{
+        slot: slot,
+        level: built.level,
+        handles: Enum.flat_map(placed, &elem(&1, 2)),
+        ids: ids
+      }
+
+      changes =
+        gone ++ Enum.map(placed, fn {id, instance, _handles} -> {:instance, id, instance} end)
+
       {changes, %{shown | cells: Map.put(shown.cells, built.address, cell)}}
     end
 
@@ -159,7 +183,8 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
     end
 
     @doc "One step for viewers at `eyes`: drops what is out of reach and builds up to `budget` cells."
-    @spec frame(t(), Target.t(), World.t(), [World.point()], pos_integer()) :: {[Stream.change()], t()}
+    @spec frame(t(), Target.t(), World.t(), [World.point()], pos_integer()) ::
+            {[Stream.change()], t()}
     def frame(%__MODULE__{} = shown, target, %World{} = map, eyes, budget \\ 1) do
       due = due(shown, map, eyes)
       {dropped, shown} = drop(shown, target, due.drop)
@@ -174,21 +199,36 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
 
     defp covers(looks, map, address) do
       for {look, index} <- Enum.with_index(looks) do
-        opts = [kind: look.kind, per: look.per, size: Map.get(look, :size, {1.0, 1.0}), seed: Map.get(look, :seed, index)]
+        opts = [
+          kind: look.kind,
+          per: look.per,
+          size: Map.get(look, :size, {1.0, 1.0}),
+          seed: Map.get(look, :seed, index)
+        ]
+
         {index, OpenWorld.cover(map, address, opts)}
       end
     end
 
     defp ground(settings, target, built, transform, slot) do
       mesh = Target.mesh(target, built.ground)
-      {id(settings, slot, 0), %Instance{mesh: mesh, materials: [settings.ground], transform: transform}, [mesh]}
+
+      {id(settings, slot, 0),
+       %Instance{mesh: mesh, materials: [settings.ground], transform: transform}, [mesh]}
     end
 
     defp water(_settings, _target, %{water: nil}, _transform, _slot), do: nil
 
     defp water(settings, target, built, transform, slot) do
       mesh = Target.mesh(target, built.water)
-      instance = %Instance{mesh: mesh, materials: [settings.water], transform: transform, shadows: false}
+
+      instance = %Instance{
+        mesh: mesh,
+        materials: [settings.water],
+        transform: transform,
+        shadows: false
+      }
+
       {id(settings, slot, 1), instance, [mesh]}
     end
 
@@ -198,7 +238,13 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
       |> Enum.sort()
       |> Enum.with_index(2)
       |> Enum.map(fn {kind, offset} ->
-        scattered(target, Map.get(built.things, kind), Map.fetch!(settings.kinds, kind), transform, id(settings, slot, offset))
+        scattered(
+          target,
+          Map.get(built.things, kind),
+          Map.fetch!(settings.kinds, kind),
+          transform,
+          id(settings, slot, offset)
+        )
       end)
     end
 
@@ -206,7 +252,13 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
       first = 2 + map_size(settings.kinds)
 
       for {index, scatter} <- built.cover do
-        scattered(target, scatter, Enum.at(settings.cover, index), transform, id(settings, slot, first + index))
+        scattered(
+          target,
+          scatter,
+          Enum.at(settings.cover, index),
+          transform,
+          id(settings, slot, first + index)
+        )
       end
     end
 
@@ -232,11 +284,16 @@ if Code.ensure_loaded?(Cauldron.OpenWorld.Map) do
     defp slot(%__MODULE__{cells: cells} = shown, address) when is_map_key(cells, address),
       do: {cells[address].slot, shown}
 
-    defp slot(%__MODULE__{free: [slot | free]} = shown, _address), do: {slot, %{shown | free: free}}
-    defp slot(%__MODULE__{slots: slots} = shown, _address), do: {slots, %{shown | slots: slots + 1}}
+    defp slot(%__MODULE__{free: [slot | free]} = shown, _address),
+      do: {slot, %{shown | free: free}}
+
+    defp slot(%__MODULE__{slots: slots} = shown, _address),
+      do: {slots, %{shown | slots: slots + 1}}
 
     defp id(settings, slot, offset),
-      do: settings.first_id + slot * (2 + map_size(settings.kinds) + length(settings.cover)) + offset
+      do:
+        settings.first_id + slot * (2 + map_size(settings.kinds) + length(settings.cover)) +
+          offset
 
     defp nearest(map, address, eyes),
       do: eyes |> Enum.map(&Window.distance(map, address, &1)) |> Enum.min(fn -> 0.0 end)

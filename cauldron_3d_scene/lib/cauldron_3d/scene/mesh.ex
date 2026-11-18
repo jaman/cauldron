@@ -23,6 +23,8 @@ defmodule Cauldron3D.Scene.Mesh do
       Cauldron3D.Scene.Mesh.new(vertices, [0, 1, 2], parts: [{0, 3}])
   """
 
+  alias Cauldron3D.Scene.{Quat, Transform}
+
   @type vertex :: %{
           required(:position) => {number(), number(), number()},
           optional(:normal) => {number(), number(), number()},
@@ -141,17 +143,18 @@ defmodule Cauldron3D.Scene.Mesh do
   `mesh` with every vertex scaled, turned and moved by `transform`. Skin and morph
   targets are left as they are.
   """
-  @spec placed(t(), Cauldron3D.Scene.Transform.t()) :: t()
-  def placed(%__MODULE__{vertices: vertices} = mesh, %Cauldron3D.Scene.Transform{} = transform) do
+  @spec placed(t(), Transform.t()) :: t()
+  def placed(%__MODULE__{vertices: vertices} = mesh, %Transform{} = transform) do
     %{position: {px, py, pz}, rotation: rotation, scale: {sx, sy, sz}} = transform
 
     moved =
       for <<x::little-float-32, y::little-float-32, z::little-float-32, u::binary-size(4),
-            nx::little-float-32, ny::little-float-32, nz::little-float-32, rest::binary-size(20) <-
+            nx::little-float-32, ny::little-float-32, nz::little-float-32,
+            rest::binary-size(20) <-
               vertices>>,
           into: <<>> do
-        {tx, ty, tz} = Cauldron3D.Scene.Quat.rotate(rotation, {x * sx, y * sy, z * sz})
-        {mx, my, mz} = unit(Cauldron3D.Scene.Quat.rotate(rotation, {nx / sx, ny / sy, nz / sz}))
+        {tx, ty, tz} = Quat.rotate(rotation, {x * sx, y * sy, z * sz})
+        {mx, my, mz} = unit(Quat.rotate(rotation, {nx / sx, ny / sy, nz / sz}))
 
         <<tx + px::little-float-32, ty + py::little-float-32, tz + pz::little-float-32, u::binary,
           mx::little-float-32, my::little-float-32, mz::little-float-32, rest::binary>>
@@ -170,14 +173,21 @@ defmodule Cauldron3D.Scene.Mesh do
     coloured? = Enum.any?(meshes, & &1.colors)
 
     {vertices, indices, parts, colors, _vertex_base, _index_base} =
-      Enum.reduce(meshes, {[], [], [], [], 0, 0}, fn mesh, {vertices, indices, parts, colors, vertex_base, index_base} ->
-        shifted = for <<index::little-unsigned-32 <- mesh.indices>>, into: <<>>, do: <<index + vertex_base::little-unsigned-32>>
+      Enum.reduce(meshes, {[], [], [], [], 0, 0}, fn mesh,
+                                                     {vertices, indices, parts, colors,
+                                                      vertex_base, index_base} ->
+        shifted =
+          for <<index::little-unsigned-32 <- mesh.indices>>,
+            into: <<>>,
+            do: <<index + vertex_base::little-unsigned-32>>
+
         own = if mesh.parts == [], do: [{0, index_count(mesh)}], else: mesh.parts
         moved = Enum.map(own, fn {first, count} -> {first + index_base, count} end)
         white = :binary.copy(<<255, 255, 255, 255>>, vertex_count(mesh))
 
-        {[vertices, mesh.vertices], [indices, shifted], parts ++ moved, [colors, mesh.colors || white],
-         vertex_base + vertex_count(mesh), index_base + index_count(mesh)}
+        {[vertices, mesh.vertices], [indices, shifted], parts ++ moved,
+         [colors, mesh.colors || white], vertex_base + vertex_count(mesh),
+         index_base + index_count(mesh)}
       end)
 
     %__MODULE__{

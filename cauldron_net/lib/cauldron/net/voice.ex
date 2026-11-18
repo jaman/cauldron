@@ -43,7 +43,11 @@ defmodule Cauldron.Net.Voice do
   alias Cauldron.Net.Voice.{Calls, Ice}
 
   @type name :: String.t()
-  @type option :: {:relay, boolean()} | {:stun, [String.t()]} | {:turn, Ice.turn()} | {:wait, pos_integer()}
+  @type option ::
+          {:relay, boolean()}
+          | {:stun, [String.t()]}
+          | {:turn, Ice.turn()}
+          | {:wait, pos_integer()}
   @type settings :: %{relay: boolean(), stun: [String.t()], turn: Ice.turn(), wait: pos_integer()}
 
   @doc "Turns voice on with `options`, or changes its options."

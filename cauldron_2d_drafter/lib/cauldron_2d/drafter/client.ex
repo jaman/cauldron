@@ -388,7 +388,10 @@ defmodule Cauldron2D.Drafter.Client do
   def handle_event({:page, key}, _data, %{screen: :title} = state), do: {:ok, to_page(state, key)}
 
   def handle_event({:title, :play}, _data, %{screen: :title} = state), do: {:ok, play(state)}
-  def handle_event({:title, :settings}, _data, %{screen: :title} = state), do: {:ok, to_settings(state)}
+
+  def handle_event({:title, :settings}, _data, %{screen: :title} = state),
+    do: {:ok, to_settings(state)}
+
   def handle_event({:title, :guide}, _data, %{screen: :title} = state), do: {:ok, to_guide(state)}
   def handle_event({:title, :quit}, _data, %{screen: :title}), do: {:stop, :normal}
 
@@ -1018,7 +1021,13 @@ defmodule Cauldron2D.Drafter.Client do
   defp opened_menu(state, menu) do
     paused? = pause_for_menu(state.local_world)
     Drafter.set_timeout(Menus.frame_ms(), :menu_frame)
-    %{release_keys(state) | menu: menu, menu_paused?: paused?, world_paused?: paused_in(state.local_world)}
+
+    %{
+      release_keys(state)
+      | menu: menu,
+        menu_paused?: paused?,
+        world_paused?: paused_in(state.local_world)
+    }
   end
 
   defp paused_in(nil), do: false

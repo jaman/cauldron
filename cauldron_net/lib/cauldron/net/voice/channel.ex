@@ -35,10 +35,18 @@ defmodule Cauldron.Net.Voice.Channel do
 
   @impl Phoenix.Channel
   def handle_in("call", %{"to" => to}, socket), do: answer(Calls.call(me(socket), to), socket)
-  def handle_in("accept", %{"from" => from}, socket), do: answer(Calls.accept(me(socket), from), socket)
-  def handle_in("decline", %{"from" => from}, socket), do: answer(Calls.decline(me(socket), from), socket)
-  def handle_in("hang_up", %{"with" => other}, socket), do: answer(Calls.hang_up(me(socket), other), socket)
-  def handle_in("mute", %{"muted" => muted}, socket), do: answer(Calls.mute(me(socket), muted == true), socket)
+
+  def handle_in("accept", %{"from" => from}, socket),
+    do: answer(Calls.accept(me(socket), from), socket)
+
+  def handle_in("decline", %{"from" => from}, socket),
+    do: answer(Calls.decline(me(socket), from), socket)
+
+  def handle_in("hang_up", %{"with" => other}, socket),
+    do: answer(Calls.hang_up(me(socket), other), socket)
+
+  def handle_in("mute", %{"muted" => muted}, socket),
+    do: answer(Calls.mute(me(socket), muted == true), socket)
 
   def handle_in("signal", %{"to" => to, "data" => data}, socket) do
     with true <- Calls.talking?(me(socket), to), pid when is_pid(pid) <- Calls.carrier(to) do
@@ -82,5 +90,7 @@ defmodule Cauldron.Net.Voice.Channel do
   defp me(socket), do: socket.assigns.username
 
   defp answer(:ok, socket), do: {:reply, :ok, socket}
-  defp answer({:error, reason}, socket), do: {:reply, {:error, %{reason: Atom.to_string(reason)}}, socket}
+
+  defp answer({:error, reason}, socket),
+    do: {:reply, {:error, %{reason: Atom.to_string(reason)}}, socket}
 end

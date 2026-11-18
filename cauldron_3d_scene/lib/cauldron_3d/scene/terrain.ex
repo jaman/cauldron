@@ -33,13 +33,22 @@ defmodule Cauldron3D.Scene.Terrain do
     side = div(samples, step)
     spacing = size / samples
 
-    top = for along <- 0..side, across <- 0..side, do: corner(across * step, along * step, spacing, height, size)
+    top =
+      for along <- 0..side,
+          across <- 0..side,
+          do: corner(across * step, along * step, spacing, height, size)
+
     hem = if skirt > 0, do: hem(side, step, spacing, height, size, skirt), else: []
     points = top ++ hem
 
     %Mesh{
       vertices: for(point <- points, into: <<>>, do: vertex(point)),
-      indices: for(index <- squares(side) ++ walls(side, skirt), into: <<>>, do: <<index::little-unsigned-32>>),
+      indices:
+        for(
+          index <- squares(side) ++ walls(side, skirt),
+          into: <<>>,
+          do: <<index::little-unsigned-32>>
+        ),
       colors: colours(points, kinds)
     }
   end
@@ -67,7 +76,8 @@ defmodule Cauldron3D.Scene.Terrain do
   end
 
   defp rim(side) do
-    Enum.map(0..side, &{&1, 0}) ++ Enum.map(0..side, &{side, &1}) ++
+    Enum.map(0..side, &{&1, 0}) ++
+      Enum.map(0..side, &{side, &1}) ++
       Enum.map(side..0//-1, &{&1, side}) ++ Enum.map(side..0//-1, &{0, &1})
   end
 
@@ -96,7 +106,8 @@ defmodule Cauldron3D.Scene.Terrain do
   defp vertex(%{position: {x, y, z}, normal: {nx, ny, nz}, uv: {u, v}}) do
     <<x::little-float-32, y::little-float-32, z::little-float-32, u::little-float-32,
       nx::little-float-32, ny::little-float-32, nz::little-float-32, v::little-float-32,
-      0.0::little-float-32, 0.0::little-float-32, 65_280.0::little-float-32, 65_535.0::little-float-32>>
+      0.0::little-float-32, 0.0::little-float-32, 65_280.0::little-float-32,
+      65_535.0::little-float-32>>
   end
 
   defp colours(_points, nil), do: nil

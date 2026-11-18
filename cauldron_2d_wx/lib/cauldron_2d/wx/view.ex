@@ -516,6 +516,7 @@ defmodule Cauldron2D.Wx.View do
         nil -> :ok
         bitmap -> :wxBitmap.destroy(bitmap)
       end
+
       %{state | raster: raster}
     end
   end

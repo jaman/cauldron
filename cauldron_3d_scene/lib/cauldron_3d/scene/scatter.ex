@@ -57,7 +57,8 @@ defmodule Cauldron3D.Scene.Scatter do
 
   defp bounds(positions) do
     {low, high} =
-      Enum.reduce(positions, {hd(positions), hd(positions)}, fn {x, y, z}, {{lx, ly, lz}, {hx, hy, hz}} ->
+      Enum.reduce(positions, {hd(positions), hd(positions)}, fn {x, y, z},
+                                                                {{lx, ly, lz}, {hx, hy, hz}} ->
         {{min(lx, x), min(ly, y), min(lz, z)}, {max(hx, x), max(hy, y), max(hz, z)}}
       end)
 

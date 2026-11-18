@@ -57,10 +57,10 @@ defmodule Cauldron3D.Scene.Stream do
     Material,
     Mesh,
     Pose,
-    Scatter,
-    Sprite,
     PriorityLayer,
+    Scatter,
     ShadowLayer,
+    Sprite,
     SpriteLayer,
     Texture,
     TileLayer,
@@ -76,7 +76,14 @@ defmodule Cauldron3D.Scene.Stream do
           | {:video, id(), String.t()}
           | {:drop_texture, id()}
           | {:canvas, id(), Canvas.t()}
-          | {:layers, [SpriteLayer.t() | ColumnLayer.t() | TileLayer.t() | ShadowLayer.t() | PriorityLayer.t()]}
+          | {:layers,
+             [
+               SpriteLayer.t()
+               | ColumnLayer.t()
+               | TileLayer.t()
+               | ShadowLayer.t()
+               | PriorityLayer.t()
+             ]}
           | {:material, id(), Material.t()}
           | {:drop_material, id()}
           | {:scatter, id(), Scatter.t()}
@@ -163,8 +170,8 @@ defmodule Cauldron3D.Scene.Stream do
 
   defp op({:canvas, id, %Canvas{} = canvas}),
     do:
-      <<@op.canvas, id::little-32, flag(canvas.filter == :linear) + 2 * flag(canvas.srgb), canvas.width::little-32,
-        canvas.height::little-32>>
+      <<@op.canvas, id::little-32, flag(canvas.filter == :linear) + 2 * flag(canvas.srgb),
+        canvas.width::little-32, canvas.height::little-32>>
 
   defp op({:layers, layers}),
     do: [<<@op.layers, length(layers)::little-32>>, Enum.map(layers, &layer/1)]
@@ -183,7 +190,11 @@ defmodule Cauldron3D.Scene.Stream do
   defp op({:drop_scatter, id}), do: <<@op.drop_scatter, id::little-32>>
 
   defp op({:pushers, pushers}),
-    do: [<<@op.pushers, length(pushers)::little-32>>, Enum.map(pushers, &floats(Tuple.to_list(&1)))]
+    do: [
+      <<@op.pushers, length(pushers)::little-32>>,
+      Enum.map(pushers, &floats(Tuple.to_list(&1)))
+    ]
+
   defp op({:instance, id, %Instance{} = instance}), do: instance(id, instance)
   defp op({:move, id, %Transform{} = transform}), do: move(id, transform, false)
 
@@ -257,7 +268,8 @@ defmodule Cauldron3D.Scene.Stream do
       layer_head(2, layer.target, layer.clear, layer.port),
       rect(layer.view),
       <<handle_id(layer.atlas)::little-32, handle_id(layer.palette)::little-32,
-        (layer.transparent || 0xFFFF)::little-16, layer.pens::little-16, length(layer.tiles)::little-32>>,
+        layer.transparent || 0xFFFF::little-16, layer.pens::little-16,
+        length(layer.tiles)::little-32>>,
       Enum.map(layer.tiles, &tile/1)
     ]
   end
@@ -266,8 +278,9 @@ defmodule Cauldron3D.Scene.Stream do
     [
       layer_head(3, layer.target, layer.clear, layer.port),
       rect(layer.view),
-      <<handle_id(layer.atlas)::little-32, handle_id(layer.table)::little-32, layer.count::little-32,
-        (layer.transparent || 0xFFFF)::little-16, layer.pens::little-16, length(layer.tiles)::little-32>>,
+      <<handle_id(layer.atlas)::little-32, handle_id(layer.table)::little-32,
+        layer.count::little-32, layer.transparent || 0xFFFF::little-16, layer.pens::little-16,
+        length(layer.tiles)::little-32>>,
       Enum.map(layer.tiles, &tile/1)
     ]
   end
@@ -276,8 +289,9 @@ defmodule Cauldron3D.Scene.Stream do
     [
       layer_head(5, layer.target, layer.clear, layer.port),
       rect(layer.view),
-      <<handle_id(layer.atlas)::little-32, handle_id(layer.palette)::little-32, shadows::little-32,
-        handle_id(layer.coverage)::little-32, (layer.transparent || 0xFFFF)::little-16, layer.pens::little-16,
+      <<handle_id(layer.atlas)::little-32, handle_id(layer.palette)::little-32,
+        shadows::little-32, handle_id(layer.coverage)::little-32,
+        layer.transparent || 0xFFFF::little-16, layer.pens::little-16,
         length(layer.tiles)::little-32>>,
       Enum.map(layer.tiles, &tile/1)
     ]
@@ -287,20 +301,19 @@ defmodule Cauldron3D.Scene.Stream do
     [
       layer_head(4, layer.target, layer.clear, layer.port),
       rect(layer.view),
-      <<handle_id(layer.atlas)::little-32, handle_id(layer.palette)::little-32, handle_id(layer.coverage)::little-32,
-        (layer.transparent || 0xFFFF)::little-16, layer.pens::little-16, length(layer.tiles)::little-32>>,
+      <<handle_id(layer.atlas)::little-32, handle_id(layer.palette)::little-32,
+        handle_id(layer.coverage)::little-32, layer.transparent || 0xFFFF::little-16,
+        layer.pens::little-16, length(layer.tiles)::little-32>>,
       Enum.map(layer.tiles, &tile/1)
     ]
   end
 
   defp tile({source_x, source_y, width, height, x, y, flags, palette_base}),
-
     do:
-      <<source_x::little-16, source_y::little-16, width, height, x::little-signed-16, y::little-signed-16, flags,
-        palette_base::little-16>>
+      <<source_x::little-16, source_y::little-16, width, height, x::little-signed-16,
+        y::little-signed-16, flags, palette_base::little-16>>
 
   defp layer_head(kind, target, clear, port) do
-
     [
       <<kind, target_id(target)::little-32, flag(clear != nil)>>,
       floats(Tuple.to_list(clear || {0, 0, 0, 0})),
@@ -439,8 +452,8 @@ defmodule Cauldron3D.Scene.Stream do
     [first, second, third, fourth] = Enum.take(layers ++ [nil, nil, nil, nil], 4)
 
     [
-      <<@op.material_layers, id::little-32, handle_id(first)::little-32, handle_id(second)::little-32,
-        handle_id(third)::little-32, handle_id(fourth)::little-32>>,
+      <<@op.material_layers, id::little-32, handle_id(first)::little-32,
+        handle_id(second)::little-32, handle_id(third)::little-32, handle_id(fourth)::little-32>>,
       floats([scale])
     ]
   end

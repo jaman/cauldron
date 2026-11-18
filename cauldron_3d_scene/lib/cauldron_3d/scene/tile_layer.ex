@@ -31,8 +31,8 @@ defmodule Cauldron3D.Scene.TileLayer do
   alias Cauldron3D.Scene.Handle
 
   @type tile ::
-          {non_neg_integer(), non_neg_integer(), pos_integer(), pos_integer(), integer(), integer(),
-           0..7, non_neg_integer()}
+          {non_neg_integer(), non_neg_integer(), pos_integer(), pos_integer(), integer(),
+           integer(), 0..7, non_neg_integer()}
   @type rect :: {number(), number(), number(), number()}
   @type t :: %__MODULE__{
           target: :frame | Handle.t(),
@@ -47,5 +47,15 @@ defmodule Cauldron3D.Scene.TileLayer do
         }
 
   @enforce_keys [:atlas, :palette]
-  defstruct [:atlas, :palette, target: :frame, clear: nil, port: nil, view: nil, transparent: nil, pens: 0xFFFF, tiles: []]
+  defstruct [
+    :atlas,
+    :palette,
+    target: :frame,
+    clear: nil,
+    port: nil,
+    view: nil,
+    transparent: nil,
+    pens: 0xFFFF,
+    tiles: []
+  ]
 end

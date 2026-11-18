@@ -60,7 +60,8 @@ defmodule Cauldron.OpenWorld.Map do
 
   @doc "The map without the cell at `address`."
   @spec drop(t(), Cell.address()) :: t()
-  def drop(%__MODULE__{cells: cells} = map, address), do: %{map | cells: Map.delete(cells, address)}
+  def drop(%__MODULE__{cells: cells} = map, address),
+    do: %{map | cells: Map.delete(cells, address)}
 
   @doc "The cell at `address`, or `nil`."
   @spec cell(t(), Cell.address()) :: Cell.t() | nil

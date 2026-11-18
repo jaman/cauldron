@@ -238,26 +238,23 @@ defmodule Cauldron.SFX do
     end
   end
 
-  # A sample's `file` is written beside the bank, so a bank directory can move.
   defp resolve(bank, dir) do
     events =
       Map.new(bank.events, fn {name, event} ->
-        variants =
-          Enum.map(event.variants, fn
-            %{"kind" => "sample", "file" => file} = recipe when is_binary(file) ->
-              if Path.type(file) == :absolute,
-                do: recipe,
-                else: %{recipe | "file" => Path.expand(file, dir)}
-
-            other ->
-              other
-          end)
-
-        {name, %{event | variants: variants}}
+        {name, %{event | variants: Enum.map(event.variants, &variant(&1, dir))}}
       end)
 
     %{bank | events: events}
   end
+
+  # A sample's `file` is written beside the bank, so a bank directory can move.
+  defp variant(%{"kind" => "sample", "file" => file} = recipe, dir) when is_binary(file) do
+    if Path.type(file) == :absolute,
+      do: recipe,
+      else: %{recipe | "file" => Path.expand(file, dir)}
+  end
+
+  defp variant(other, _dir), do: other
 
   @doc "As `read/1`, raising on anything unreadable."
   @spec read!(Path.t()) :: t()

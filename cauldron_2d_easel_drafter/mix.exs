@@ -49,8 +49,7 @@ defmodule Cauldron2D.Easel.Drafter.MixProject do
     [
       licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files:
-        ~w(lib mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
     ]
   end
 

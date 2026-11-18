@@ -56,7 +56,16 @@ defmodule Cauldron.OpenWorld.Mover do
         }
 
   @enforce_keys [:point, :height]
-  defstruct [:point, :height, heading: 0.0, speed: 0.0, rise: 0.0, mode: :ground, stamina: 1.0, stopped: []]
+  defstruct [
+    :point,
+    :height,
+    heading: 0.0,
+    speed: 0.0,
+    rise: 0.0,
+    mode: :ground,
+    stamina: 1.0,
+    stopped: []
+  ]
 
   @doc "A body standing on the ground of `map` at `point`."
   @spec new(World.point(), World.t()) :: t()
@@ -65,10 +74,17 @@ defmodule Cauldron.OpenWorld.Mover do
 
   @doc "The body `seconds` later, having done what `intent` asks as far as `pace` and `map` let it."
   @spec step(t(), World.t(), intent(), map(), number()) :: t()
-  def step(%__MODULE__{mode: :ground} = mover, map, intent, pace, seconds), do: walked(mover, map, intent, pace, seconds)
-  def step(%__MODULE__{mode: :air} = mover, map, intent, pace, seconds), do: fallen(mover, map, intent, pace, seconds)
-  def step(%__MODULE__{mode: :climb} = mover, map, intent, pace, seconds), do: climbed(mover, map, intent, pace, seconds)
-  def step(%__MODULE__{mode: :swim} = mover, map, intent, pace, seconds), do: swum(mover, map, intent, pace, seconds)
+  def step(%__MODULE__{mode: :ground} = mover, map, intent, pace, seconds),
+    do: walked(mover, map, intent, pace, seconds)
+
+  def step(%__MODULE__{mode: :air} = mover, map, intent, pace, seconds),
+    do: fallen(mover, map, intent, pace, seconds)
+
+  def step(%__MODULE__{mode: :climb} = mover, map, intent, pace, seconds),
+    do: climbed(mover, map, intent, pace, seconds)
+
+  def step(%__MODULE__{mode: :swim} = mover, map, intent, pace, seconds),
+    do: swum(mover, map, intent, pace, seconds)
 
   defp walked(mover, map, intent, pace, seconds) do
     dashing? = intent.dash and mover.stamina > 0.0 and pressed(intent) > 0.05
@@ -76,15 +92,35 @@ defmodule Cauldron.OpenWorld.Mover do
     mover = mover |> turned(intent, pace, seconds) |> paced(top, pace, seconds)
     {point, stopped} = reached(mover, map, pace, seconds)
     ground = World.height(map, point) || mover.height
-    stamina = if dashing?, do: spent(mover.stamina, pace.tire_dash, seconds), else: rested(mover.stamina, pace, seconds)
+
+    stamina =
+      if dashing?,
+        do: spent(mover.stamina, pace.tire_dash, seconds),
+        else: rested(mover.stamina, pace, seconds)
+
     mover = %{mover | stopped: stopped, stamina: stamina}
 
+    settled(mover, map, intent, point, ground, pace)
+  end
+
+  # Where a walking mover ends up: leaping into the air, stopped against a wall, afloat,
+  # off a ledge, or standing on the ground it reached.
+  defp settled(mover, map, intent, point, ground, pace) do
     cond do
-      intent.leap -> %{mover | mode: :air, rise: pace.leap / 1}
-      too_steep?(mover, point, ground, pace) -> against(mover, intent)
-      deep?(map, point, ground, pace) -> %{mover | point: point, height: afloat(map, point, pace), mode: :swim}
-      ground < mover.height - pace.ledge -> %{mover | point: point, mode: :air, rise: 0.0}
-      true -> %{mover | point: point, height: ground}
+      intent.leap ->
+        %{mover | mode: :air, rise: pace.leap / 1}
+
+      too_steep?(mover, point, ground, pace) ->
+        against(mover, intent)
+
+      deep?(map, point, ground, pace) ->
+        %{mover | point: point, height: afloat(map, point, pace), mode: :swim}
+
+      ground < mover.height - pace.ledge ->
+        %{mover | point: point, mode: :air, rise: 0.0}
+
+      true ->
+        %{mover | point: point, height: ground}
     end
   end
 
@@ -97,18 +133,32 @@ defmodule Cauldron.OpenWorld.Mover do
     mover = %{mover | stopped: stopped}
 
     cond do
-      ground > mover.height + pace.ledge and too_steep?(mover, point, ground, pace) -> against(%{mover | height: height, rise: rise}, intent)
-      height > ground and not sunk?(map, point, height, pace) -> %{mover | point: point, height: height, rise: rise}
-      deep?(map, point, ground, pace) -> %{mover | point: point, height: afloat(map, point, pace), rise: 0.0, mode: :swim}
-      true -> %{mover | point: point, height: ground, rise: 0.0, mode: :ground}
+      ground > mover.height + pace.ledge and too_steep?(mover, point, ground, pace) ->
+        against(%{mover | height: height, rise: rise}, intent)
+
+      height > ground and not sunk?(map, point, height, pace) ->
+        %{mover | point: point, height: height, rise: rise}
+
+      deep?(map, point, ground, pace) ->
+        %{mover | point: point, height: afloat(map, point, pace), rise: 0.0, mode: :swim}
+
+      true ->
+        %{mover | point: point, height: ground, rise: 0.0, mode: :ground}
     end
   end
 
   defp climbed(mover, _map, %{leap: true}, pace, _seconds),
-    do: %{mover | mode: :air, rise: pace.leap * 0.5, speed: pace.run / 1, heading: mover.heading + :math.pi()}
+    do: %{
+      mover
+      | mode: :air,
+        rise: pace.leap * 0.5,
+        speed: pace.run / 1,
+        heading: mover.heading + :math.pi()
+    }
 
-  defp climbed(%__MODULE__{stamina: stamina} = mover, _map, _intent, _pace, _seconds) when stamina <= 0.0,
-    do: %{mover | mode: :air, rise: 0.0, speed: 0.0}
+  defp climbed(%__MODULE__{stamina: stamina} = mover, _map, _intent, _pace, _seconds)
+       when stamina <= 0.0,
+       do: %{mover | mode: :air, rise: 0.0, speed: 0.0}
 
   defp climbed(mover, map, intent, pace, seconds) do
     {rise_x, rise_y} = World.slope(map, mover.point) || {0.0, 0.0}
@@ -117,7 +167,10 @@ defmodule Cauldron.OpenWorld.Mover do
     along = if grade > 0.0, do: (toward_x * rise_x + toward_y * rise_y) / grade, else: 0.0
     reach = pace.climb * seconds / :math.sqrt(1.0 + along * along * grade * grade)
     {x, y} = mover.point
-    {point, stopped} = World.travel(map, mover.point, {x + toward_x * reach, y + toward_y * reach})
+
+    {point, stopped} =
+      World.travel(map, mover.point, {x + toward_x * reach, y + toward_y * reach})
+
     moving? = pressed(intent) > 0.05
     drain = if moving?, do: pace.tire_climb, else: pace.tire_climb * 0.5
 
@@ -135,7 +188,9 @@ defmodule Cauldron.OpenWorld.Mover do
   end
 
   defp swum(mover, map, intent, pace, seconds) do
-    mover = mover |> turned(intent, pace, seconds) |> paced(pace.swim * pressed(intent), pace, seconds)
+    mover =
+      mover |> turned(intent, pace, seconds) |> paced(pace.swim * pressed(intent), pace, seconds)
+
     {point, stopped} = reached(mover, map, pace, seconds)
     ground = World.height(map, point) || mover.height
     mover = %{mover | stopped: stopped, stamina: spent(mover.stamina, pace.tire_swim, seconds)}
@@ -174,7 +229,12 @@ defmodule Cauldron.OpenWorld.Mover do
 
   defp afloat(map, point, pace), do: World.water(map, point) - pace.draft
 
-  defp reached(%__MODULE__{point: {x, y}, heading: heading, speed: speed} = mover, map, pace, seconds) do
+  defp reached(
+         %__MODULE__{point: {x, y}, heading: heading, speed: speed} = mover,
+         map,
+         pace,
+         seconds
+       ) do
     target = {x + :math.cos(heading) * speed * seconds, y + :math.sin(heading) * speed * seconds}
     {point, stopped} = World.travel(map, mover.point, target)
     {clear(map, point, pace.radius), stopped}
@@ -209,7 +269,12 @@ defmodule Cauldron.OpenWorld.Mover do
 
   defp paced(mover, top, pace, seconds) do
     change = pace.quicken * seconds
-    speed = if mover.speed < top, do: min(mover.speed + change, top), else: max(mover.speed - change, top)
+
+    speed =
+      if mover.speed < top,
+        do: min(mover.speed + change, top),
+        else: max(mover.speed - change, top)
+
     %{mover | speed: speed / 1}
   end
 

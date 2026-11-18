@@ -48,7 +48,11 @@ defmodule Mix.Tasks.Cauldron.Sfx.Import do
     Mix.Task.run("app.start")
 
     {opts, argv} = OptionParser.parse!(argv, strict: @switches)
-    wav = List.first(argv) || Mix.raise("Give the WAV to import: mix cauldron.sfx.import RECORDING.wav")
+
+    wav =
+      List.first(argv) ||
+        Mix.raise("Give the WAV to import: mix cauldron.sfx.import RECORDING.wav")
+
     bank_path = opts[:bank] || "priv/sfx/sfx.json"
     import = Keyword.drop(opts, [:bank])
 
@@ -57,9 +61,7 @@ defmodule Mix.Tasks.Cauldron.Sfx.Import do
         name = import[:event] || wav |> Path.basename(Path.extname(wav)) |> String.downcase()
         variants = bank |> SFX.event(name) |> Map.fetch!(:variants) |> length()
 
-        Mix.shell().info(
-          "#{variants} variants of #{name} added to #{SFX.manifest(bank_path)}"
-        )
+        Mix.shell().info("#{variants} variants of #{name} added to #{SFX.manifest(bank_path)}")
 
       {:error, reason} ->
         Mix.raise("cannot import #{wav}: #{inspect(reason)}")

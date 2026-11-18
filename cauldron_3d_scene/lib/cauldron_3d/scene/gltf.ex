@@ -262,7 +262,8 @@ defmodule Cauldron3D.Scene.Gltf do
   end
 
   defp morphs(primitives) do
-    count = primitives |> Enum.map(&length(&1.targets)) |> Enum.max(fn -> 0 end) |> min(@max_morphs)
+    count =
+      primitives |> Enum.map(&length(&1.targets)) |> Enum.max(fn -> 0 end) |> min(@max_morphs)
 
     for target <- 0..(count - 1)//1 do
       parts = Enum.map(primitives, &Vertices.morph(&1, target))
@@ -278,7 +279,6 @@ defmodule Cauldron3D.Scene.Gltf do
     do: source.weights |> Kernel.++(List.duplicate(0.0, count)) |> Enum.take(count)
 
   defp instance(id, mesh, materials, matrix, opts) do
-
     instance = %Instance{
       mesh: mesh.handle,
       materials: Enum.map(mesh.parts, &Map.fetch!(materials, &1).handle),

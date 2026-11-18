@@ -71,7 +71,8 @@ defmodule Cauldron3D.Formats.Gltf.Primitives do
     for target <- targets do
       %{
         positions:
-          attribute(json, buffers, target["POSITION"]) || :binary.copy(<<0.0::little-float-32>>, count * 3),
+          attribute(json, buffers, target["POSITION"]) ||
+            :binary.copy(<<0.0::little-float-32>>, count * 3),
         normals: attribute(json, buffers, target["NORMAL"])
       }
     end
@@ -122,7 +123,10 @@ defmodule Cauldron3D.Formats.Gltf.Primitives do
   end
 
   defp picked_target(target, order),
-    do: %{positions: picked(target.positions, order, 12), normals: picked(target.normals, order, 12)}
+    do: %{
+      positions: picked(target.positions, order, 12),
+      normals: picked(target.normals, order, 12)
+    }
 
   defp attribute(_json, _buffers, nil), do: nil
 

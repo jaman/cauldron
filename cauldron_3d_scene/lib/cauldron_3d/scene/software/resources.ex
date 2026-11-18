@@ -116,7 +116,11 @@ if Code.ensure_loaded?(Cauldron3D.Render) do
     defp offsets(nil), do: nil
 
     defp offsets(binary),
-      do: List.to_tuple(for <<x::little-float-32, y::little-float-32, z::little-float-32 <- binary>>, do: {x, y, z})
+      do:
+        List.to_tuple(
+          for <<x::little-float-32, y::little-float-32, z::little-float-32 <- binary>>,
+            do: {x, y, z}
+        )
 
     defp skin(nil), do: nil
 

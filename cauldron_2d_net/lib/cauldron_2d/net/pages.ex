@@ -41,7 +41,7 @@ defmodule Cauldron2D.Net.Pages do
 
   alias Cauldron.Client.{Fronts, Game, Hud, Stage, Start}
   alias Cauldron.Client.Keys, as: ClientKeys
-  alias Cauldron.Net.Drawer
+  alias Cauldron.Net.{Drawer, Voice}
   alias Cauldron2D.Net.Atlas
   alias Cauldron2D.Net.Scene.Items
 
@@ -674,11 +674,15 @@ defmodule Cauldron2D.Net.Pages do
   end
 
   defp voice_tag(opts) do
-    if Cauldron.Net.Voice.open?(), do: ~s|<script src="#{link(opts, "/voice.js")}"></script>|, else: ""
+    if Voice.open?(),
+      do: ~s|<script src="#{link(opts, "/voice.js")}"></script>|,
+      else: ""
   end
 
   defp voice_start do
-    if Cauldron.Net.Voice.open?(), do: "window.cauldronVoice = CauldronVoice.start(game.socket());", else: ""
+    if Voice.open?(),
+      do: "window.cauldronVoice = CauldronVoice.start(game.socket());",
+      else: ""
   end
 
   defp css do

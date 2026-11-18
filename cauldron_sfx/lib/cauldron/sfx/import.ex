@@ -81,7 +81,8 @@ defmodule Cauldron.SFX.Import do
         }
       end)
 
-    bank = SFX.put_event(read_bank(bank_path), event, %{variants: Enum.map(written, & &1.variant)})
+    bank =
+      SFX.put_event(read_bank(bank_path), event, %{variants: Enum.map(written, & &1.variant)})
 
     with :ok <- write_all(written, directory),
          :ok <- SFX.write(bank, bank_path) do
@@ -152,9 +153,10 @@ defmodule Cauldron.SFX.Import do
     if part == 0 do
       [pcm]
     else
+      # The last part takes whatever the division left over, so no frame is dropped.
       for index <- 0..(count - 1) do
         start = index * part
-        length = if index == count - 1, do: frames - start, else: part
+        length = min(part, frames - start)
         binary_part(pcm, start * frame_bytes, length * frame_bytes)
       end
     end

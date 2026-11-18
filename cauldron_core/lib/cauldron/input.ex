@@ -237,7 +237,9 @@ defmodule Cauldron.Input do
   defp dragged_read(read, drag), do: Map.put(read, :drag, drag)
 
   defp dragged(drag, nil, _to), do: drag
-  defp dragged({across, down}, {from_x, from_y}, {x, y}), do: {across + x - from_x, down + y - from_y}
+
+  defp dragged({across, down}, {from_x, from_y}, {x, y}),
+    do: {across + x - from_x, down + y - from_y}
 
   @doc """
   The key spec a terminal event presses, for binding it: a key (`:a`, or `{:f, [:ctrl]}`

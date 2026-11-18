@@ -26,7 +26,13 @@ defmodule Cauldron.Net.Voice.Calls do
   @table __MODULE__
 
   @type name :: String.t()
-  @type state :: %{incoming: [name()], outgoing: [name()], talking: [name()], muted: boolean(), present: boolean()}
+  @type state :: %{
+          incoming: [name()],
+          outgoing: [name()],
+          talking: [name()],
+          muted: boolean(),
+          present: boolean()
+        }
 
   @doc false
   @spec start_link(keyword()) :: GenServer.on_start()
@@ -120,16 +126,21 @@ defmodule Cauldron.Net.Voice.Calls do
   def handle_call({:decline, name, caller}, _from, calls) do
     if MapSet.member?(calls.asked, {caller, name}) do
       tell(calls, caller, "declined", %{by: name})
-      {:reply, :ok, publish(%{calls | asked: MapSet.delete(calls.asked, {caller, name})}, [name, caller])}
+
+      {:reply, :ok,
+       publish(%{calls | asked: MapSet.delete(calls.asked, {caller, name})}, [name, caller])}
     else
       {:reply, :ok, calls}
     end
   end
 
-  def handle_call({:hang_up, name, other}, _from, calls), do: {:reply, :ok, part(calls, name, other)}
+  def handle_call({:hang_up, name, other}, _from, calls),
+    do: {:reply, :ok, part(calls, name, other)}
 
   def handle_call({:mute, name, muted}, _from, calls) do
-    muted_set = if muted, do: MapSet.put(calls.muted, name), else: MapSet.delete(calls.muted, name)
+    muted_set =
+      if muted, do: MapSet.put(calls.muted, name), else: MapSet.delete(calls.muted, name)
+
     tell(calls, name, "mute", %{muted: muted})
     {:reply, :ok, publish(%{calls | muted: muted_set}, [name])}
   end
@@ -149,7 +160,11 @@ defmodule Cauldron.Net.Voice.Calls do
   end
 
   defp gone(calls, name) do
-    others = for {a, b} <- MapSet.to_list(calls.talking) ++ MapSet.to_list(calls.asked), name in [a, b], do: if(a == name, do: b, else: a)
+    others =
+      for {a, b} <- MapSet.to_list(calls.talking) ++ MapSet.to_list(calls.asked),
+          name in [a, b],
+          do: if(a == name, do: b, else: a)
+
     calls = Enum.reduce(Enum.uniq(others), calls, &part(&2, name, &1))
     :ets.delete(@table, {:carrier, name})
     :ets.delete(@table, {:state, name})
@@ -198,7 +213,13 @@ defmodule Cauldron.Net.Voice.Calls do
     %{
       incoming: for({from, ^name} <- MapSet.to_list(calls.asked), do: from) |> Enum.sort(),
       outgoing: for({^name, to} <- MapSet.to_list(calls.asked), do: to) |> Enum.sort(),
-      talking: for({a, b} <- MapSet.to_list(calls.talking), name in [a, b], do: if(a == name, do: b, else: a)) |> Enum.sort(),
+      talking:
+        for(
+          {a, b} <- MapSet.to_list(calls.talking),
+          name in [a, b],
+          do: if(a == name, do: b, else: a)
+        )
+        |> Enum.sort(),
       muted: MapSet.member?(calls.muted, name),
       present: true
     }

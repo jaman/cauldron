@@ -17,12 +17,12 @@ defmodule Cauldron3D.Scene.Host.Record do
     Instance,
     Material,
     Pose,
-    Sprite,
     PriorityLayer,
     ShadowLayer,
+    Sprite,
     SpriteLayer,
-    TileLayer,
-    Stream
+    Stream,
+    TileLayer
   }
 
   @type key :: {Handle.kind(), Stream.id()}
@@ -235,8 +235,13 @@ defmodule Cauldron3D.Scene.Host.Record do
   defp layer_handles(%TileLayer{target: target, atlas: atlas, palette: palette}),
     do: [handle_key(atlas), handle_key(palette) | target_keys(target)]
 
-  defp layer_handles(%PriorityLayer{target: target, atlas: atlas, palette: palette, coverage: coverage}),
-    do: [handle_key(atlas), handle_key(palette), handle_key(coverage) | target_keys(target)]
+  defp layer_handles(%PriorityLayer{
+         target: target,
+         atlas: atlas,
+         palette: palette,
+         coverage: coverage
+       }),
+       do: [handle_key(atlas), handle_key(palette), handle_key(coverage) | target_keys(target)]
 
   defp layer_handles(%ShadowLayer{target: target, atlas: atlas, table: table}),
     do: [handle_key(atlas), handle_key(table) | target_keys(target)]

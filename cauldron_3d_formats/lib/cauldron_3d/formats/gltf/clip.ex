@@ -68,7 +68,9 @@ defmodule Cauldron3D.Formats.Gltf.Clip do
   @spec onto(map(), Cauldron3D.Formats.Gltf.t(), Cauldron3D.Formats.Gltf.t()) :: map()
   def onto(%{channels: channels} = clip, from, onto) do
     names = from.nodes |> Enum.with_index() |> Map.new(fn {node, index} -> {index, node.name} end)
-    places = onto.nodes |> Enum.with_index() |> Map.new(fn {node, index} -> {node.name, index} end)
+
+    places =
+      onto.nodes |> Enum.with_index() |> Map.new(fn {node, index} -> {node.name, index} end)
 
     moved =
       for channel <- channels,
@@ -89,7 +91,9 @@ defmodule Cauldron3D.Formats.Gltf.Clip do
   @spec empty() :: sample()
   def empty, do: %{translations: %{}, rotations: %{}, scales: %{}, weights: %{}}
 
-  defp wrapped(time, duration, true) when duration > 0, do: time - Float.floor(time / duration) * duration
+  defp wrapped(time, duration, true) when duration > 0,
+    do: time - Float.floor(time / duration) * duration
+
   defp wrapped(time, _duration, _loop), do: time
 
   defp merged(first, second, mix), do: Map.merge(first, second, fn _node, a, b -> mix.(a, b) end)
@@ -163,7 +167,9 @@ defmodule Cauldron3D.Formats.Gltf.Clip do
   end
 
   defp combine(:rotation, {a, b, c, d}, {ma, mb, mc, md}, {e, f, g, h}, {na, nb, nc, nd}, curve) do
-    Quat.normalize({curve.(a, ma, e, na), curve.(b, mb, f, nb), curve.(c, mc, g, nc), curve.(d, md, h, nd)})
+    Quat.normalize(
+      {curve.(a, ma, e, na), curve.(b, mb, f, nb), curve.(c, mc, g, nc), curve.(d, md, h, nd)}
+    )
   end
 
   defp combine(:weights, from, out_tangent, to, in_tangent, curve) do

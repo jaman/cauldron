@@ -132,7 +132,14 @@ defmodule Cauldron2D.Net.SessionTest do
   end
 
   defp join(world, name, props, opts \\ []),
-    do: Session.join(DotsWeb, world, name, props, Keyword.put_new(opts, :drawer, {Drawer, drawing: :server}))
+    do:
+      Session.join(
+        DotsWeb,
+        world,
+        name,
+        props,
+        Keyword.put_new(opts, :drawer, {Drawer, drawing: :server})
+      )
 
   setup do
     {:ok, world} = World.start_link(game: Dots, hz: 50, name: :dots_web_world)

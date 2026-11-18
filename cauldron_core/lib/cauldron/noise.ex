@@ -20,7 +20,11 @@ defmodule Cauldron.Noise do
     {across, along} = {fade(right), fade(up)}
 
     low =
-      blend(pull(seed, left, bottom, right, up), pull(seed, left + 1, bottom, right - 1, up), across)
+      blend(
+        pull(seed, left, bottom, right, up),
+        pull(seed, left + 1, bottom, right - 1, up),
+        across
+      )
 
     high =
       blend(

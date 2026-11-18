@@ -19,8 +19,8 @@ if Code.ensure_loaded?(Cauldron3D.Formats.Gltf.Rig) do
     Nodes without a skin that a clip translates, turns or scales are not moved.
     """
 
-    alias Cauldron3D.Formats.Gltf.{Clip, Rig}
     alias Cauldron3D.Formats.Gltf
+    alias Cauldron3D.Formats.Gltf.{Clip, Rig}
     alias Cauldron3D.Scene.Pose
 
     @type t :: %__MODULE__{
@@ -78,6 +78,7 @@ if Code.ensure_loaded?(Cauldron3D.Formats.Gltf.Rig) do
     defp sampled(nil, defaults), do: defaults
 
     defp sampled(weights, defaults),
-      do: weights |> Kernel.++(Enum.drop(defaults, length(weights))) |> Enum.take(length(defaults))
+      do:
+        weights |> Kernel.++(Enum.drop(defaults, length(weights))) |> Enum.take(length(defaults))
   end
 end
