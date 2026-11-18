@@ -102,9 +102,10 @@ defmodule CauldronGPU.MixProject do
 
   defp package do
     [
-      licenses: ["MIT"],
+      licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib c_src shaders priv/shaders Makefile Makefile.win mix.exs README.md STATE.md)
+      files:
+        ~w(lib c_src shaders priv/shaders Makefile Makefile.win mix.exs README.md STATE.md LICENSE COMMERCIAL.md)
     ]
   end
 

@@ -47,9 +47,10 @@ defmodule Cauldron2D.Easel.Drafter.MixProject do
 
   defp package do
     [
-      licenses: ["MIT"],
+      licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib mix.exs README.md CHANGELOG.md)
+      files:
+        ~w(lib mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
     ]
   end
 

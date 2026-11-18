@@ -52,9 +52,10 @@ defmodule Cauldron2D.MixProject do
 
   defp package do
     [
-      licenses: ["MIT"],
+      licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md)
+      files:
+        ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
     ]
   end
 

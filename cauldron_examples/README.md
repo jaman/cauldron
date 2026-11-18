@@ -57,3 +57,11 @@ mix beast
 | 3D in a terminal | `3d/courtyard` |
 | 3D in a browser (`cauldron_3d_net`) | `3d/web_3d` |
 | Releasing a desktop program | `3d/gpu_showcase` |
+
+## License
+
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

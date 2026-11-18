@@ -132,4 +132,8 @@ steps up ledges. Both take the trace as a function, so your game decides what is
 
 ## License
 
-MIT
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

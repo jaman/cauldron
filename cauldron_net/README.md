@@ -119,4 +119,8 @@ pushes; `Cauldron.Net.Sound` plays what a link delivers through this machine's s
 
 ## License
 
-MIT
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

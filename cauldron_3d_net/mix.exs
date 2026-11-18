@@ -48,9 +48,10 @@ defmodule Cauldron3D.Net.MixProject do
 
   defp package do
     [
-      licenses: ["MIT"],
+      licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv mix.exs README.md)
+      files:
+        ~w(lib priv mix.exs README.md LICENSE COMMERCIAL.md)
     ]
   end
 

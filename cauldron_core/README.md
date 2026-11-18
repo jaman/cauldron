@@ -97,3 +97,11 @@ provides: a 2D game writes `use Cauldron2D.Client.Game`.
 * `config :cauldron_core, sweeper: [idle_after: seconds, every: seconds]` — how long a world
   with no human in it runs before `Cauldron.Worlds.Sweeper` stops it, and how often it looks
 * `config :cauldron_core, beacon_port: n` — the UDP port `Cauldron.Beacon` calls on
+
+## License
+
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

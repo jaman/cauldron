@@ -22,3 +22,11 @@ event with **add event**. **write** saves the bank.
 
 A play is rendered to a WAV with `Cauldron.SFX.Audio.wav/1` and sent to the cell, which
 plays it as an `Audio` element. Nothing is rendered ahead of time.
+
+## License
+
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

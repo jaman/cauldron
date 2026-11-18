@@ -87,5 +87,8 @@ config :quake_c, cache_dir: "/var/cache/my_game/quake_c"
 
 ## License
 
-MIT. FTE's `pr_comp.h` and `execloop.h` define the extended instructions this machine
-runs.
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

@@ -64,3 +64,11 @@ also start the endpoint and route to `Cauldron.SFX.Web.EditorLive` itself.
 
 The model, the bank and the terminal front end are in `cauldron_core`, `cauldron_sfx` and
 `cauldron_sfx_web`'s siblings; this package only draws and plays.
+
+## License
+
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

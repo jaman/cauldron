@@ -77,3 +77,11 @@ the worked example of that split: `cauldron_2d_easel` holds the model, and
 `Cauldron.Audio.Voice` — the same voices a game already plays. That means an effect made
 here is a `Cauldron.Audio` sound like any other, and a game can play it without knowing the
 bank exists.
+
+## License
+
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).

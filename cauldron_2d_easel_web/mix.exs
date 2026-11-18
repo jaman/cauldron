@@ -54,9 +54,10 @@ defmodule Cauldron2D.Easel.Web.MixProject do
 
   defp package do
     [
-      licenses: ["MIT"],
+      licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv mix.exs README.md CHANGELOG.md)
+      files:
+        ~w(lib priv mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
     ]
   end
 

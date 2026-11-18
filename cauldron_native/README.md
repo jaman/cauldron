@@ -83,3 +83,11 @@ controls, events and modifiers.
 `cauldron_examples/apps/notes` in the Cauldron repository is an app with native
 controls and a view of its own on each platform; `cauldron_examples/games/beast` is a
 game. Both build for both platforms.
+
+## License
+
+[AGPL-3.0-only](LICENSE). You may use, study, change and share it under the AGPL at
+no cost.
+
+A game or service whose source you do not publish needs a
+[commercial license](COMMERCIAL.md).
