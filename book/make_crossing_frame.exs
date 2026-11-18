@@ -77,6 +77,14 @@ segment = fn lane, step ->
   end
 end
 
+art = fn lane, step ->
+  if lane.row in 1..5 and lane.kind == :turtle do
+    if Lanes.surfaced?(lane, view.elapsed), do: :turtle_0, else: :turtle_under
+  else
+    segment.(lane, step)
+  end
+end
+
 movers =
   Enum.flat_map(view.lanes, fn lane ->
     Enum.flat_map(Lanes.items(lane), fn edge ->
@@ -84,7 +92,7 @@ movers =
         for step <- 0..(lane.length - 1), do: place.(:shadow, edge + step, lane.row + 0.28)
 
       body =
-        for step <- 0..(lane.length - 1), do: place.(segment.(lane, step), edge + step, lane.row)
+        for step <- 0..(lane.length - 1), do: place.(art.(lane, step), edge + step, lane.row)
 
       shadows ++ body
     end)
@@ -92,7 +100,11 @@ movers =
 
 {fx, fy} = view.frog
 
-frog = [place.(:shadow, fx, fy + 0.28), place.(:frog, fx, fy)]
+frog = [
+  place.(:shadow, fx, fy + 0.28),
+  place.(:frog, fx, fy),
+  place.(:snake_0, view.snake.x, 6)
+]
 
 size = {15 * tile, 13 * tile}
 

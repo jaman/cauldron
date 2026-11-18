@@ -7,6 +7,11 @@ road	▓▓	#121218
 log_left	▬▬	#966030	
 log_mid	▬▬	#966030	
 log_right	▬▬	#966030	
+turtle_0	◍ 	#6ab04a	
+turtle_1	◍ 	#6ab04a	
+turtle_under	◌ 	#16305a	
+snake_0	§ 	#4ab060	
+snake_1	§ 	#4ab060	
 frog	♞ 	#3cc850	
 frog_hop	♞ 	#3cc850	
 bank	○ 	#28905a	

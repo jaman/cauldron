@@ -8,7 +8,7 @@ defmodule Crossing.Lanes do
   when someone asks, so the lane is a value like the game itself.
   """
 
-  defstruct [:row, :dir, :speed, :length, :count, :gap, :phase]
+  defstruct [:row, :dir, :speed, :length, :count, :gap, :phase, :kind, :cycle]
 
   @type t :: %__MODULE__{
           row: non_neg_integer(),
@@ -17,7 +17,9 @@ defmodule Crossing.Lanes do
           length: pos_integer(),
           count: pos_integer(),
           gap: non_neg_integer(),
-          phase: float()
+          phase: float(),
+          kind: atom(),
+          cycle: {float(), float()} | nil
         }
 
   @doc """
@@ -31,9 +33,10 @@ defmodule Crossing.Lanes do
           pos_integer(),
           pos_integer(),
           non_neg_integer(),
-          float()
+          float(),
+          keyword()
         ) :: t()
-  def lane(row, dir, speed, length, count, gap, phase \\ 0.0) do
+  def lane(row, dir, speed, length, count, gap, phase \\ 0.0, opts \\ []) do
     %__MODULE__{
       row: row,
       dir: dir,
@@ -41,8 +44,23 @@ defmodule Crossing.Lanes do
       length: length,
       count: count,
       gap: gap,
-      phase: phase
+      phase: phase,
+      kind: Keyword.get(opts, :kind, :log),
+      cycle: Keyword.get(opts, :cycle)
     }
+  end
+
+  @doc """
+  Whether what the lane carries can be stood on at `time` seconds into the game.
+
+  Logs always can. Turtles carry a `{up, down}` cycle and are under the water for the
+  second part of it; a frog standing on one when it goes down is in the water.
+  """
+  @spec surfaced?(t(), float()) :: boolean()
+  def surfaced?(%__MODULE__{cycle: nil}, _time), do: true
+
+  def surfaced?(%__MODULE__{cycle: {up, down}}, time) do
+    :math.fmod(time, up + down) < up
   end
 
   @doc "The lane after `dt` seconds."

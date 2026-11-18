@@ -22,6 +22,7 @@ defmodule Crossing.Game do
 
   defstruct frog: @start,
             lanes: [],
+            snake: %{x: 3.0, dir: 1},
             lives: @lives,
             score: 0,
             elapsed: 0.0,
@@ -41,16 +42,16 @@ defmodule Crossing.Game do
   def init(_opts) do
     lanes =
       [
-        Lanes.lane(1, 1, 1.2, 4, 3, 3, 0.0),
-        Lanes.lane(2, -1, 1.6, 3, 4, 2, 2.0),
-        Lanes.lane(3, 1, 1.0, 2, 5, 2, 5.0),
-        Lanes.lane(4, -1, 2.0, 3, 3, 4, 1.0),
-        Lanes.lane(5, 1, 1.5, 4, 4, 2, 7.0),
-        Lanes.lane(7, 1, 3.0, 2, 5, 3, 0.0),
-        Lanes.lane(8, -1, 2.4, 3, 4, 3, 4.0),
-        Lanes.lane(9, 1, 3.6, 2, 6, 2, 1.0),
-        Lanes.lane(10, -1, 2.0, 4, 3, 3, 6.0),
-        Lanes.lane(11, 1, 2.8, 3, 5, 2, 3.0)
+        Lanes.lane(1, 1, 1.2, 4, 3, 3, 0.0, kind: :log),
+        Lanes.lane(2, -1, 1.6, 3, 4, 2, 2.0, kind: :log),
+        Lanes.lane(3, 1, 1.0, 2, 5, 2, 5.0, kind: :turtle, cycle: {5.0, 2.5}),
+        Lanes.lane(4, -1, 2.0, 3, 3, 4, 1.0, kind: :log),
+        Lanes.lane(5, 1, 1.5, 4, 4, 2, 7.0, kind: :log),
+        Lanes.lane(7, 1, 3.0, 2, 5, 3, 0.0, kind: :car),
+        Lanes.lane(8, -1, 2.4, 3, 4, 3, 4.0, kind: :truck),
+        Lanes.lane(9, 1, 3.6, 2, 6, 2, 1.0, kind: :car),
+        Lanes.lane(10, -1, 2.0, 4, 3, 3, 6.0, kind: :bus),
+        Lanes.lane(11, 1, 2.8, 3, 5, 2, 3.0, kind: :truck)
       ]
 
     %__MODULE__{lanes: lanes}
@@ -73,12 +74,12 @@ defmodule Crossing.Game do
   @impl true
   def step(%__MODULE__{status: :playing} = game, dt) do
     lanes = Enum.map(game.lanes, &Lanes.step(&1, dt))
-    game = %{game | lanes: lanes, elapsed: game.elapsed + dt}
+    game = %{game | lanes: lanes, elapsed: game.elapsed + dt, snake: snake(game.snake, dt)}
 
-    if elem(game.frog, 1) == @home do
-      home(game)
-    else
-      cross(game, dt)
+    cond do
+      elem(game.frog, 1) == @home -> home(game)
+      bitten?(game) -> lose(game, :bitten)
+      true -> cross(game, dt)
     end
   end
 
@@ -89,6 +90,7 @@ defmodule Crossing.Game do
     %{
       frog: game.frog,
       lanes: game.lanes,
+      snake: game.snake,
       lives: game.lives,
       score: game.score,
       status: game.status,
@@ -135,6 +137,14 @@ defmodule Crossing.Game do
   end
 
   defp ride(%__MODULE__{} = game, lane, x, y, dt) do
+    if Lanes.surfaced?(lane, game.elapsed) do
+      ride_surfaced(game, lane, x, y, dt)
+    else
+      lose(game, :drowned)
+    end
+  end
+
+  defp ride_surfaced(%__MODULE__{} = game, lane, x, y, dt) do
     if Lanes.covers?(lane, trunc(x)) do
       drifted = x + lane.dir * lane.speed * dt
 
@@ -149,6 +159,20 @@ defmodule Crossing.Game do
   end
 
   defp lane_at(%__MODULE__{lanes: lanes}, row), do: Enum.find(lanes, &(&1.row == row))
+
+  # The snake patrols the median, turning at each end of it.
+  defp snake(%{x: x, dir: dir}, dt) do
+    x = x + dir * 2.6 * dt
+
+    cond do
+      x > @width - 1.2 -> %{x: @width - 1.2, dir: -1}
+      x < 0.6 -> %{x: 0.6, dir: 1}
+      true -> %{x: x, dir: dir}
+    end
+  end
+
+  defp bitten?(%__MODULE__{frog: {x, 6}, snake: %{x: sx}}), do: abs(x - sx) < 0.9
+  defp bitten?(%__MODULE__{}), do: false
 
   # --- the score, and the lives ---------------------------------------------------
 

@@ -68,6 +68,39 @@ defmodule Crossing.GameTest do
     assert game.frog == Game.start()
   end
 
+  test "a turtle that has gone under drops the frog" do
+    game = game()
+    lane = Enum.find(game.lanes, &(&1.kind == :turtle))
+    x = Enum.find(0..14, fn x -> Lanes.covers?(lane, x) end)
+
+    # the turtle lane is up for five seconds, then down for two and a half
+    game = %{game | frog: {x / 1, lane.row}, elapsed: 6.0}
+    game = Game.step(game, 1 / 60)
+
+    assert game.lives == 2
+    assert game.frog == Game.start()
+  end
+
+  test "a turtle that is up carries the frog" do
+    game = game()
+    lane = Enum.find(game.lanes, &(&1.kind == :turtle))
+    x = Enum.find(0..14, fn x -> Lanes.covers?(lane, x) end)
+
+    game = %{game | frog: {x / 1, lane.row}, elapsed: 1.0}
+    carried = Game.step(game, 1 / 60)
+
+    assert carried.lives == 3
+    assert carried.frog |> elem(0) > x
+  end
+
+  test "the snake on the median bites" do
+    game = game()
+    game = %{game | frog: {game.snake.x, 6}}
+    game = Game.step(game, 1 / 60)
+
+    assert game.lives == 2
+  end
+
   test "the last life ends the game" do
     game = %{game() | lives: 1, frog: {0.0, 2}}
     lane = Enum.find(game.lanes, &(&1.row == 2))

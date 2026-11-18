@@ -150,11 +150,11 @@ def draw_truck(length=3):
     amber, amber_light, amber_dark = (222, 160, 44, 255), (255, 206, 96, 255), (150, 98, 20, 255)
 
     cab = T
-    dd.rounded_rectangle([2, 5, w - 3, 27], radius=6, fill=amber_dark)
-    dd.rectangle([2, 6, w - cab - 2, 26], fill=amber)
-    dd.rectangle([4, 9, w - cab - 4, 23], fill=amber_light)
-    for x in range(10, w - cab - 6, 10):
-        dd.line([(x, 9), (x, 23)], fill=(198, 138, 34, 255))
+    dd.rounded_rectangle([2, 5, w - 3, 27], radius=6, fill=(120, 96, 58, 255))
+    dd.rectangle([4, 7, w - cab - 4, 25], fill=(196, 186, 160, 255))
+    dd.rectangle([6, 9, w - cab - 6, 23], fill=(214, 206, 182, 255))
+    for x in range(14, w - cab - 8, 16):
+        dd.rectangle([x, 7, x + 2, 25], fill=(150, 140, 116, 255))
 
     dd.rounded_rectangle([w - cab - 2, 5, w - 3, 27], radius=6, fill=(16, 70, 140, 255))
     dd.rounded_rectangle([w - cab, 7, w - 5, 25], radius=4, fill=(30, 110, 200, 255))
@@ -204,6 +204,63 @@ def vehicle_parts(kind, length):
     flipped = mirror(image)
     flipped_parts = [flipped.crop((i * T, 0, (i + 1) * T, T)) for i in range(length)]
     return parts, flipped_parts
+
+
+
+def turtle(frame, submerged=False):
+    """A turtle from above, or the shadow of one that has gone under."""
+    im = canvas()
+    dd = ImageDraw.Draw(im)
+    if submerged:
+        dd.ellipse([6, 9, T - 7, T - 8], fill=(16, 34, 70, 200))
+        dd.ellipse([9, 12, T - 10, T - 11], fill=(10, 24, 54, 220))
+        dd.arc([4, 7, T - 5, T - 6], 200, 340, fill=(60, 120, 190, 255), width=1)
+        return im
+
+    shell, light, dark = (86, 150, 74, 255), (128, 190, 104, 255), (44, 92, 44, 255)
+    skin = (150, 190, 110, 255)
+
+    # flippers, lifted on alternate frames
+    offset = 2 if frame == 0 else -1
+    for side in (-1, 1):
+        x0, x1 = sorted([8 + side * 9, 8 + side * 13])
+        y0, y1 = sorted([6 + offset * side, 12 + offset * side])
+        dd.ellipse([x0, y0, x1, y1], fill=skin)
+        y0, y1 = sorted([T - 12 - offset * side, T - 6 - offset * side])
+        dd.ellipse([x0, y0, x1, y1], fill=skin)
+
+    dd.ellipse([3, 6, T - 4, T - 7], fill=dark)
+    dd.ellipse([5, 8, T - 6, T - 9], fill=shell)
+    dd.ellipse([9, 11, T - 10, T - 12], fill=light)
+    dd.ellipse([12, 14, T - 13, T - 15], fill=shell)
+    # head
+    dd.ellipse([T // 2 - 4, 1, T // 2 + 4, 8], fill=skin)
+    dd.point((T // 2 - 2, 4), fill=(16, 24, 16, 255))
+    dd.point((T // 2 + 2, 4), fill=(16, 24, 16, 255))
+    return outline(im, (24, 52, 26, 255))
+
+
+def snake(frame=0):
+    """A snake from above: a looping body and a head with a tongue."""
+    im = canvas()
+    dd = ImageDraw.Draw(im)
+    green, light, dark = (74, 176, 96, 255), (130, 220, 140, 255), (26, 96, 48, 255)
+
+    # body: three loops
+    for index, y in enumerate((8, 16, 24)):
+        x0 = 4 + (index % 2) * 6
+        dd.arc([x0 - 4, y - 7, x0 + 20, y + 7], 180, 360, fill=dark, width=6)
+        dd.arc([x0 - 3, y - 6, x0 + 19, y + 6], 180, 360, fill=green, width=4)
+        dd.arc([x0 - 1, y - 5, x0 + 17, y + 5], 180, 360, fill=light, width=1)
+
+    # head
+    hx, hy = T - 7 + (1 if frame else 0), 16
+    dd.ellipse([hx - 5, hy - 4, hx + 5, hy + 4], fill=dark)
+    dd.ellipse([hx - 4, hy - 3, hx + 4, hy + 3], fill=green)
+    dd.point((hx - 1, hy - 2), fill=(250, 250, 230, 255))
+    dd.point((hx + 2, hy - 2), fill=(250, 250, 230, 255))
+    dd.line([(hx + 4, hy), (hx + 7, hy - 1)], fill=(226, 60, 60, 255))
+    return outline(im, (18, 48, 24, 255), 1)
 
 
 def frog(hop=False):
@@ -263,6 +320,11 @@ def main():
         "log_left": log("left"),
         "log_mid": log("mid"),
         "log_right": log("right"),
+        "turtle_0": turtle(0),
+        "turtle_1": turtle(1),
+        "turtle_under": turtle(0, submerged=True),
+        "snake_0": snake(0),
+        "snake_1": snake(1),
         "frog": frog(False),
         "frog_hop": frog(True),
         "bank": pad(),
@@ -289,6 +351,11 @@ def main():
         "log_mid": ("▬▬", "#966030"),
         "log_right": ("▬▬", "#966030"),
 
+        "turtle_0": ("◍ ", "#6ab04a"),
+        "turtle_1": ("◍ ", "#6ab04a"),
+        "turtle_under": ("◌ ", "#16305a"),
+        "snake_0": ("§ ", "#4ab060"),
+        "snake_1": ("§ ", "#4ab060"),
         "frog": ("♞ ", "#3cc850"),
         "frog_hop": ("♞ ", "#3cc850"),
         "bank": ("○ ", "#28905a"),

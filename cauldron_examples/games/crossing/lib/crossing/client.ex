@@ -45,7 +45,7 @@ defmodule Crossing.Client do
   def scene(view), do: scene(view, %{})
 
   @impl true
-  def scene(%{frog: frog, lanes: lanes}, _look) do
+  def scene(%{frog: frog, lanes: lanes, snake: snake, elapsed: elapsed}, _look) do
     {width, height} = Game.size()
 
     %{
@@ -57,10 +57,10 @@ defmodule Crossing.Client do
         Enum.flat_map(lanes, fn lane ->
           Enum.flat_map(Lanes.items(lane), fn edge ->
             for step <- 0..(lane.length - 1) do
-              {segment(lane, step), {edge + step + 0.5, lane.row}, :east}
+              {art(lane, step, elapsed), {edge + step + 0.5, lane.row}, :east}
             end
           end)
-        end),
+        end) ++ [{:snake_0, {snake.x + 0.5, 6}, :east}],
       labels: []
     }
   end
@@ -77,6 +77,16 @@ defmodule Crossing.Client do
       :over -> [first, [{"over: ctrl-c twice to leave", {230, 130, 120}}]]
     end
   end
+
+  defp art(lane, step, elapsed) when lane.row in 1..5 do
+    if lane.kind == :turtle do
+      if Lanes.surfaced?(lane, elapsed), do: :turtle_0, else: :turtle_under
+    else
+      segment(lane, step)
+    end
+  end
+
+  defp art(lane, step, _elapsed), do: segment(lane, step)
 
   defp segment(lane, step) when lane.row in 1..5 do
     cond do
