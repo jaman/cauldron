@@ -84,6 +84,24 @@ variable, or the game's `look/0`.
 | Keep scores, settings and saves | [Saving and scores](saving-and-scores.html) |
 | Test a game with no process | [Testing](testing.html) |
 | Draw the game | [`cauldron_2d`'s tutorial](https://hexdocs.pm/cauldron_2d/tutorial.html) |
-| Put it on a screen | The front end's own guide |
+| Put it in a terminal | [A terminal](https://hexdocs.pm/cauldron_2d_drafter/terminal.html), [Serving over SSH and telnet](https://hexdocs.pm/cauldron_2d_drafter/serving.html) |
+| Put it in a browser | [A browser](https://hexdocs.pm/cauldron_2d_net/browser.html) |
+| Put it in a desktop window | [A desktop window](https://hexdocs.pm/cauldron_2d_wx/window.html) |
+| Put it on a phone or tablet | [On a phone or tablet](https://hexdocs.pm/cauldron_native/overview.html), [Building a mobile app](https://hexdocs.pm/cauldron_native/building_apps.html), [Publishing a mobile app](https://hexdocs.pm/cauldron_native/publishing.html) |
+| Draw it in 3D | [3D scenes](https://hexdocs.pm/cauldron_3d_scene/scenes.html), [The graphics card](https://hexdocs.pm/cauldron_gpu/gpu.html) |
 | Find a word | [Glossary](glossary.html) |
 | Something is not working | [Troubleshooting](troubleshooting.html) |
+
+### Mobile and native apps
+
+`cauldron_native` runs your release inside an iOS, tvOS, macOS or Android app. A
+`cauldron_2d` game needs no phone code of its own: `cauldron_2d_native` gives it the
+screen and an on-screen controller laid out as phone games lay theirs out. An app of your
+own uses the platform's native controls instead.
+
+[On a phone or tablet](https://hexdocs.pm/cauldron_native/overview.html) says what the
+package offers and what a machine must have to build for each platform. The guide
+[Building a mobile app](https://hexdocs.pm/cauldron_native/building_apps.html) walks from
+`mix new` to a development build running on a device, with the native controls and the
+app's lifecycle. [Publishing a mobile app](https://hexdocs.pm/cauldron_native/publishing.html)
+takes that build to the App Store and Google Play.

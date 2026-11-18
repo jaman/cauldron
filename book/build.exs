@@ -77,11 +77,16 @@ chapters =
 
 chapter_slugs = MapSet.new(chapters, &slug.(&1.path))
 
-# A link to another chapter of this book becomes a link inside the book.
+# A link to another chapter of this book becomes a link inside the book, whether the
+# guide writes it as `chapter.html` or as its HexDocs address.
 rewrite_links = fn text ->
-  Regex.replace(~r/\]\(([a-z0-9-]+)\.html(?:#[^)]*)?\)/, text, fn whole, page ->
-    if MapSet.member?(chapter_slugs, page), do: "](##{page})", else: whole
-  end)
+  Regex.replace(
+    ~r/\]\((?:https:\/\/hexdocs\.pm\/[a-z0-9_]+\/)?([a-z0-9-]+)\.html(?:#[^)]*)?\)/,
+    text,
+    fn whole, page ->
+      if MapSet.member?(chapter_slugs, page), do: "](##{page})", else: whole
+    end
+  )
 end
 
 markdown_to_html = fn markdown ->
