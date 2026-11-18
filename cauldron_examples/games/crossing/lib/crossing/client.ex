@@ -39,7 +39,7 @@ defmodule Crossing.Client do
   def start, do: {:play, :crossing}
 
   @impl true
-  def look, do: %{projection: :top}
+  def look, do: %{projection: :top, zoom: 2}
 
   @impl true
   def scene(view), do: scene(view, %{})
@@ -113,8 +113,14 @@ defmodule Crossing.Client do
   defp kind(10), do: :bus
   defp kind(11), do: :truck
 
-  defp cell(position), do: {art(position), [], nil}
+  defp cell(position) do
+    case art(position) do
+      :void -> :void
+      art -> {art, [], nil}
+    end
+  end
 
+  defp art({x, y}) when x < 0 or y < 0 or x > 14 or y > 12, do: :void
   defp art({x, 0}), do: if(rem(x, 3) == 1, do: :bank, else: :water_a)
 
   defp art({x, row}) when row in 1..5,
