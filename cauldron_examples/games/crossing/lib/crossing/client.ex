@@ -66,10 +66,12 @@ defmodule Crossing.Client do
   end
 
   @impl true
-  def hud(%{score: score, lives: lives, status: status}) do
+  def hud(%{score: score, lives: lives, status: status, level: level, homes: homes}) do
     first = [
-      {"score #{score}", {246, 238, 214}},
-      {"   lives #{lives}", {150, 210, 150}}
+      {"level #{level}", {246, 238, 214}},
+      {"   bank #{homes}/5", {150, 210, 150}},
+      {"   score #{score}", {210, 190, 130}},
+      {"   lives #{lives}", {210, 160, 120}}
     ]
 
     case status do

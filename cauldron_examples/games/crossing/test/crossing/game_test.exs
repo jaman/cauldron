@@ -109,6 +109,41 @@ defmodule Crossing.GameTest do
     assert game.lives == 3
   end
 
+  test "filling the five slots clears the level and makes it harder" do
+    game =
+      Enum.reduce([1.0, 4.0, 7.0, 10.0, 13.0], game(), fn x, game ->
+        game = %{game | frog: {x, 0}}
+        Game.step(game, 1 / 60)
+      end)
+
+    assert game.level == 2
+    assert game.score == 5
+    assert MapSet.size(game.homes) == 0
+
+    assert Enum.max(Enum.map(game.lanes, & &1.speed)) >
+             Enum.max(Enum.map(game().lanes, & &1.speed))
+  end
+
+  test "landing on a filled slot costs a life" do
+    game = %{game() | frog: {7.0, 0}, homes: MapSet.new([7])}
+    game = Game.step(game, 1 / 60)
+
+    assert game.lives == 2
+  end
+
+  test "the snake comes more often and stays longer as levels rise" do
+    assert Game.snake_period(3) < Game.snake_period(1)
+    assert Game.snake_crossing(3) > Game.snake_crossing(1)
+  end
+
+  test "the turtles spend less time up as levels rise" do
+    {up_one, down_one} = Enum.find(game().lanes, &(&1.cycle != nil)).cycle
+    {up_four, down_four} = Enum.find(Game.lanes(4), &(&1.cycle != nil)).cycle
+
+    assert up_four < up_one
+    assert down_four > down_one
+  end
+
   test "the last life ends the game" do
     game = %{game() | lives: 1, frog: {0.0, 2}}
     lane = Enum.find(game.lanes, &(&1.row == 2))

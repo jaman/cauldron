@@ -16,13 +16,16 @@ defmodule Crossing.Game do
   @height 13
   @start {7.0, 12}
   @home 0
+  @slots [1, 4, 7, 10, 13]
   @water 1..5
   @road 7..11
   @lives 3
 
   defstruct frog: @start,
             lanes: [],
-            snake: %{x: 3.0, dir: 1},
+            snake: %{x: -1.5},
+            homes: MapSet.new(),
+            level: 1,
             lives: @lives,
             score: 0,
             elapsed: 0.0,
@@ -39,23 +42,38 @@ defmodule Crossing.Game do
   def start, do: @start
 
   @impl true
-  def init(_opts) do
-    lanes =
-      [
-        Lanes.lane(1, 1, 1.2, 4, 3, 3, 0.0, kind: :log),
-        Lanes.lane(2, -1, 1.6, 2, 5, 2, 2.0, kind: :turtle, cycle: nil),
-        Lanes.lane(3, 1, 1.0, 3, 4, 2, 5.0, kind: :log),
-        Lanes.lane(4, -1, 2.0, 3, 3, 4, 1.0, kind: :log),
-        Lanes.lane(5, 1, 1.5, 3, 3, 3, 7.0, kind: :turtle, cycle: {6.0, 3.0}),
-        Lanes.lane(7, 1, 3.0, 2, 5, 3, 0.0, kind: :car),
-        Lanes.lane(8, -1, 2.4, 3, 4, 3, 4.0, kind: :truck),
-        Lanes.lane(9, 1, 3.6, 2, 6, 2, 1.0, kind: :car),
-        Lanes.lane(10, -1, 2.0, 4, 3, 3, 6.0, kind: :bus),
-        Lanes.lane(11, 1, 2.8, 3, 5, 2, 3.0, kind: :truck)
-      ]
+  def init(_opts), do: %__MODULE__{lanes: lanes(1)}
 
-    %__MODULE__{lanes: lanes}
+  # Every level runs the same board a little harder: the traffic and the river speed up,
+  # the turtles spend less time up and more under, and the snake comes more often and
+  # stays longer.
+  @doc false
+  def lanes(level) do
+    speed = fn base -> base * (1.0 + 0.09 * (level - 1)) end
+    up = max(3.0, 6.0 - 0.5 * (level - 1))
+    down = min(6.0, 3.0 + 0.45 * (level - 1))
+
+    [
+      Lanes.lane(1, 1, speed.(1.2), 4, 3, 3, 0.0, kind: :log),
+      Lanes.lane(2, -1, speed.(1.6), 2, 5, 2, 2.0, kind: :turtle, cycle: nil),
+      Lanes.lane(3, 1, speed.(1.0), 3, 4, 2, 5.0, kind: :log),
+      Lanes.lane(4, -1, speed.(2.0), 3, 3, 4, 1.0, kind: :log),
+      Lanes.lane(5, 1, speed.(1.5), 3, 3, 3, 7.0, kind: :turtle, cycle: {up, down}),
+      Lanes.lane(7, 1, speed.(3.0), 2, 5, 3, 0.0, kind: :car),
+      Lanes.lane(8, -1, speed.(2.4), 3, 4, 3, 4.0, kind: :truck),
+      Lanes.lane(9, 1, speed.(3.6), 2, 6, 2, 1.0, kind: :car),
+      Lanes.lane(10, -1, speed.(2.0), 4, 3, 3, 6.0, kind: :bus),
+      Lanes.lane(11, 1, speed.(2.8), 3, 5, 2, 3.0, kind: :truck)
+    ]
   end
+
+  @doc "How long the snake is away between crossings, in seconds."
+  @spec snake_period(pos_integer()) :: float()
+  def snake_period(level), do: max(8.0, 20.0 - 1.6 * (level - 1))
+
+  @doc "How long the snake spends crossing the median, in seconds."
+  @spec snake_crossing(pos_integer()) :: float()
+  def snake_crossing(level), do: min(14.0, 8.0 + 0.7 * (level - 1))
 
   @impl true
   def join(%__MODULE__{} = game, _id, _props), do: {:ok, game}
@@ -75,7 +93,8 @@ defmodule Crossing.Game do
   def step(%__MODULE__{status: :playing} = game, dt) do
     lanes = Enum.map(game.lanes, &Lanes.step(&1, dt))
     elapsed = game.elapsed + dt
-    game = %{game | lanes: lanes, elapsed: elapsed, snake: snake(game.snake, elapsed, dt)}
+    snake = snake(game.snake, elapsed, dt, game.level)
+    game = %{game | lanes: lanes, elapsed: elapsed, snake: snake}
 
     cond do
       elem(game.frog, 1) == @home -> home(game)
@@ -92,6 +111,8 @@ defmodule Crossing.Game do
       frog: game.frog,
       lanes: game.lanes,
       snake: game.snake,
+      level: game.level,
+      homes: MapSet.size(game.homes),
       lives: game.lives,
       score: game.score,
       status: game.status,
@@ -162,28 +183,36 @@ defmodule Crossing.Game do
   defp lane_at(%__MODULE__{lanes: lanes}, row), do: Enum.find(lanes, &(&1.row == row))
 
   # The snake comes and goes: it crosses the median for a few seconds, then is away.
-  @snake_period 20.0
-  @snake_crossing 8.0
-
-  defp snake(%{x: x}, elapsed, dt) do
-    if :math.fmod(elapsed, @snake_period) < @snake_crossing do
-      next = x + 2.6 * dt
+  defp snake(%{x: x}, elapsed, dt, level) do
+    if :math.fmod(elapsed, snake_period(level)) < snake_crossing(level) do
+      next = x + (2.6 + 0.2 * (level - 1)) * dt
       %{x: if(next > @width + 1.5, do: -1.5, else: next)}
     else
       %{x: -1.5}
     end
   end
 
-  defp bitten?(%__MODULE__{frog: {x, 6}, snake: %{x: sx}, elapsed: elapsed}) do
-    :math.fmod(elapsed, @snake_period) < @snake_crossing and abs(x - sx) < 0.9
+  defp bitten?(%__MODULE__{frog: {x, 6}, snake: %{x: sx}, elapsed: elapsed, level: level}) do
+    :math.fmod(elapsed, snake_period(level)) < snake_crossing(level) and abs(x - sx) < 0.9
   end
 
   defp bitten?(%__MODULE__{}), do: false
 
   # --- the score, and the lives ---------------------------------------------------
 
-  defp home(%__MODULE__{} = game) do
-    %{game | score: game.score + 1, frog: @start}
+  defp home(%__MODULE__{frog: {x, _y}} = game) do
+    slot = Enum.min_by(@slots, &abs(&1 - x))
+
+    if MapSet.member?(game.homes, slot) do
+      lose(game, :taken)
+    else
+      game = %{game | homes: MapSet.put(game.homes, slot), score: game.score + 1, frog: @start}
+      if MapSet.size(game.homes) == length(@slots), do: level_up(game), else: game
+    end
+  end
+
+  defp level_up(%__MODULE__{level: level} = game) do
+    %{game | level: level + 1, homes: MapSet.new(), lanes: lanes(level + 1)}
   end
 
   defp lose(%__MODULE__{lives: lives} = game, _why) when lives <= 1 do
