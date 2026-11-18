@@ -17,6 +17,7 @@ defmodule Cauldron2D.GameMaker.MixProject do
       name: "Cauldron2D.GameMaker",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end

@@ -15,7 +15,7 @@ app; this package is what runs inside it:
 ## Using it
 
 ```elixir
-{:cauldron_2d_native, "~> 0.1", targets: [:ios, :android]},
+{:cauldron_2d_native, "~> 0.4", targets: [:ios, :android]},
 {:cauldron_native, "~> 0.1", runtime: Mix.target() in [:ios, :android]}
 ```
 

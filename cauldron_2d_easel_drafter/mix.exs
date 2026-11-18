@@ -17,6 +17,7 @@ defmodule Cauldron2D.Easel.Drafter.MixProject do
       name: "Cauldron2D.Easel.Drafter",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end

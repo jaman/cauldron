@@ -8,7 +8,7 @@ defmodule Cauldron2D.Collision do
       :solid                         the whole tile
       {:diagonal, :nw | :ne | :sw | :se}   the half toward that corner
 
-  `sweep/5` moves a body of some radius from one point to another in steps no longer than
+  `sweep/4` moves a body of some radius from one point to another in steps no longer than
   a quarter tile, so nothing passes through a wall however fast it travels, and reports the
   last clear point, the surface normal and the tile it would have entered. `bounce/3`
   reflects a velocity off that normal.

@@ -20,7 +20,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:quake_c, "~> 0.3"}
+    {:quake_c, "~> 0.4"}
   ]
 end
 ```

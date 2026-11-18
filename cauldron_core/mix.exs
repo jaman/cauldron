@@ -48,16 +48,45 @@ defmodule Cauldron.MixProject do
     [
       licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
+      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md guides)
     ]
   end
 
   defp docs do
     [
-      main: "readme",
+      main: "introduction",
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_core/%{path}#L%{line}",
-      extras: ["README.md", "CHANGELOG.md"],
+      extras: [
+        "guides/introduction.md",
+        "guides/installation.md",
+        "guides/worlds-and-players.md",
+        "guides/input-and-menus.md",
+        "guides/sound-and-music.md",
+        "guides/saving-and-scores.md",
+        "guides/testing.md",
+        "guides/troubleshooting.md",
+        "guides/glossary.md",
+        "README.md",
+        "CHANGELOG.md"
+      ],
+      groups_for_extras: [
+        "Getting started": [
+          "guides/introduction.md",
+          "guides/installation.md"
+        ],
+        "Your game": [
+          "guides/worlds-and-players.md",
+          "guides/input-and-menus.md",
+          "guides/sound-and-music.md",
+          "guides/saving-and-scores.md",
+          "guides/testing.md"
+        ],
+        Reference: [
+          "guides/troubleshooting.md",
+          "guides/glossary.md"
+        ]
+      ],
       groups_for_modules: [
         "Worlds and players": [
           Cauldron.Game,

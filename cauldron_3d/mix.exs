@@ -21,6 +21,7 @@ defmodule Cauldron3D.MixProject do
       name: "Cauldron3D",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end
@@ -40,7 +41,7 @@ defmodule Cauldron3D.MixProject do
       licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
       files:
-        ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
+        ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md guides)
     ]
   end
 

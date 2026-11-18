@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  MIX_ENV: test
+
+# The matrix holds the packages whose only build requirement is a C compiler and
+# Elixir. The GPU and mobile packages need SDL3, Vulkan, the Metal or Vulkan shader
+# compiler, or Xcode and the Android SDK; they are checked by hand for now (see
+# book/contributing.md). Add a package here once it builds on a stock runner.
+jobs:
+  checks:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package:
+          - cauldron_core
+          - cauldron_2d
+          - cauldron_2d_assets
+          - cauldron_2d_easel
+          - cauldron_2d_easel_kino
+          - cauldron_2d_easel_web
+          - cauldron_2d_gamemaker
+          - cauldron_2d_net
+          - cauldron_3d
+          - cauldron_3d_formats
+          - cauldron_3d_scene
+          - cauldron_net
+          - cauldron_sfx
+          - cauldron_sfx_kino
+          - cauldron_sfx_web
+          - linocut
+          - quake_c
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ matrix.package }}/deps
+            ${{ matrix.package }}/_build
+          key: ${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('{0}/mix.lock', matrix.package)) }}
+          restore-keys: ${{ runner.os }}-${{ matrix.package }}-
+
+      - name: Deps
+        working-directory: ${{ matrix.package }}
+        run: mix deps.get
+
+      - name: Format
+        working-directory: ${{ matrix.package }}
+        run: mix format --check-formatted
+
+      - name: Credo
+        working-directory: ${{ matrix.package }}
+        run: mix credo --strict
+
+      - name: Test
+        working-directory: ${{ matrix.package }}
+        run: mix test
+
+      - name: Docs
+        working-directory: ${{ matrix.package }}
+        env:
+          MIX_ENV: dev
+        run: mix docs --warnings-as-errors
+
+  book:
+    name: Book
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "29"
+          elixir-version: "1.20"
+
+      - name: Pandoc
+        run: sudo apt-get update && sudo apt-get install -y pandoc
+
+      - name: Assemble
+        run: elixir book/build.exs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cauldron-book
+          path: book/build/

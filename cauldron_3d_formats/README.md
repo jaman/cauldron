@@ -20,7 +20,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:cauldron_3d_formats, "~> 0.3"}
+    {:cauldron_3d_formats, "~> 0.4"}
   ]
 end
 ```

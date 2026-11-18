@@ -99,9 +99,9 @@ server:
 
 * `:server` — the server draws everything with `Cauldron2D.Draw` and sends each frame
   as a truecolour PNG (`Cauldron2D.Net.Picture`). Every client sees exactly what the
-  terminal draws, and the server pays for it in CPU and bandwidth. This is the default.
+  terminal draws, and the server pays for it in CPU and bandwidth.
 * `:client` — the client draws everything from scene data (`Cauldron2D.Net.Scene`). The
-  server sends only what changed.
+  server sends only what changed. This is the default.
 * `:split` — the client draws the world, and the server draws the screen (the scene's
   `:screen` and `:outlines`), sent as an overlay picture only when it changes.
 * `[world: part, screen: part]`, each part `:server` or `:client`.

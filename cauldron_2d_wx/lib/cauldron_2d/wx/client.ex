@@ -87,6 +87,7 @@ defmodule Cauldron2D.Wx.Client do
   def run(opts) do
     wx = :wx.new()
     client = :wx_object.start_link(__MODULE__, {wx, opts}, [])
+    # Blocks until the window closes: that is the app's lifetime, so no timeout.
     :wx_object.call(client, :wait, :infinity)
     :wx.destroy()
     :ok

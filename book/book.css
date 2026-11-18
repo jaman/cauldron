@@ -1,0 +1,148 @@
+:root {
+  --ink: #1d1d1f;
+  --quiet: #6b6b70;
+  --rule: #d8d8dc;
+  --code: #f5f5f7;
+  --accent: #7a4b2a;
+}
+
+html {
+  font-size: 18px;
+}
+
+body {
+  margin: 0 auto;
+  max-width: 46rem;
+  padding: 3rem 1.5rem 6rem;
+  color: var(--ink);
+  background: #fff;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  line-height: 1.55;
+  text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4 {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  margin-top: 3.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--rule);
+  font-size: 2rem;
+}
+
+h2 {
+  margin-top: 2.5rem;
+  font-size: 1.35rem;
+}
+
+h3 {
+  margin-top: 2rem;
+  font-size: 1.1rem;
+}
+
+p, li {
+  hyphens: auto;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+blockquote {
+  margin: 1.5rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid var(--rule);
+  color: var(--quiet);
+}
+
+code, pre {
+  font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+code {
+  background: var(--code);
+  padding: 0.1em 0.25em;
+  border-radius: 3px;
+}
+
+pre {
+  background: var(--code);
+  padding: 0.9rem 1rem;
+  overflow-x: auto;
+  border-radius: 5px;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+}
+
+table {
+  width: 100%;
+  margin: 1.5rem 0;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+th, td {
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  vertical-align: top;
+}
+
+th {
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-weight: 600;
+}
+
+hr {
+  margin: 3rem 0;
+  border: 0;
+  border-top: 1px solid var(--rule);
+}
+
+#TOC {
+  margin: 2rem 0 3rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.92rem;
+}
+
+#TOC ul {
+  list-style: none;
+  padding-left: 1rem;
+}
+
+#TOC > ul {
+  padding-left: 0;
+}
+
+#TOC a {
+  text-decoration: none;
+}
+
+@media print {
+  html {
+    font-size: 11pt;
+  }
+
+  body {
+    max-width: none;
+    padding: 0;
+  }
+
+  h1 {
+    page-break-before: always;
+  }
+
+  h1:first-of-type {
+    page-break-before: avoid;
+  }
+}

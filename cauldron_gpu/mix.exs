@@ -23,6 +23,7 @@ defmodule CauldronGPU.MixProject do
       name: "CauldronGPU",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ] ++ make_executable(setup)
   end
@@ -105,7 +106,7 @@ defmodule CauldronGPU.MixProject do
       licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
       files:
-        ~w(lib c_src shaders priv/shaders Makefile Makefile.win mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
+        ~w(lib c_src shaders priv/shaders Makefile Makefile.win mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md guides)
     ]
   end
 

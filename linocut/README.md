@@ -21,7 +21,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 def deps do
   [
-    {:linocut, "~> 0.3"}
+    {:linocut, "~> 0.4"}
   ]
 end
 ```

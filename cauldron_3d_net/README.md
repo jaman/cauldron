@@ -55,7 +55,7 @@ background reach each client as they finish.
 ```elixir
 def deps do
   [
-    {:cauldron_3d_net, "~> 0.3"},
+    {:cauldron_3d_net, "~> 0.4"},
     {:bandit, "~> 1.5"}
   ]
 end

@@ -22,6 +22,7 @@ defmodule Cauldron2D.MixProject do
       name: "Cauldron2D",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end
@@ -55,7 +56,7 @@ defmodule Cauldron2D.MixProject do
       licenses: ["AGPL-3.0-only"],
       links: %{"GitHub" => @source_url},
       files:
-        ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md)
+        ~w(lib c_src Makefile Makefile.win mix.exs README.md CHANGELOG.md LICENSE COMMERCIAL.md guides)
     ]
   end
 
@@ -65,7 +66,28 @@ defmodule Cauldron2D.MixProject do
       skip_undefined_reference_warnings_on: ["CHANGELOG.md"],
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_2d/%{path}#L%{line}",
-      extras: ["README.md", "CHANGELOG.md", "guides/tutorial.md"],
+      extras: [
+        "README.md",
+        "guides/tutorial.md",
+        "guides/atlas-and-art.md",
+        "guides/projections.md",
+        "guides/maps-and-grids.md",
+        "guides/physics.md",
+        "CHANGELOG.md"
+      ],
+      groups_for_extras: [
+        "Your first game": [
+          "guides/tutorial.md"
+        ],
+        Pictures: [
+          "guides/atlas-and-art.md"
+        ],
+        "The world": [
+          "guides/projections.md",
+          "guides/maps-and-grids.md",
+          "guides/physics.md"
+        ]
+      ],
       groups_for_modules: [
         Clients: [~r/^Cauldron2D\.Client\./],
         Pictures: [

@@ -17,6 +17,7 @@ defmodule CauldronNative.MixProject do
       name: "CauldronNative",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end
@@ -47,8 +48,20 @@ defmodule CauldronNative.MixProject do
       main: "readme",
       source_ref: "v#{@version}",
       source_url_pattern: "#{@source_url}/blob/v#{@version}/cauldron_native/%{path}#L%{line}",
-      extras: ["README.md", "guides/building_apps.md", "guides/publishing.md", "CHANGELOG.md"],
-      groups_for_extras: [Guides: ["guides/building_apps.md", "guides/publishing.md"]],
+      extras: [
+        "README.md",
+        "guides/overview.md",
+        "guides/building_apps.md",
+        "guides/publishing.md",
+        "CHANGELOG.md"
+      ],
+      groups_for_extras: [
+        Guide: [
+          "guides/overview.md",
+          "guides/building_apps.md",
+          "guides/publishing.md"
+        ]
+      ],
       groups_for_modules: [
         "On the device": [CauldronNative, CauldronNative.Native],
         Building: ~r/CauldronNative.Build/

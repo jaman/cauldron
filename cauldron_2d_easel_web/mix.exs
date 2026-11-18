@@ -18,6 +18,7 @@ defmodule Cauldron2D.Easel.Web.MixProject do
       name: "Cauldron2D.Easel.Web",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end

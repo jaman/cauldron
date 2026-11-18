@@ -17,6 +17,7 @@ defmodule Cauldron2D.Native.MixProject do
       name: "Cauldron2D.Native",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end
@@ -29,7 +30,7 @@ defmodule Cauldron2D.Native.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:cauldron_native, "~> 0.1.0", "../cauldron_native", []),
+      family(:cauldron_native, "~> 0.4.0", "../cauldron_native", []),
       family(:cauldron_3d, "~> 0.4.0", "../cauldron_3d", optional: true),
       family(:cauldron_gpu, "~> 0.4.0", "../cauldron_gpu", optional: true),
       family(:cauldron_core, "~> 0.4.0", "../cauldron_core", []),

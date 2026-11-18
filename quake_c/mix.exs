@@ -17,6 +17,7 @@ defmodule QuakeC.MixProject do
       name: "QuakeC",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end

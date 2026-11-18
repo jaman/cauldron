@@ -17,6 +17,7 @@ defmodule Cauldron2D.Assets.MixProject do
       name: "Cauldron2D.Assets",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end

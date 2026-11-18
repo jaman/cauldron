@@ -19,7 +19,7 @@ terminal), to a renderer in its own OS process, or to browsers (`cauldron_3d_net
 
 ```elixir
 def deps do
-  [{:cauldron_gpu, "~> 0.3"}]
+  [{:cauldron_gpu, "~> 0.4"}]
 end
 ```
 

@@ -71,7 +71,7 @@ own. Its callbacks cover both ends:
     url: "http://arcade:2280",
     token: token,
     world: "pit",
-    drawer: {Cauldron2D.Net.Drawer, atlas: :my_game}
+    drawer: Cauldron2D.Net.Drawer
   )
 
 :ok = Cauldron.Player.join(world, "alice", %{username: "alice"})

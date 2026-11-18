@@ -26,3 +26,6 @@ GAMEMAKER_DESIGN.md
 /pitches/art/
 /pitches/audio/
 **/.playwright-mcp/
+
+# Built by elixir book/build.exs
+/book/build/

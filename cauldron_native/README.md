@@ -27,7 +27,7 @@ device, linking native code, and troubleshooting. In this repository it is
 ```elixir
 def deps do
   [
-    {:cauldron_native, "~> 0.1", runtime: Mix.target() in [:ios, :tvos, :macos, :android]}
+    {:cauldron_native, "~> 0.4", runtime: Mix.target() in [:ios, :tvos, :macos, :android]}
   ]
 end
 ```

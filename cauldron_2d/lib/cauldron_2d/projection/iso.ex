@@ -48,7 +48,7 @@ defmodule Cauldron2D.Projection.Iso do
       describes them, each tinting what is drawn behind it. Default `[]`
     * `:at` — the time in milliseconds an animated art's frame is chosen for. Default `0`
 
-  `project/2`, `unproject/2` and `tile_at/2` map between picture pixels and world tiles
+  `project/3`, `unproject/3` and `tile_at/3` map between picture pixels and world tiles
   for the same options.
   """
 

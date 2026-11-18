@@ -17,6 +17,7 @@ defmodule Linocut.MixProject do
       name: "Linocut",
       source_url: @source_url,
       package: package(),
+      plumb: [readme: :exact],
       docs: docs()
     ]
   end

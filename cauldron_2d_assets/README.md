@@ -72,7 +72,7 @@ The art is made while a game is written, and the game ships its `priv/art`. Add 
 package for development only:
 
 ```elixir
-{:cauldron_2d_assets, "~> 0.1", only: :dev, runtime: false}
+{:cauldron_2d_assets, "~> 0.4", only: :dev, runtime: false}
 ```
 
 ## License
