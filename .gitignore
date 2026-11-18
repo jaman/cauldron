@@ -29,3 +29,8 @@ GAMEMAKER_DESIGN.md
 
 # Built by elixir book/build.exs
 /book/build/
+
+# The Windows GPU kit builds in place
+/windows/kit/_build/
+/windows/kit/deps/
+/windows/kit/gpu-smoke.png
