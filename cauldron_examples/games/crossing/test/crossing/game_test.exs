@@ -67,6 +67,13 @@ defmodule Crossing.GameTest do
     assert rows == [1, 2, 3, 4, 5, 7, 8, 9, 10, 11]
   end
 
+  test "an item's left edge can be off the board, so it slides in and out" do
+    lane = Lanes.lane(8, -1, 3.0, 2, 5, 3)
+
+    assert Enum.min(Lanes.items(lane)) < 0
+    assert Enum.max(Lanes.items(lane)) > 15
+  end
+
   test "each lane runs at its own pace and spacing" do
     spacings = game().lanes |> Enum.map(&Lanes.spacing/1) |> Enum.uniq()
     speeds = game().lanes |> Enum.map(& &1.speed) |> Enum.uniq()

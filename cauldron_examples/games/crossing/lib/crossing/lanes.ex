@@ -69,10 +69,17 @@ defmodule Crossing.Lanes do
     %{lane | phase: wrap(lane.phase + lane.dir * lane.speed * dt, lane)}
   end
 
-  @doc "The left edge of each cart or log, in tiles."
+  @doc """
+  The left edge of each cart or log, in tiles.
+
+  Positions run from `-length` to `period - length`, so an item can be drawn sliding off
+  either edge of the board rather than jumping from one side to the other when it wraps.
+  """
   @spec items(t()) :: [float()]
   def items(%__MODULE__{} = lane) do
-    for index <- 0..(lane.count - 1), do: wrap(index * spacing(lane) + lane.phase, lane)
+    for index <- 0..(lane.count - 1) do
+      wrap(index * spacing(lane) + lane.phase, lane) - lane.length
+    end
   end
 
   @doc "Whether a cart or log covers tile `x` of its row."
