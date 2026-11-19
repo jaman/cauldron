@@ -74,6 +74,14 @@ defmodule Crossing.GameTest do
     assert Enum.max(Lanes.items(lane)) > 15
   end
 
+  test "every lane leaves time to step into it at level one" do
+    assert Game.tightest_gap(1) >= 2.4
+  end
+
+  test "the lanes tighten as levels rise" do
+    assert Game.tightest_gap(5) < Game.tightest_gap(1)
+  end
+
   test "each lane runs at its own pace and spacing" do
     spacings = game().lanes |> Enum.map(&Lanes.spacing/1) |> Enum.uniq()
     speeds = game().lanes |> Enum.map(& &1.speed) |> Enum.uniq()

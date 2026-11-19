@@ -94,6 +94,13 @@ defmodule Crossing.Lanes do
   @spec spacing(t()) :: float()
   def spacing(%__MODULE__{length: length, gap: gap}), do: (length + gap) * 1.0
 
+  @doc """
+  How long a gap takes to pass a fixed point, in seconds — the time a frog has to step
+  into the lane. The shorter it is, the harder the lane.
+  """
+  @spec gap_time(t()) :: float()
+  def gap_time(%__MODULE__{gap: gap, speed: speed}), do: gap / speed
+
   @doc "How wide the lane's beat is, in tiles: every item and every gap."
   @spec period(t()) :: float()
   def period(%__MODULE__{} = lane), do: spacing(lane) * lane.count

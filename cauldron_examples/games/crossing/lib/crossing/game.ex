@@ -50,23 +50,30 @@ defmodule Crossing.Game do
   # stays longer.
   @doc false
   def lanes(level) do
-    speed = fn base -> base * (1.0 + 0.09 * (level - 1)) end
+    speed = fn base -> base * (1.0 + 0.07 * (level - 1)) end
     up = max(3.0, 6.0 - 0.5 * (level - 1))
     down = min(6.0, 3.0 + 0.45 * (level - 1))
 
     [
-      Lanes.lane(1, 1, speed.(1.2), 4, 3, 3, 0.0, kind: :log),
-      Lanes.lane(2, -1, speed.(1.6), 2, 5, 2, 2.0, kind: :turtle, cycle: nil),
-      Lanes.lane(3, 1, speed.(1.0), 3, 4, 2, 5.0, kind: :log),
-      Lanes.lane(4, -1, speed.(2.0), 3, 3, 4, 1.0, kind: :log),
-      Lanes.lane(5, 1, speed.(1.5), 3, 3, 3, 7.0, kind: :turtle, cycle: {up, down}),
-      Lanes.lane(7, 1, speed.(3.0), 2, 5, 3, 0.0, kind: :car),
-      Lanes.lane(8, -1, speed.(2.4), 3, 4, 3, 4.0, kind: :truck),
-      Lanes.lane(9, 1, speed.(3.6), 2, 6, 2, 1.0, kind: :car),
-      Lanes.lane(10, -1, speed.(2.0), 4, 3, 3, 6.0, kind: :bus),
-      Lanes.lane(11, 1, speed.(2.8), 3, 5, 2, 3.0, kind: :truck)
+      Lanes.lane(1, 1, speed.(1.0), 4, 2, 6, 0.0, kind: :log),
+      Lanes.lane(2, -1, speed.(1.2), 2, 3, 5, 2.0, kind: :turtle, cycle: nil),
+      Lanes.lane(3, 1, speed.(1.3), 3, 2, 6, 5.0, kind: :log),
+      Lanes.lane(4, -1, speed.(1.5), 3, 2, 5, 1.0, kind: :log),
+      Lanes.lane(5, 1, speed.(1.1), 3, 2, 6, 7.0, kind: :turtle, cycle: {up, down}),
+      Lanes.lane(7, 1, speed.(1.8), 2, 3, 6, 0.0, kind: :car),
+      Lanes.lane(8, -1, speed.(2.0), 3, 3, 6, 4.0, kind: :truck),
+      Lanes.lane(9, 1, speed.(2.4), 2, 3, 6, 1.0, kind: :car),
+      Lanes.lane(10, -1, speed.(1.5), 4, 2, 8, 6.0, kind: :bus),
+      Lanes.lane(11, 1, speed.(2.2), 3, 3, 6, 3.0, kind: :truck)
     ]
   end
+
+  @doc """
+  The time a gap in the hardest lane gives a frog to step into it, in seconds, at `level`.
+  Below about two seconds a lane cannot be crossed on reaction alone.
+  """
+  @spec tightest_gap(pos_integer()) :: float()
+  def tightest_gap(level), do: level |> lanes() |> Enum.map(&Lanes.gap_time/1) |> Enum.min()
 
   @doc "How long the snake is away between crossings, in seconds."
   @spec snake_period(pos_integer()) :: float()
