@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
 - `Cauldron2D.Drafter.Test`: a game's terminal client run in a test, `start/2` registering the surface widget itself.
 - `Cauldron2D.Drafter.Server.start_telnet/2` serves a game over telnet with no accounts.
@@ -12,6 +12,9 @@
 
 ### Breaking changes
 
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 - `Cauldron2D.Drafter.Chat` is removed. Use `Cauldron.Chat` from `cauldron_2d`, which
   the `:cauldron_2d` application starts; its rooms are `:lobby` and `{:world, id}`.
 - `Cauldron2D.Drafter.Client.Controllers` and `Cauldron2D.Drafter.Client.Seats` are

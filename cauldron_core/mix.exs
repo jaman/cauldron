@@ -1,7 +1,7 @@
 defmodule Cauldron.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "The game engine every Cauldron game runs on: worlds, players, input, menus, sound and saving, with no way of drawing in it."
 
@@ -33,8 +33,8 @@ defmodule Cauldron.MixProject do
     [
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      family(:tuning_fork, "~> 0.1.13", "../../tuning_fork/tuning_fork", []),
-      family(:tuning_fork_speaker, "~> 0.1.13", "../../tuning_fork/tuning_fork_speaker", [])
+      family(:tuning_fork, "~> 0.1.15", "../../tuning_fork/tuning_fork", []),
+      family(:tuning_fork_speaker, "~> 0.1.15", "../../tuning_fork/tuning_fork_speaker", [])
     ]
   end
 

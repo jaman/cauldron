@@ -9,6 +9,18 @@ erl_crash.dump
 .DS_Store
 ENGINE_ADDITIONS.md
 GAMEMAKER_DESIGN.md
+EDITOR_RESEARCH.md
+EDITOR_DESIGN.md
+EMBERWICK.md
+HEARTH_VIDEO.md
+LIBRARY_GAPS.md
+GAMES_OVERHAUL.md
+MOBILE.md
+NATIVE_UI.md
+PITCHES.md
+RESTRUCTURE.md
+THE_TOWER.md
+/cauldron_gpu/STATE.md
 
 /.scratch/
 
@@ -34,3 +46,4 @@ GAMEMAKER_DESIGN.md
 /windows/kit/_build/
 /windows/kit/deps/
 /windows/kit/gpu-smoke.png
+.expert/

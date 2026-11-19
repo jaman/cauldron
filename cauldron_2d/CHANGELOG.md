@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
 ### Changed
 
@@ -13,6 +13,9 @@
 
 ### Breaking changes
 
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 - The parts of the engine with no way of drawing moved to the new `cauldron_core` package, under `Cauldron.*`: games and worlds (`Cauldron.Game`, `Cauldron.World`, `Cauldron.Worlds`, `Cauldron.Player`, `Cauldron.Robot`, `Cauldron.Replay`, `Cauldron.Test`), play across machines, input, menus, the shared client modules (`Cauldron.Client.*`), sound, saving and the game-state helpers. `Cauldron2D.X` for any of them is now `Cauldron.X`. Tile worlds, atlases, drawing, projections, maps, grids, sectors and 2D bodies stay here.
 - The shared client contract is `Cauldron.Client.Game`, with a new required `view/0`. `Cauldron2D.Client.Game` is now the 2D contract over it: a game writes `use Cauldron2D.Client.Game` (a game that declared `@behaviour Cauldron2D.Client.Game` writes the `use` instead), which names the 2D view, `Cauldron2D.Client.View`, and declares `atlas/0`.
 - `Cauldron2D.Client.Look.given/4` is `Cauldron.Client.View.given/4`.

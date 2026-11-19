@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Net.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "3D scenes for the browser: a scene server broadcasting cauldron_gpu's change stream over a Phoenix channel, and a three.js client drawing it."
 

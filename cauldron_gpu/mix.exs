@@ -1,7 +1,7 @@
 defmodule CauldronGPU.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "3D rendering on the graphics card for the BEAM: Metal on macOS, Vulkan on Linux and Windows, driven by a scene described from Elixir."
 

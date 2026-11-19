@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Net.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "A Cauldron2D world over the network: its scenes sent as pictures or scene data (a Cauldron.Net drawer), the browser pages that draw them, and a server for a game in one line."
 
@@ -34,9 +34,9 @@ defmodule Cauldron2D.Net.MixProject do
       family(:cauldron_core, "~> 0.4.0", "../cauldron_core", []),
       family(:cauldron_net, "~> 0.4.0", "../cauldron_net", []),
       family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
-      family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
-      family(:gamepad, "~> 0.1.0", "../../gamepad", []),
-      family(:tuning_fork, "~> 0.1.13", "../../tuning_fork/tuning_fork", []),
+      family(:french_curve, "~> 0.2.2", "../../french_curve", override: true),
+      family(:gamepad, "~> 0.1.1", "../../gamepad", []),
+      family(:tuning_fork, "~> 0.1.15", "../../tuning_fork/tuning_fork", []),
       {:phoenix, "~> 1.8"},
       {:bandit, "~> 1.13"},
       {:mint, "~> 1.6"},

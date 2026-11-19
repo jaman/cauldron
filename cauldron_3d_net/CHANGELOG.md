@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
+
+### Breaking changes
+
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 
 - `cauldron3d.js` draws within a pixel budget and a frame cap set in the browser: by default at most 1920×1080 drawn pixels, scaled up to fill a larger window, and 60 frames a second. A browser keeps its own in `localStorage` (`cauldron3d.quality`); `?pixels=1280x720` (or `full`) and `?fps=30` (or `0` for every refresh) in the page address override it, and `window.cauldron3d.quality({pixels, fps})` changes it while running and answers the settings with the size being `drawn`. A headset session draws at the headset's own resolution.
 - `Cauldron3D.Net.Drawer`: 3D games over `Cauldron.Net` sessions. Each client is sent its scene as a renderer's changes: stream bytes for a browser, drawn by `cauldron3d.js` in the game pages, and change terms for a desktop or phone client, drawn with its own renderer through `Cauldron3D.Net.RemoteScene` and `Cauldron3D.Net.Replay`. `Cauldron3D.Net.Outbox` is the target a scene's `:gpu` closure uploads to for one client, uploads from other processes included.

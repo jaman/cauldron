@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
+
+### Breaking changes
+
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 
 ### Added
 

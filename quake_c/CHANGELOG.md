@@ -1,10 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
-### Changed
+### Fixed
 
-- No changes in this package; released with the rest of the cauldron packages.
+- The compiled-module cache is read with `binary_to_term/2` and `[:safe]`: a cache file
+  naming an atom the node does not know is refused, and the program is compiled again.
 
 ## [0.3.4]
 

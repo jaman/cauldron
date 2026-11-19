@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Native.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "A Cauldron2D game as an iOS or Android app: the phone and tablet front end."
 
@@ -37,9 +37,9 @@ defmodule Cauldron2D.Native.MixProject do
       family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
       family(:cauldron_net, "~> 0.4.0", "../cauldron_net", []),
       family(:cauldron_2d_net, "~> 0.4.0", "../cauldron_2d_net", []),
-      family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
-      family(:tuning_fork, "~> 0.1.13", "../../tuning_fork/tuning_fork", []),
-      family(:tuning_fork_speaker, "~> 0.1.13", "../../tuning_fork/tuning_fork_speaker", [])
+      family(:french_curve, "~> 0.2.2", "../../french_curve", override: true),
+      family(:tuning_fork, "~> 0.1.15", "../../tuning_fork/tuning_fork", []),
+      family(:tuning_fork_speaker, "~> 0.1.15", "../../tuning_fork/tuning_fork_speaker", [])
     ]
   end
 

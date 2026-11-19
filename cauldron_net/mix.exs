@@ -1,7 +1,7 @@
 defmodule Cauldron.Net.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "A Cauldron world over the network: the channel and socket browsers join through, the sessions behind them, and the links an Elixir client joins a world by, with what a frame looks like left to a drawer."
 
@@ -31,8 +31,8 @@ defmodule Cauldron.Net.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       family(:cauldron_core, "~> 0.4.0", "../cauldron_core", []),
-      family(:gamepad, "~> 0.1.0", "../../gamepad", []),
-      family(:tuning_fork, "~> 0.1.13", "../../tuning_fork/tuning_fork", []),
+      family(:gamepad, "~> 0.1.1", "../../gamepad", []),
+      family(:tuning_fork, "~> 0.1.15", "../../tuning_fork/tuning_fork", []),
       {:phoenix, "~> 1.8"},
       {:mint, "~> 1.6"},
       {:mint_web_socket, "~> 1.0"},

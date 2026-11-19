@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Kino.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "3D scenes in Livebook: a Kino cell drawing cauldron_gpu's change stream with three.js on the viewer's graphics card."
 

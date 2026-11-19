@@ -130,8 +130,8 @@ takes a world and returns the socket or node link to join with.
 ```elixir
 def deps do
   [
-    {:cauldron_2d_native, "~> 0.1", targets: [:ios, :android]},
-    {:cauldron_native, "~> 0.1", runtime: Mix.target() in [:ios, :android]}
+    {:cauldron_2d_native, "~> 0.4", targets: [:ios, :android]},
+    {:cauldron_native, "~> 0.4", runtime: Mix.target() in [:ios, :android]}
   ]
 end
 ```

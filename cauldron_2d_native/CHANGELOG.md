@@ -1,6 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
+
+### Added
+
+- Licensed under AGPL-3.0-only, with a commercial license for a game or service that does
+  not publish its source: see `COMMERCIAL.md`.
 
 - The package is `cauldron_2d_native` (was `cauldron_2d_mobile`), its modules `Cauldron2D.Native.*`, following `cauldron_native`.
 - A `:gpu` scene on a device whose graphics card will not open is drawn on the CPU by `Cauldron3D.Scene.Software` (with `cauldron_3d` in the app) and shown as the app's picture; `Cauldron2D.Native.Gpu.usable?/1` replaces `available?/0`.

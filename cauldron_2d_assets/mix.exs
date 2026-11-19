@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Assets.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "A game's art made by image models: asked for, chosen, and finished as pixel art."
 
@@ -32,8 +32,8 @@ defmodule Cauldron2D.Assets.MixProject do
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
-      family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
-      family(:linocut, "~> 0.3.4", "../linocut", [])
+      family(:french_curve, "~> 0.2.2", "../../french_curve", override: true),
+      family(:linocut, "~> 0.4.0", "../linocut", [])
     ]
   end
 

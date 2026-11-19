@@ -11,7 +11,7 @@ browser scene uploads to it unchanged.
 
 ```elixir
 Mix.install([
-  {:cauldron_3d_kino, "~> 0.3"}
+  {:cauldron_3d_kino, "~> 0.4"}
 ])
 ```
 

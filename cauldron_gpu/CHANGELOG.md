@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
+
+### Breaking changes
+
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 
 ### Changed
 
@@ -39,6 +45,8 @@
 
 ### Fixed
 
+- The GPU host reads what its native process sends with `binary_to_term/2` and `[:safe]`, so
+  a message naming an atom the node does not know is refused instead of creating it.
 - On Metal, buffers and textures created while a frame is recorded are usable by that
   frame. The first captures after an upload, or after a quiet spell, came back black.
 - Drawing costs a fraction of what it did at large sizes: 3.6 ms a frame at 2880×1700

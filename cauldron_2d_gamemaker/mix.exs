@@ -1,7 +1,7 @@
 defmodule Cauldron2D.GameMaker.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "Reads GameMaker games' data files for Cauldron2D: sprites, texture pages, tilesets, objects and their events, rooms with their layers, sounds, fonts and paths."
 
@@ -27,8 +27,8 @@ defmodule Cauldron2D.GameMaker.MixProject do
   defp deps do
     [
       family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
-      family(:linocut, "~> 0.3.4", "../linocut", override: true),
-      family(:french_curve, "~> 0.2.1", "../../french_curve", override: true),
+      family(:linocut, "~> 0.4.0", "../linocut", override: true),
+      family(:french_curve, "~> 0.2.2", "../../french_curve", override: true),
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false}
     ]

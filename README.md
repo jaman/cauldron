@@ -109,7 +109,7 @@ def deps do
   [
     {:cauldron_2d, "~> 0.4"},
     {:cauldron_2d_drafter, "~> 0.4"},
-    {:linocut, "~> 0.3"},
+    {:linocut, "~> 0.4"},
     {:tuning_fork_speaker, "~> 0.1"}
   ]
 end
@@ -394,19 +394,6 @@ is seen by the others at once. `drafter`, `french_curve` and `tuning_fork` are p
 dependencies one level up. Run `mix test`, `mix credo --strict` and
 `mix format --check-formatted` inside each package. Each package's documentation is on
 [hexdocs.pm](https://hexdocs.pm/cauldron_2d).
-
-The other documents at this level are working notes for the people building Cauldron,
-not documentation of the packages:
-
-* `LIBRARY_GAPS.md` — what the packages offer against what their documentation says,
-  what other 2D libraries provide, and what a game is made to take on
-* `ENGINE_ADDITIONS.md` — design notes for pieces the engine does not have yet
-* `GAMEMAKER_DESIGN.md` — how GameMaker games are read and run
-* `GAMES_OVERHAUL.md` — the overhaul of Megablast, Beast and Cistern
-* `MOBILE.md` — the plan for `cauldron_ios` and `cauldron_android`, the native
-  interop packages that take games and apps to Android and iOS
-* `THE_TOWER.md` — a game idea
-* `STATE.md` — the record of work done to the packages
 
 ## Built with it
 

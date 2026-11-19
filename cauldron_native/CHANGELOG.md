@@ -1,6 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
+
+### Added
+
+- Licensed under AGPL-3.0-only, with a commercial license for a game or service that does
+  not publish its source: see `COMMERCIAL.md`.
 
 - The app's own images, colours and symbols: `assets:` names an Xcode asset catalog, which Apple's systems use as it is (its `AccentColor` the app's accent) and Android takes converted into drawables, colours (with their dark appearance, and the system colours a colour set refers to) and vector drawables (`CauldronNative.Build.Assets`). `CauldronNative.UI.image/2` shows one with `{:asset, name}`, labels and icons take `asset:`, and colours may be `{:asset, name}`; the app's Kotlin finds them with `cauldronAsset/1` and `cauldronAssetColour/1`.
 - `CauldronNative.UI.gauge/2` (linear, circular and segmented, its value text or pictures), the `gradient` modifier, `frame`'s `min_width` and `min_height`, `zstack/2`'s corner alignments, `menu_bar_extra/3` (an item of the Mac's menu bar opening a window of controls), and table cells that are controls with fixed-width columns (`table/3`).

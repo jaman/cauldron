@@ -1,7 +1,7 @@
 defmodule CauldronSFX.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
 
   def project do
@@ -28,7 +28,7 @@ defmodule CauldronSFX.MixProject do
   defp deps do
     [
       family(:cauldron_core, "~> 0.4.0", "../cauldron_core", []),
-      family(:drafter, "~> 0.5.8", "../../drafter", []),
+      family(:drafter, "~> 0.6.0", "../../drafter", []),
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]

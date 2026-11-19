@@ -43,8 +43,8 @@ defp deps do
   [
     {:cauldron_2d, "~> 0.4"},
     {:cauldron_2d_wx, "~> 0.4", targets: :host},
-    {:cauldron_2d_native, "~> 0.1", targets: [:ios, :android]},
-    {:cauldron_native, "~> 0.1", runtime: Mix.target() in [:ios, :android]}
+    {:cauldron_2d_native, "~> 0.4", targets: [:ios, :android]},
+    {:cauldron_native, "~> 0.4", runtime: Mix.target() in [:ios, :android]}
   ]
 end
 ```

@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Formats.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "Readers for the Quake family of game files into Cauldron3D: map files, models, sprites, picture collections, sounds, entity text and pak and pk3 archives."
 

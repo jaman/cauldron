@@ -279,10 +279,10 @@ The showcase builds its scene with `GpuShowcase.Courtyard`. The same courtyard i
 terminal, walked through with the keys and the mouse, is the Cauldron game in
 `cauldron_examples/3d/courtyard` (`mix courtyard` there).
 
-## Tests and status
+## Status
 
-`STATE.md` records what has been built, how it was checked, and what is open (DLSS and FSR,
-Vulkan ray tracing on real hardware, first runs on Linux and Windows).
+Not yet supported: DLSS and FSR, and Vulkan ray tracing on real hardware. The package has
+not yet been run on Linux or Windows.
 
 ## License
 

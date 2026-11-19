@@ -1,7 +1,7 @@
 defmodule CauldronNative.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "An Elixir release as an iOS or Android app: the embedded runtime, the screen, touch, and the build."
 

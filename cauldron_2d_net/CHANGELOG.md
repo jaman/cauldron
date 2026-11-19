@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
 ### Added
 
@@ -37,6 +37,9 @@
 
 ### Breaking changes
 
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 - The browser no longer draws a static map and movers from a sprite sheet. The server
   draws each frame with `Cauldron2D.Draw` and sends it as a PNG, or sends the scene as
   data for the browser to draw (`Cauldron2D.Net.Drawing`). The `map` and `frame` events

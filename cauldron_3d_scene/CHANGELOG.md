@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
 - The package is `cauldron_3d_scene`, and its modules are `Cauldron3D.Scene.*` (`Cauldron3D.Scene.Mesh`, `Cauldron3D.Scene.Stream`, `Cauldron3D.Scene.Target`, the converters…), in place of `cauldron_gpu_scene` and `CauldronGPU.*`: the scene is drawn by any renderer, not only the graphics card.
 - `Cauldron3D.Scene.Target.capabilities/1` and `Cauldron3D.Scene.Capabilities`: the effects a renderer draws (ray tracing, upscaling, frame generation), so a game offers only those.
@@ -13,6 +13,8 @@ same names.
 
 ### Added
 
+- Licensed under AGPL-3.0-only, with a commercial license for a game or service that does
+  not publish its source: see `COMMERCIAL.md`.
 - `CauldronGPU.Texture.encoded/2`: a PNG or JPEG texture kept as its file bytes, with
   its size read from the header; streamed as op 23.
 - `CauldronGPU.Gltf.upload/3`: a glTF document (`Cauldron3D.Formats.Gltf`) through any

@@ -1,6 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
+
+### Breaking changes
+
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 
 - A `static` Makefile target builds the NIFs as static archives for `cauldron_mobile`, so the renderer has its C code in phone apps.
 

@@ -1,7 +1,7 @@
 defmodule Cauldron2D.Easel.Drafter.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "Edits a Cauldron2D atlas in the terminal."
 
@@ -34,9 +34,9 @@ defmodule Cauldron2D.Easel.Drafter.MixProject do
       family(:cauldron_2d, "~> 0.4.0", "../cauldron_2d", []),
       family(:cauldron_2d_easel, "~> 0.4.0", "../cauldron_2d_easel", []),
       family(:cauldron_2d_drafter, "~> 0.4.0", "../cauldron_2d_drafter", []),
-      family(:linocut, "~> 0.3.4", "../linocut", []),
-      family(:drafter, "~> 0.5.7", "../../drafter", []),
-      family(:french_curve, "~> 0.2.1", "../../french_curve", override: true)
+      family(:linocut, "~> 0.4.0", "../linocut", []),
+      family(:drafter, "~> 0.6.0", "../../drafter", []),
+      family(:french_curve, "~> 0.2.2", "../../french_curve", override: true)
     ]
   end
 

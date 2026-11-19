@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
 
 ### Changed
 
@@ -9,6 +9,9 @@
 
 ### Breaking changes
 
+- Licensed under AGPL-3.0-only from this release; earlier releases were MIT. A game or
+  service that uses it and does not publish its source needs a commercial license: see
+  `COMMERCIAL.md`. `linocut` and `quake_c` stay MIT.
 - `Cauldron2D.Wx.View` shows the picture the link sends, or a scene the link decodes,
   drawn by `Cauldron2D.Draw`, and sends raw input: keys down and up, the mouse with the
   pointer as fractions of the picture, and controller events. The session on the far

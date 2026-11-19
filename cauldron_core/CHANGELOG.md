@@ -1,6 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [0.4.0]
+
+### Fixed
+
+- `Cauldron.OpenWorld.Store.Files` reads cells with `binary_to_term/2` and `[:safe]`, so a
+  cell file naming an atom the node does not know is refused instead of creating it.
+
+### Added
+
+- Licensed under AGPL-3.0-only, with a commercial license for a game or service that does
+  not publish its source: see `COMMERCIAL.md`.
 
 - `Cauldron.Palette`: the colour names a hud uses, as RGB, for any drawer.
 - First release: the parts of `cauldron_2d` 0.3 with no way of drawing, under `Cauldron.*` — games and worlds, play across machines, input, menus, the client modules every front end shares, sound, saving and the game-state helpers.

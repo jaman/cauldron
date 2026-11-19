@@ -20,7 +20,7 @@ def deps do
   [
     {:cauldron_2d, "~> 0.4"},
     {:cauldron_2d_drafter, "~> 0.4"},
-    {:linocut, "~> 0.3"},
+    {:linocut, "~> 0.4"},
     {:tuning_fork_speaker, "~> 0.1"}
   ]
 end

@@ -1,7 +1,7 @@
 defmodule Cauldron3D.Scene.MixProject do
   use Mix.Project
 
-  @version "0.3.4"
+  @version "0.4.0"
   @source_url "https://github.com/jaman/cauldron"
   @description "A 3D scene as plain Elixir, drawn by any renderer that implements its Target protocol: meshes, materials, lights, cameras, 2D layers, the change stream and the Quake, Doom and Half-Life converters."
 
