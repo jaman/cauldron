@@ -74,8 +74,17 @@ defmodule Crossing.GameTest do
     assert Enum.max(Lanes.items(lane)) > 15
   end
 
-  test "every lane leaves time to step into it at level one" do
-    assert Game.tightest_gap(1) >= 2.4
+  test "the tightest lane is hard but crossable at level one" do
+    assert Game.tightest_gap(1) >= 1.6
+    assert Game.tightest_gap(1) <= 2.0
+  end
+
+  test "the lanes differ from one another" do
+    gaps = game().lanes |> Enum.map(&Lanes.gap_time/1) |> Enum.uniq() |> length()
+    speeds = game().lanes |> Enum.map(& &1.speed) |> Enum.uniq() |> length()
+
+    assert gaps >= 5
+    assert speeds >= 8
   end
 
   test "the lanes tighten as levels rise" do
@@ -113,6 +122,13 @@ defmodule Crossing.GameTest do
     assert game.frog == Game.start()
   end
 
+  test "turtles in one lane dive on their own beats" do
+    lane = Lanes.lane(5, 1, 1.0, 3, 2, 5, 0.0, kind: :turtle, cycle: {4.0, 4.0})
+
+    assert Lanes.surfaced?(lane, 0, 1.0)
+    refute Lanes.surfaced?(lane, 1, 1.0)
+  end
+
   test "a turtle that is up carries the frog" do
     game = game()
     lane = Enum.find(game.lanes, &(&1.cycle != nil))
@@ -141,15 +157,15 @@ defmodule Crossing.GameTest do
     assert game.lives == 3
   end
 
-  test "filling the five slots clears the level and makes it harder" do
+  test "filling every home clears the level and makes it harder" do
     game =
-      Enum.reduce([1.0, 4.0, 7.0, 10.0, 13.0], game(), fn x, game ->
-        game = %{game | frog: {x, 0}}
+      Enum.reduce(Game.slots(), game(), fn x, game ->
+        game = %{game | frog: {x * 1.0, 0}}
         Game.step(game, 1 / 60)
       end)
 
     assert game.level == 2
-    assert game.score == 5
+    assert game.score == length(Game.slots())
     assert MapSet.size(game.homes) == 0
 
     assert Enum.max(Enum.map(game.lanes, & &1.speed)) >
@@ -157,7 +173,8 @@ defmodule Crossing.GameTest do
   end
 
   test "landing on a filled slot costs a life" do
-    game = %{game() | frog: {7.0, 0}, homes: MapSet.new([7])}
+    slot = Enum.at(Game.slots(), 2)
+    game = %{game() | frog: {slot * 1.0, 0}, homes: MapSet.new([slot])}
     game = Game.step(game, 1 / 60)
 
     assert game.lives == 2

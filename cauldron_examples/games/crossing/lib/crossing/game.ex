@@ -16,7 +16,7 @@ defmodule Crossing.Game do
   @height 13
   @start {7.0, 12}
   @home 0
-  @slots [1, 4, 7, 10, 13]
+  @slots [1, 5, 9, 13]
   @water 1..5
   @road 7..11
   @lives 3
@@ -42,6 +42,10 @@ defmodule Crossing.Game do
   @spec start() :: {float(), non_neg_integer()}
   def start, do: @start
 
+  @doc "The columns of the far bank's homes."
+  @spec slots() :: [non_neg_integer()]
+  def slots, do: @slots
+
   @impl true
   def init(_opts), do: %__MODULE__{lanes: lanes(1)}
 
@@ -55,22 +59,22 @@ defmodule Crossing.Game do
     down = min(6.0, 3.0 + 0.45 * (level - 1))
 
     [
-      Lanes.lane(1, 1, speed.(1.0), 4, 2, 6, 0.0, kind: :log),
-      Lanes.lane(2, -1, speed.(1.2), 2, 3, 5, 2.0, kind: :turtle, cycle: nil),
-      Lanes.lane(3, 1, speed.(1.3), 3, 2, 6, 5.0, kind: :log),
-      Lanes.lane(4, -1, speed.(1.5), 3, 2, 5, 1.0, kind: :log),
-      Lanes.lane(5, 1, speed.(1.1), 3, 2, 6, 7.0, kind: :turtle, cycle: {up, down}),
-      Lanes.lane(7, 1, speed.(1.8), 2, 3, 6, 0.0, kind: :car),
-      Lanes.lane(8, -1, speed.(2.0), 3, 3, 6, 4.0, kind: :truck),
-      Lanes.lane(9, 1, speed.(2.4), 2, 3, 6, 1.0, kind: :car),
-      Lanes.lane(10, -1, speed.(1.5), 4, 2, 8, 6.0, kind: :bus),
-      Lanes.lane(11, 1, speed.(2.2), 3, 3, 6, 3.0, kind: :truck)
+      Lanes.lane(1, 1, speed.(1.2), 4, 2, 5, 0.0, kind: :log),
+      Lanes.lane(2, -1, speed.(1.4), 2, 3, 4, 2.0, kind: :turtle, cycle: nil),
+      Lanes.lane(3, 1, speed.(1.5), 3, 2, 5, 5.0, kind: :log),
+      Lanes.lane(4, -1, speed.(1.8), 3, 2, 4, 1.0, kind: :log),
+      Lanes.lane(5, 1, speed.(1.3), 3, 2, 5, 7.0, kind: :turtle, cycle: {up, down}),
+      Lanes.lane(7, 1, speed.(2.6), 2, 3, 5, 0.0, kind: :car),
+      Lanes.lane(8, -1, speed.(2.2), 3, 3, 6, 4.0, kind: :truck),
+      Lanes.lane(9, 1, speed.(3.0), 2, 4, 5, 1.0, kind: :car),
+      Lanes.lane(10, -1, speed.(1.8), 4, 2, 7, 6.0, kind: :bus),
+      Lanes.lane(11, 1, speed.(2.4), 3, 3, 5, 3.0, kind: :truck)
     ]
   end
 
   @doc """
   The time a gap in the hardest lane gives a frog to step into it, in seconds, at `level`.
-  Below about two seconds a lane cannot be crossed on reaction alone.
+  Below about a second and a half a lane cannot be crossed on reaction alone.
   """
   @spec tightest_gap(pos_integer()) :: float()
   def tightest_gap(level), do: level |> lanes() |> Enum.map(&Lanes.gap_time/1) |> Enum.min()
@@ -129,7 +133,7 @@ defmodule Crossing.Game do
       lanes: game.lanes,
       snake: game.snake,
       level: game.level,
-      homes: MapSet.size(game.homes),
+      homes: game.homes,
       lives: game.lives,
       score: game.score,
       status: game.status,
@@ -175,15 +179,19 @@ defmodule Crossing.Game do
     end
   end
 
-  defp ride(%__MODULE__{} = game, lane, x, y, dt) do
-    if Lanes.surfaced?(lane, game.elapsed) do
-      ride_surfaced(game, lane, x, y, dt)
-    else
+  defp ride(%__MODULE__{} = game, lane, x, y, dt), do: ride_surfaced(game, lane, x, y, dt)
+
+  defp ride_surfaced(%__MODULE__{} = game, lane, x, y, dt) do
+    index = Lanes.item_at(lane, trunc(x))
+
+    if index != nil and not Lanes.surfaced?(lane, index, game.elapsed) do
       lose(game, :drowned)
+    else
+      ride_on(game, lane, x, y, dt)
     end
   end
 
-  defp ride_surfaced(%__MODULE__{} = game, lane, x, y, dt) do
+  defp ride_on(%__MODULE__{} = game, lane, x, y, dt) do
     if Lanes.covers?(lane, trunc(x)) do
       drifted = x + lane.dir * lane.speed * dt
 

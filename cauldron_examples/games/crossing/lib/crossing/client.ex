@@ -45,22 +45,28 @@ defmodule Crossing.Client do
   def scene(view), do: scene(view, %{})
 
   @impl true
-  def scene(%{frog: {fx, fy}, lanes: lanes, snake: snake, elapsed: elapsed}, _look) do
+  def scene(%{frog: {fx, fy}, lanes: lanes, snake: snake, homes: homes, elapsed: elapsed}, _look) do
+    movers =
+      Enum.flat_map(lanes, fn lane ->
+        lane
+        |> Lanes.items()
+        |> Enum.with_index()
+        |> Enum.flat_map(fn {edge, index} ->
+          for step <- 0..(lane.length - 1) do
+            {art(lane, index, step, elapsed), {edge + step + 0.5, lane.row}, 0.0}
+          end
+        end)
+      end)
+
+    homes = for slot <- homes, do: {:frog, {slot + 0.5, 0.0}, 0.0}
+    snake = if visible_snake?(elapsed), do: [{:snake_0, {snake.x + 0.5, 6}, 0.0}], else: []
+
     %{
       focus: {fx + 0.5, fy + 0.5},
       field: Game.size(),
       cell: &cell/1,
       eye: :frog,
-      movers:
-        Enum.flat_map(lanes, fn lane ->
-          Enum.flat_map(Lanes.items(lane), fn edge ->
-            for step <- 0..(lane.length - 1) do
-              {art(lane, step, elapsed), {edge + step + 0.5, lane.row}, :east}
-            end
-          end)
-        end) ++
-          if(visible_snake?(elapsed), do: [{:snake_0, {snake.x + 0.5, 6}, :east}], else: []) ++
-          [{:frog, {fx + 0.5, fy}, :north}],
+      movers: movers ++ snake ++ homes ++ [{:frog, {fx + 0.5, fy}, 0.0}],
       labels: []
     }
   end
@@ -69,7 +75,7 @@ defmodule Crossing.Client do
   def hud(%{score: score, lives: lives, status: status, level: level, homes: homes}) do
     first = [
       {"level #{level}", {246, 238, 214}},
-      {"   bank #{homes}/5", {150, 210, 150}},
+      {"   bank #{MapSet.size(homes)}/#{length(Game.slots())}", {150, 210, 150}},
       {"   score #{score}", {210, 190, 130}},
       {"   lives #{lives}", {210, 160, 120}}
     ]
@@ -80,33 +86,22 @@ defmodule Crossing.Client do
     end
   end
 
-  defp visible_snake?(elapsed), do: :math.fmod(elapsed, 20.0) < 8.0
-
-  defp art(lane, step, elapsed) when lane.row in 1..5 do
-    if lane.kind == :turtle do
-      if Lanes.surfaced?(lane, elapsed), do: :turtle_0, else: :turtle_under
-    else
-      segment(lane, step)
-    end
-  end
-
-  defp art(lane, step, _elapsed), do: segment(lane, step)
-
-  defp segment(lane, step) when lane.row in 1..5 do
+  defp art(lane, index, step, elapsed) when lane.row in 1..5 do
     cond do
+      lane.kind == :turtle and Lanes.surfaced?(lane, index, elapsed) -> :turtle_0
+      lane.kind == :turtle -> :turtle_under
       step == 0 -> :log_left
       step == lane.length - 1 -> :log_right
       true -> :log_mid
     end
   end
 
-  defp segment(lane, step), do: Enum.at(parts(kind(lane.row), lane.length, lane.dir), step)
+  defp art(lane, _index, step, _elapsed), do: vehicle(lane, step)
 
-  defp parts(kind, length, dir) do
-    for step <- 0..(length - 1) do
-      name = :"#{kind}_#{step}"
-      if dir == 1, do: name, else: :"#{name}_w"
-    end
+  defp vehicle(lane, step) do
+    kind = kind(lane.row)
+    name = :"#{kind}_#{step}"
+    if lane.dir == 1, do: name, else: :"#{name}_w"
   end
 
   defp kind(7), do: :car
@@ -115,19 +110,21 @@ defmodule Crossing.Client do
   defp kind(10), do: :bus
   defp kind(11), do: :truck
 
+  defp visible_snake?(elapsed), do: :math.fmod(elapsed, 20.0) < 8.0
+
   defp cell(position) do
-    case art(position) do
+    case art_of(position) do
       :void -> :void
       art -> {art, [], nil}
     end
   end
 
-  defp art({x, y}) when x < 0 or y < 0 or x > 14 or y > 12, do: :void
-  defp art({x, 0}), do: if(rem(x, 3) == 1, do: :bank, else: :water_a)
+  defp art_of({x, y}) when x < 0 or y < 0 or x > 14 or y > 12, do: :void
+  defp art_of({x, 0}), do: if(x in Game.slots(), do: :bank, else: :water_a)
 
-  defp art({x, row}) when row in 1..5,
+  defp art_of({x, row}) when row in 1..5,
     do: if(rem(x + row, 2) == 0, do: :water_a, else: :water_b)
 
-  defp art({_x, row}) when row in 7..11, do: :road
-  defp art({x, y}), do: Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
+  defp art_of({_x, row}) when row in 7..11, do: :road
+  defp art_of({x, y}), do: Enum.at([:grass_a, :grass_c, :grass_b], rem(x * 7 + y * 13, 3))
 end

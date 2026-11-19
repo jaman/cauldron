@@ -51,16 +51,18 @@ defmodule Crossing.Lanes do
   end
 
   @doc """
-  Whether what the lane carries can be stood on at `time` seconds into the game.
+  Whether the item at `index` can be stood on at `time` seconds into the game.
 
   Logs always can. Turtles carry a `{up, down}` cycle and are under the water for the
-  second part of it; a frog standing on one when it goes down is in the water.
+  second part of it. Each turtle in a lane dives on its own beat — the lane's items are
+  staggered through the cycle — so at any moment some are up and some are under.
   """
-  @spec surfaced?(t(), float()) :: boolean()
-  def surfaced?(%__MODULE__{cycle: nil}, _time), do: true
+  @spec surfaced?(t(), non_neg_integer(), float()) :: boolean()
+  def surfaced?(%__MODULE__{cycle: nil}, _index, _time), do: true
 
-  def surfaced?(%__MODULE__{cycle: {up, down}}, time) do
-    :math.fmod(time, up + down) < up
+  def surfaced?(%__MODULE__{cycle: {up, down}, count: count}, index, time) do
+    stagger = (up + down) * index / count
+    :math.fmod(time + stagger, up + down) < up
   end
 
   @doc "The lane after `dt` seconds."
@@ -84,10 +86,19 @@ defmodule Crossing.Lanes do
 
   @doc "Whether a cart or log covers tile `x` of its row."
   @spec covers?(t(), integer()) :: boolean()
-  def covers?(%__MODULE__{} = lane, x) do
+  def covers?(%__MODULE__{} = lane, x), do: item_at(lane, x) != nil
+
+  @doc "Which of the lane's items covers tile `x`, or `nil` for clear water or road."
+  @spec item_at(t(), integer()) :: non_neg_integer() | nil
+  def item_at(%__MODULE__{} = lane, x) do
     centre = x + 0.5
 
-    Enum.any?(items(lane), fn edge -> centre >= edge and centre < edge + lane.length end)
+    lane
+    |> items()
+    |> Enum.with_index()
+    |> Enum.find_value(fn {edge, index} ->
+      if centre >= edge and centre < edge + lane.length, do: index
+    end)
   end
 
   @doc "The distance from one item's left edge to the next, in tiles."
