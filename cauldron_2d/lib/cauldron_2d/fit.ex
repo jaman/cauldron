@@ -14,19 +14,19 @@ defmodule Cauldron2D.Fit do
 
   @doc """
   The rectangle `{x, y, width, height}` of a `{width, height}` picture, whose pixels are
-  `aspect` times as tall as they are wide, that shows a frame of shape `frame` as large
-  as it fits, centred.
+  `aspect` times as wide as they are tall, that shows a frame of shape `frame` as large
+  as it fits, centred. `aspect` is the one a `:picture` function is given.
   """
   @spec letterbox({pos_integer(), pos_integer()}, number(), {number(), number()}) ::
           {non_neg_integer(), non_neg_integer(), pos_integer(), pos_integer()}
   def letterbox({width, height}, aspect, {frame_width, frame_height}) do
     shape = frame_width / frame_height
-    shown = width / (height * aspect)
+    shown = width * aspect / height
 
     {fitted_width, fitted_height} =
       if shown > shape,
-        do: {max(round(height * aspect * shape), 1), height},
-        else: {width, max(round(width / shape / aspect), 1)}
+        do: {max(round(height * shape / aspect), 1), height},
+        else: {width, max(round(width * aspect / shape), 1)}
 
     {div(width - fitted_width, 2), div(height - fitted_height, 2), fitted_width, fitted_height}
   end

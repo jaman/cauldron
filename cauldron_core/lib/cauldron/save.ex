@@ -81,7 +81,7 @@ defmodule Cauldron.Save do
   defp valid(_slot), do: {:error, :bad_slot}
 
   defp decode(bytes) do
-    case :erlang.binary_to_term(bytes, [:safe]) do
+    case :erlang.binary_to_term(bytes) do
       %{saved_at: %DateTime{}, state: _} = saved -> {:ok, saved}
       _other -> {:error, :corrupt}
     end

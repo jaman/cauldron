@@ -22,6 +22,7 @@ defmodule Crossing.Game do
   @lives 3
 
   defstruct frog: @start,
+            held: MapSet.new(),
             lanes: [],
             snake: %{x: -1.5},
             homes: MapSet.new(),
@@ -82,12 +83,21 @@ defmodule Crossing.Game do
   def leave(%__MODULE__{} = game, _id), do: game
 
   @impl true
-  def handle_input(%__MODULE__{status: :playing} = game, _id, %{action: action})
-      when action in [:up, :down, :left, :right] do
-    hop(game, action)
+  def handle_input(%__MODULE__{status: :playing} = game, _id, %{held: held}) do
+    fresh = MapSet.difference(held, game.held)
+    game = %{game | held: held}
+
+    case pressed(fresh) do
+      nil -> game
+      action -> hop(game, action)
+    end
   end
 
   def handle_input(%__MODULE__{} = game, _id, _input), do: game
+
+  # One hop to a press: an action that is already held does nothing until it is released
+  # and pressed again, so holding a key does not run the frog across the board.
+  defp pressed(fresh), do: Enum.find([:up, :down, :left, :right], &MapSet.member?(fresh, &1))
 
   @impl true
   def step(%__MODULE__{status: :playing} = game, dt) do

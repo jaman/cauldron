@@ -26,7 +26,7 @@ defmodule Cauldron.Scores do
   @spec read(Paths.game()) :: [entry()]
   def read(home) do
     case File.read(Paths.data(home, "scores.terms")) do
-      {:ok, binary} -> :erlang.binary_to_term(binary, [:safe])
+      {:ok, binary} -> :erlang.binary_to_term(binary)
       {:error, _none} -> read_text(Paths.data(home, "scores.exs"))
     end
   end

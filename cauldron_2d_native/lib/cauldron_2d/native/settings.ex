@@ -68,15 +68,15 @@ defmodule Cauldron2D.Native.Settings do
 
   defp saved(game, player) do
     with {:ok, bytes} <- File.read(path(game, player)),
-         %{} = saved <- safe_term(bytes) do
+         %{} = saved <- stored_term(bytes) do
       saved
     else
       _missing -> %{}
     end
   end
 
-  defp safe_term(bytes) do
-    :erlang.binary_to_term(bytes, [:safe])
+  defp stored_term(bytes) do
+    :erlang.binary_to_term(bytes)
   rescue
     ArgumentError -> nil
   end

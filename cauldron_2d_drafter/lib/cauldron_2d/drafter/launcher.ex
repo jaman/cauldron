@@ -152,7 +152,7 @@ defmodule Cauldron2D.Drafter.Launcher do
       )
 
     case File.read(file) do
-      {:ok, binary} -> :erlang.binary_to_term(binary, [:safe])
+      {:ok, binary} -> :erlang.binary_to_term(binary)
       {:error, _reason} -> %{}
     end
   end

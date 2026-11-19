@@ -5,11 +5,28 @@ defmodule Crossing.GameTest do
 
   defp game, do: Game.init([])
 
-  defp hop(game, action), do: Game.handle_input(game, :player, %{action: action})
+  defp hop(game, action) do
+    game = Game.handle_input(game, :player, %{held: MapSet.new([action])})
+    Game.handle_input(game, :player, %{held: MapSet.new()})
+  end
 
   test "a hop moves the frog a tile" do
     game = hop(game(), :up)
     assert game.frog == {7.0, 11}
+  end
+
+  test "holding a direction does not run the frog across the board" do
+    game = Game.handle_input(game(), :player, %{held: MapSet.new([:up])})
+    assert game.frog == {7.0, 11}
+
+    game = Game.handle_input(game, :player, %{held: MapSet.new([:up])})
+    assert game.frog == {7.0, 11}
+  end
+
+  test "a direction pressed again hops again" do
+    game = hop(game(), :up)
+    game = hop(game, :up)
+    assert game.frog == {7.0, 10}
   end
 
   test "the frog stays on the board" do

@@ -55,12 +55,12 @@ defmodule Crossing.Client do
         Enum.flat_map(lanes, fn lane ->
           Enum.flat_map(Lanes.items(lane), fn edge ->
             for step <- 0..(lane.length - 1) do
-              {art(lane, step, elapsed), {edge + step + 0.5, lane.row}, 0.0}
+              {art(lane, step, elapsed), {edge + step + 0.5, lane.row}, :east}
             end
           end)
         end) ++
-          if(visible_snake?(elapsed), do: [{:snake_0, {snake.x + 0.5, 6}, 0.0}], else: []) ++
-          [{:frog, {fx + 0.5, fy}, 0.0}],
+          if(visible_snake?(elapsed), do: [{:snake_0, {snake.x + 0.5, 6}, :east}], else: []) ++
+          [{:frog, {fx + 0.5, fy}, :north}],
       labels: []
     }
   end

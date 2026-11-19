@@ -28,7 +28,7 @@ defmodule Cauldron2D.Draw do
   projection `:picture`.
   """
 
-  alias Cauldron2D.{Atlas, Camera, Field, Parallax, Raster, Screen, Surface}
+  alias Cauldron2D.{Atlas, Camera, Field, Heading, Parallax, Raster, Screen, Surface}
   alias Cauldron2D.Projection.{FirstPerson, Iso, Mode7, Oblique}
   alias FrenchCurve.Backend.Cells
 
@@ -66,13 +66,17 @@ defmodule Cauldron2D.Draw do
   @zoom_in [4, 2]
   @zoom_out [2, 4, 8, 16]
 
-  @doc "A view from props, a map or keyword list; every prop absent or `nil` takes its default."
+  @doc """
+  A view from props, a map or keyword list; every prop absent or `nil` takes its default.
+  Movers and `:heading` may name their headings (`Cauldron2D.Heading`).
+  """
   @spec new(map() | keyword()) :: t()
   def new(props) do
     present = props |> Map.new() |> Map.reject(fn {_key, value} -> is_nil(value) end)
 
     __MODULE__
     |> struct(present)
+    |> in_radians()
     |> picture_projection()
   end
 
@@ -80,6 +84,8 @@ defmodule Cauldron2D.Draw do
   A view's props from `game`'s `scene` and the client's `look` (`:projection`,
   `:facing`, `:facings`, `:tilt`, `:heading`, `:pitch`, `:density`), at `zoom`.
   The scene's own `:heading` wins over the look's; its `:eye` is read by `eye_height/2`.
+  Its movers and `:heading` may name their headings, given on in radians
+  (`Cauldron2D.Heading`).
   A 3D scene's `:gpu` and `:gpu_size` are passed on as they are, for a drawer that
   sends 3D scenes (`Cauldron3D.Net.Drawer`). A scene with a `:field` seen top-down is
   drawn as `Cauldron2D.Field.scene/3` makes it.
@@ -93,7 +99,7 @@ defmodule Cauldron2D.Draw do
       focus: scene[:focus],
       zoom: zoom,
       cell: scene[:cell],
-      movers: scene[:movers] || [],
+      movers: Heading.movers(scene[:movers] || []),
       labels: Map.get(scene, :labels, []),
       screen: Map.get(scene, :screen, []),
       outlines: Map.get(scene, :outlines, []),
@@ -103,7 +109,7 @@ defmodule Cauldron2D.Draw do
       facing: Map.get(look, :facing, 0),
       facings: Map.get(look, :facings, 4),
       tilt: Map.get(look, :tilt, 1.0),
-      heading: Map.get(scene, :heading) || Map.get(look, :heading, 0.0),
+      heading: Heading.radians(Map.get(scene, :heading)) || Map.get(look, :heading, 0.0),
       pitch: Map.get(look, :pitch, 0.0),
       density: Map.get(look, :density),
       eye: eye_height(game, scene),
@@ -677,6 +683,9 @@ defmodule Cauldron2D.Draw do
   defp whole(number), do: number
 
   defp now, do: System.monotonic_time(:millisecond)
+
+  defp in_radians(view),
+    do: %{view | movers: Heading.movers(view.movers), heading: Heading.radians(view.heading)}
 
   defp picture_projection(%{picture: nil} = view), do: view
   defp picture_projection(%{picture: false} = view), do: view

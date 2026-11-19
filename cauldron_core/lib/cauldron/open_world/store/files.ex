@@ -31,7 +31,7 @@ defmodule Cauldron.OpenWorld.Store.Files do
   defp path(directory, {column, row}), do: Path.join(directory, "#{column}_#{row}.cell")
 
   defp read(bytes) do
-    case :erlang.binary_to_term(bytes, [:safe]) do
+    case :erlang.binary_to_term(bytes) do
       %Cell{} = cell -> {:ok, cell}
       _other -> {:error, :not_a_cell}
     end

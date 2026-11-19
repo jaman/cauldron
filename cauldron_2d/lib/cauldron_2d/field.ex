@@ -89,7 +89,7 @@ defmodule Cauldron2D.Field do
           Raster.t()
   def letterbox(raster, {width, height} = size, aspect, void) do
     {x, y, fitted_width, fitted_height} =
-      Fit.letterbox(size, 1 / aspect, Raster.dimensions(raster))
+      Fit.letterbox(size, aspect, Raster.dimensions(raster))
 
     scaled = resized(raster, {fitted_width, fitted_height})
     pixel = void_pixel(void)

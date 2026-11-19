@@ -200,7 +200,7 @@ defmodule Cauldron2D.Wx.Client do
 
     saved =
       case File.read(settings_path(game, username)) do
-        {:ok, bytes} -> :erlang.binary_to_term(bytes, [:safe])
+        {:ok, bytes} -> :erlang.binary_to_term(bytes)
         {:error, _} -> %{}
       end
 

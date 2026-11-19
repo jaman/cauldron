@@ -11,8 +11,12 @@ defmodule Cauldron2D.FitTest do
     assert Fit.letterbox({320, 400}, 1.0, {320, 240}) == {0, 80, 320, 240}
   end
 
-  test "pixels twice as tall as wide need half the rows" do
-    assert Fit.letterbox({320, 120}, 2.0, {320, 240}) == {0, 0, 320, 120}
+  test "pixels half as wide as tall need half the rows" do
+    assert Fit.letterbox({320, 120}, 0.5, {320, 240}) == {0, 0, 320, 120}
+  end
+
+  test "pixels twice as wide as tall need half the columns" do
+    assert Fit.letterbox({160, 240}, 2.0, {320, 240}) == {0, 0, 160, 240}
   end
 
   test "a point on the bars is outside the frame" do

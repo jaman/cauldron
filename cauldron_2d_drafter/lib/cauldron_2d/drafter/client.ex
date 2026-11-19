@@ -170,7 +170,7 @@ defmodule Cauldron2D.Drafter.Client do
   alias Cauldron.{Audio, Chat, Input, Player, Sessions, Trace, World}
   alias Cauldron.Audio.Music
   alias Cauldron.Client.{Controls, Fronts, Game, Keys, Menus, Party, Start, View}
-  alias Cauldron2D.{Atlas, Camera, Draw, Field}
+  alias Cauldron2D.{Atlas, Camera, Draw, Field, Heading}
   alias Cauldron2D.Client.Look
   alias Cauldron2D.Drafter.{Launcher, Surface}
 
@@ -1764,7 +1764,7 @@ defmodule Cauldron2D.Drafter.Client do
       facing: look.facing,
       facings: Map.get(look, :facings) || 4,
       tilt: look.tilt,
-      heading: Map.get(scene, :heading) || look.heading,
+      heading: Heading.radians(Map.get(scene, :heading)) || look.heading,
       pitch: look.pitch,
       density: Map.get(look, :density),
       eye: Draw.eye_height(game, scene),
